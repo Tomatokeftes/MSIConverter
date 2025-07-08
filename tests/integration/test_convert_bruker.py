@@ -15,10 +15,13 @@ from msiconvert.convert import convert_msi
 
 
 # Skip all tests if Bruker DLL/shared library is not available
-bruker_dll_available = (
-    (sys.platform.startswith("win32") and Path("timsdata.dll").exists()) or
-    (sys.platform.startswith("linux") and Path("/usr/lib/libtimsdata.so").exists())
-)
+import platform
+
+from msiconvert.readers.bruker_reader import BrukerReader
+
+# Determine if Bruker DLL/shared library is available using the reader's internal logic
+with patch('msiconvert.readers.bruker_reader.BrukerReader.__init__', return_value=None):
+    bruker_dll_available = BrukerReader(Path("dummy"))._find_dll_path() is not None
 
 pytestmark = pytest.mark.skipif(
     not bruker_dll_available,
@@ -34,16 +37,16 @@ class TestBrukerConversion:
         """Return the mock Bruker data directory."""
         return mock_bruker_data
     
+    @patch('msiconvert.readers.bruker_reader.BrukerReader._find_dll_path', return_value=Path("mock_timsdata.dll"))
     @patch('ctypes.windll', new_callable=MagicMock) if sys.platform.startswith("win32") else patch('ctypes.cdll', new_callable=MagicMock)
     @patch('sqlite3.connect')
-    def test_detect_bruker_format(self, mock_sqlite3, mock_dll, mock_bruker_data_dir):
+    def test_detect_bruker_format(self, mock_sqlite3, mock_dll, mock_find_dll_path, mock_bruker_data_dir):
         """Test that the Bruker format is correctly detected."""
         from msiconvert.core.registry import detect_format
         
         # Expected to be detected as 'bruker'
         detected_format = detect_format(mock_bruker_data_dir)
         assert detected_format == "bruker"
-    
     
 
     @pytest.mark.skipif(not pytest.importorskip("spatialdata", reason="SpatialData not installed"),
@@ -130,3 +133,11 @@ class TestBrukerConversion:
                     
                     # Check result
                     assert result is True
+
+    @patch('msiconvert.readers.bruker_reader.BrukerReader._find_dll_path', return_value=None)
+    @patch('msiconvert.readers.bruker_reader.BrukerReader.__init__', return_value=None)
+    def test_bruker_reader_dll_not_found(self, mock_init, mock_find_dll_path, mock_bruker_data_dir):
+        """Test that BrukerReader raises RuntimeError if DLL is not found."""
+        reader = BrukerReader(mock_bruker_data_dir)
+        with pytest.raises(RuntimeError, match="Bruker DLL/shared library not found"):
+            reader._load_dll()

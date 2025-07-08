@@ -7,7 +7,6 @@ import pytest
 from unittest.mock import patch, MagicMock
 import numpy as np
 from pathlib import Path
-import os
 import sys
 
 from msiconvert.readers.bruker_reader import BrukerReader

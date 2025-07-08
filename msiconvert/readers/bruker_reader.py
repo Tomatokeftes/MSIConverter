@@ -89,67 +89,87 @@ class BrukerReader(BaseMSIReader):
         if cached_metadata:
             self._preload_metadata()
         
+    def _find_dll_path(self) -> Optional[Path]:
+        """
+        Search for the Bruker DLL/shared library in common locations.
+        
+        Returns:
+            Path to the DLL/shared library if found, None otherwise.
+        """
+        dll_name: str
+        if platform.system() == "Windows":
+            dll_name = "timsdata.dll"
+            # Common installation paths for Windows
+            search_paths: List[Path] = [
+                Path("C:/Program Files/Bruker/timsTOF/sdk"),
+                Path("C:/Bruker/sdk"),
+                Path(os.environ.get("BRUKER_SDK_PATH", "")), # Check environment variable
+                Path(__file__).parent.parent.parent, # Project root
+                Path(__file__).parent.parent.parent / "timsdata", # timsdata folder in project root
+                Path(__file__).parent.parent.parent / "timsdata" / "windows", # timsdata/windows folder in project root
+                Path(os.getcwd()), # Current working directory
+            ]
+        elif platform.system() == "Linux":
+            dll_name = "libtimsdata.so"
+            # Common installation paths for Linux
+            search_paths = [
+                Path("/usr/lib"),
+                Path("/usr/local/lib"),
+                Path(os.environ.get("BRUKER_SDK_PATH", "")), # Check environment variable
+                Path(__file__).parent.parent.parent, # Project root
+                Path(__file__).parent.parent.parent / "timsdata", # timsdata folder in project root
+                Path(__file__).parent.parent.parent / "timsdata" / "linux", # timsdata/linux folder in project root
+                Path(os.getcwd()), # Current working directory
+            ]
+        else:
+            logging.error(f"Unsupported platform: {platform.system()}")
+            return None
+
+        # Filter out empty or non-existent paths
+        search_paths = [p for p in search_paths if p and p.exists()]
+
+        for p in search_paths:
+            dll_path = p / dll_name
+            if dll_path.is_file():
+                logging.info(f"Found Bruker DLL/shared library at: {dll_path}")
+                return dll_path
+        
+        logging.warning(f"Bruker DLL/shared library ({dll_name}) not found in common locations or specified paths.")
+        return None
+
     def _load_dll(self) -> None:
         """
         Load the appropriate DLL based on platform.
         
         Raises:
-            RuntimeError: If the required DLL/shared library cannot be found
+            RuntimeError: If the required DLL/shared library cannot be found or loaded.
         """
+        dll_path = self._find_dll_path()
+        if not dll_path:
+            raise RuntimeError(
+                f"Bruker DLL/shared library not found. Please ensure 'timsdata.dll' (Windows) "
+                f"or 'libtimsdata.so' (Linux) is installed and accessible, or set the BRUKER_SDK_PATH environment variable."
+            )
+
         try:
-            # Determine appropriate library name based on platform
             if platform.system() == "Windows":
-                # Try to find the DLL in standard locations
-                dll_paths: List[str] = [
-                    "C:\\Program Files\\Bruker\\timsTOF\\sdk\\timsdata.dll",
-                    "C:\\Bruker\\sdk\\timsdata.dll",
-                    r"C:\Users\P70078823\Desktop\MSIConverter\timsdata.dll",
-                    str(self.analysis_directory.parent / "timsdata.dll"),
-                    "timsdata.dll"  # Rely on system PATH
-                ]
-                
-                for dll_path in dll_paths:
-                    if os.path.exists(dll_path):
-                        from ctypes import windll
-                        self._dll = windll.LoadLibrary(dll_path)
-                        break
-                else:
-                    # If no DLL found, try one more approach
-                    try:
-                        from ctypes import windll
-                        self._dll = windll.LoadLibrary("timsdata")
-                    except Exception:
-                        raise RuntimeError("Could not find Bruker timsdata.dll. Please ensure it's installed.")
-                        
+                from ctypes import windll
+                self._dll = windll.LoadLibrary(str(dll_path))
             elif platform.system() == "Linux":
-                lib_paths: List[str] = [
-                    "/usr/lib/libtimsdata.so",
-                    "/usr/local/lib/libtimsdata.so",
-                    str(self.analysis_directory.parent / "libtimsdata.so"),
-                    "libtimsdata.so"  # Rely on LD_LIBRARY_PATH
-                ]
-                
-                for lib_path in lib_paths:
-                    if os.path.exists(lib_path):
-                        from ctypes import cdll
-                        self._dll = cdll.LoadLibrary(lib_path)
-                        break
-                else:
-                    # Try one more approach
-                    try:
-                        from ctypes import cdll
-                        self._dll = cdll.LoadLibrary("libtimsdata")
-                    except Exception:
-                        raise RuntimeError("Could not find Bruker libtimsdata.so. Please ensure it's installed.")
+                from ctypes import cdll
+                self._dll = cdll.LoadLibrary(str(dll_path))
             else:
                 raise RuntimeError(f"Unsupported platform: {platform.system()}")
             
             # Configure DLL functions
             self._define_dll_functions()
             
+        except OSError as e:
+            logging.error(f"Error loading Bruker SDK from {dll_path}: {e}")
+            raise RuntimeError(f"Failed to load Bruker DLL/shared library from {dll_path}. Check file permissions and integrity.") from e
         except Exception as e:
-            logging.error(f"Error loading Bruker SDK: {e}")
-            raise
+            logging.error(f"An unexpected error occurred while loading Bruker SDK from {dll_path}: {e}")
+            raise RuntimeError(f"An unexpected error occurred during DLL loading: {e}") from e
     
     def _define_dll_functions(self) -> None:
         """
@@ -168,38 +188,44 @@ class BrukerReader(BaseMSIReader):
         # Define functions based on file type (TSF or TDF)
         if self.file_type == "tsf":
             # TSF-specific functions
-            self._dll.tsf_open.argtypes = [c_char_p, c_uint32]
-            self._dll.tsf_open.restype = c_uint64
-            
-            self._dll.tsf_close.argtypes = [c_uint64]
-            self._dll.tsf_close.restype = None
-            
-            self._dll.tsf_get_last_error_string.argtypes = [c_char_p, c_uint32]
-            self._dll.tsf_get_last_error_string.restype = c_uint32
-            
-            self._dll.tsf_read_line_spectrum_v2.argtypes = [c_uint64, c_int64, POINTER(c_double), POINTER(c_float), c_int32]
-            self._dll.tsf_read_line_spectrum_v2.restype = c_int32
-            
-            self._dll.tsf_index_to_mz.argtypes = convfunc_argtypes
-            self._dll.tsf_index_to_mz.restype = c_uint32
+            try:
+                self._dll.tsf_open.argtypes = [c_char_p, c_uint32]
+                self._dll.tsf_open.restype = c_uint64
+                
+                self._dll.tsf_close.argtypes = [c_uint64]
+                self._dll.tsf_close.restype = None
+                
+                self._dll.tsf_get_last_error_string.argtypes = [c_char_p, c_uint32]
+                self._dll.tsf_get_last_error_string.restype = c_uint32
+                
+                self._dll.tsf_read_line_spectrum_v2.argtypes = [c_uint64, c_int64, POINTER(c_double), POINTER(c_float), c_int32]
+                self._dll.tsf_read_line_spectrum_v2.restype = c_int32
+                
+                self._dll.tsf_index_to_mz.argtypes = convfunc_argtypes
+                self._dll.tsf_index_to_mz.restype = c_uint32
+            except AttributeError as e:
+                raise RuntimeError(f"Missing TSF DLL function: {e}. Ensure the correct Bruker SDK is installed.") from e
             
         elif self.file_type == "tdf":
             # TDF-specific functions
-            self._dll.tims_open.argtypes = [c_char_p, c_uint32]
-            self._dll.tims_open.restype = c_uint64
-            
-            self._dll.tims_close.argtypes = [c_uint64]
-            self._dll.tims_close.restype = None
-            
-            self._dll.tims_get_last_error_string.argtypes = [c_char_p, c_uint32]
-            self._dll.tims_get_last_error_string.restype = c_uint32
-            
-            self._dll.tims_read_scans_v2.argtypes = [c_uint64, c_int64, c_uint32, c_uint32, 
-                                                  POINTER(c_uint32), c_uint32]
-            self._dll.tims_read_scans_v2.restype = c_uint32
-            
-            self._dll.tims_index_to_mz.argtypes = convfunc_argtypes
-            self._dll.tims_index_to_mz.restype = c_uint32
+            try:
+                self._dll.tims_open.argtypes = [c_char_p, c_uint32]
+                self._dll.tims_open.restype = c_uint64
+                
+                self._dll.tims_close.argtypes = [c_uint64]
+                self._dll.tims_close.restype = None
+                
+                self._dll.tims_get_last_error_string.argtypes = [c_char_p, c_uint32]
+                self._dll.tims_get_last_error_string.restype = c_uint32
+                
+                self._dll.tims_read_scans_v2.argtypes = [c_uint64, c_int64, c_uint32, c_uint32, 
+                                                      POINTER(c_uint32), c_uint32]
+                self._dll.tims_read_scans_v2.restype = c_uint32
+                
+                self._dll.tims_index_to_mz.argtypes = convfunc_argtypes
+                self._dll.tims_index_to_mz.restype = c_uint32
+            except AttributeError as e:
+                raise RuntimeError(f"Missing TDF DLL function: {e}. Ensure the correct Bruker SDK is installed.") from e
     
     def _throw_last_error(self) -> None:
         """
@@ -211,17 +237,23 @@ class BrukerReader(BaseMSIReader):
         if self._dll is None:
             raise RuntimeError("DLL not loaded")
             
-        if self.file_type == "tsf":
-            len_buf: int = self._dll.tsf_get_last_error_string(None, 0)
-        else:  # TDF
-            len_buf: int = self._dll.tims_get_last_error_string(None, 0)
+        try:
+            if self.file_type == "tsf":
+                len_buf: int = self._dll.tsf_get_last_error_string(None, 0)
+            else:  # TDF
+                len_buf: int = self._dll.tims_get_last_error_string(None, 0)
+        except AttributeError as e:
+            raise RuntimeError(f"Error getting last error string from DLL: {e}. DLL functions might be incorrectly defined.") from e
             
         buf: Any = create_string_buffer(len_buf)
         
-        if self.file_type == "tsf":
-            self._dll.tsf_get_last_error_string(buf, len_buf)
-        else:  # TDF
-            self._dll.tims_get_last_error_string(buf, len_buf)
+        try:
+            if self.file_type == "tsf":
+                self._dll.tsf_get_last_error_string(buf, len_buf)
+            else:  # TDF
+                self._dll.tims_get_last_error_string(buf, len_buf)
+        except AttributeError as e:
+            raise RuntimeError(f"Error retrieving last error string from DLL: {e}. DLL functions might be incorrectly defined.") from e
             
         raise RuntimeError(buf.value.decode('utf-8'))
     
@@ -232,10 +264,10 @@ class BrukerReader(BaseMSIReader):
         Raises:
             RuntimeError: If DLL handle is invalid or database connection fails
         """
+        if self._dll is None:
+            raise RuntimeError("DLL not loaded. Call _load_dll() first.")
+            
         try:
-            if self._dll is None:
-                raise RuntimeError("DLL not loaded")
-                
             # Open the data handle based on file type
             if self.file_type == "tsf":
                 self.handle = int(self._dll.tsf_open(
@@ -250,7 +282,14 @@ class BrukerReader(BaseMSIReader):
             
             if self.handle == 0:
                 self._throw_last_error()
+                
+        except Exception as e:
+            error_msg = f"Failed to open Bruker data file handle for {self.analysis_directory}: {e}"
+            logging.error(error_msg)
+            self.close()
+            raise RuntimeError(error_msg) from e
             
+        try:
             # Initialize database connection
             db_path: Path = self.tsf_path if self.file_type == "tsf" else self.tdf_path
             self.conn = sqlite3.connect(str(db_path))
@@ -258,10 +297,16 @@ class BrukerReader(BaseMSIReader):
             # Load minimal required metadata
             self._load_minimal_metadata()
             
-        except Exception as e:
-            logging.error(f"Error opening Bruker data: {e}")
+        except sqlite3.Error as e:
+            error_msg = f"Failed to connect to or query SQLite database for {self.analysis_directory}: {e}"
+            logging.error(error_msg)
             self.close()
-            raise
+            raise RuntimeError(error_msg) from e
+        except Exception as e:
+            error_msg = f"An unexpected error occurred during data opening for {self.analysis_directory}: {e}"
+            logging.error(error_msg)
+            self.close()
+            raise RuntimeError(error_msg) from e
     
     def _load_minimal_metadata(self) -> None:
         """
