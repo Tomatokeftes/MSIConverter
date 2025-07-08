@@ -4,14 +4,14 @@ This document outlines the high-level architecture, goals, and future developmen
 
 ## 1. Project Overview
 
-`MSIConverter` is a Python library designed to convert Mass Spectrometry Imaging (MSI) data from various proprietary and open formats into standardized formats like `AnnData` and `SpatialData`. The primary goal is to provide a flexible and extensible tool for MSI data interoperability.
+`MSIConverter` is a Python library designed to convert Mass Spectrometry Imaging (MSI) data from various proprietary and open formats into the `SpatialData` format. The primary goal is to provide a flexible and extensible tool for MSI data interoperability.
 
 ## 2. Core Architecture
 
 The project follows a modular `Reader-Converter` pattern, which promotes separation of concerns and allows for easy extension.
 
 *   **Readers (`msiconvert/readers`):** Responsible for parsing specific MSI data formats (e.g., `imzML`, `Bruker TSF/TDF`). Each reader implements the `BaseMSIReader` interface, which defines a standard way to access metadata, dimensions, and spectral data.
-*   **Converters (`msiconvert/converters`):** Responsible for transforming the data read by a `Reader` into a specific output format (e.g., `SpatialData`, `AnnData`). Each converter implements the `BaseMSIConverter` interface, which outlines a consistent conversion workflow.
+*   **Converters (`msiconvert/converters`):** Responsible for transforming the data read by a `Reader` into the `SpatialData` output format. Each converter implements the `BaseMSIConverter` interface, which outlines a consistent conversion workflow.
 *   **Core (`msiconvert/core`):** Contains the base classes (`BaseMSIReader`, `BaseMSIConverter`) and a central `registry` that dynamically discovers and registers available readers and converters. This allows for a plug-and-play architecture where new formats can be added without modifying the core logic.
 
 ## 3. Data Flow
@@ -28,7 +28,7 @@ The project follows a modular `Reader-Converter` pattern, which promotes separat
 *   **`numpy` & `scipy`:** For numerical data manipulation and sparse matrix operations.
 *   **`anndata`:** For creating and managing the `AnnData` object, a core data structure in bioinformatics.
 *   **`spatialdata`:** For creating and managing the `SpatialData` object, which is designed to handle spatially resolved omics data.
-*   **`zarr`:** For efficient, chunked storage of large numerical arrays, used by the `lightweight` and `SpatialData` converters.
+*   **`zarr`:** For efficient, chunked storage of large numerical arrays, used by the `SpatialData` converter.
 *   **`pyimzML`:** For parsing `imzML` files.
 *   **`timsdata.dll`:** A proprietary library from Bruker required for reading `TSF/TDF` files.
 

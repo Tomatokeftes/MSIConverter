@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 import json
 
-from ..metadata.validator import ImzMLOntologyValidator
+
 from ..metadata.ontology.cache import ONTOLOGY
 
 
@@ -21,6 +21,7 @@ def main():
     if args.verbose:
         logging.basicConfig(level=logging.INFO)
     
+    from ..metadata.validator import ImzMLOntologyValidator
     validator = ImzMLOntologyValidator()
     input_path = Path(args.input)
     
