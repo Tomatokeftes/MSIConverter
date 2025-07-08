@@ -29,7 +29,7 @@ class TestCommandLineInterface:
         captured = capsys.readouterr()
         
         # Check help content
-        assert "Convert MSI data to SpatialData or lightweight format" in captured.out
+        assert "Convert MSI data to SpatialData format" in captured.out
         assert "--format" in captured.out
         assert "--dataset-id" in captured.out
         assert "--pixel-size" in captured.out
@@ -47,7 +47,7 @@ class TestCommandLineInterface:
             "msiconvert",
             str(imzml_path),
             str(output_path),
-            "--format", "anndata",
+            "--format", "spatialdata",
             "--dataset-id", "cli_test",
             "--pixel-size", "3.5"
         ]
@@ -135,44 +135,7 @@ class TestCommandLineInterface:
         assert code == 0
         assert handle_3d_value is True
     
-    def test_cli_optimize_chunks(self, create_minimal_imzml, temp_dir, monkeypatch):
-        """Test CLI with chunk optimization."""
-        # Get test data
-        imzml_path, _, _, _ = create_minimal_imzml
-        output_path = temp_dir / "cli_optimized.zarr"
-        
-        # Mock the optimize_zarr_chunks function
-        optimize_called = False
-        
-        def mock_optimize_zarr_chunks(*args, **kwargs):
-            nonlocal optimize_called
-            optimize_called = True
-            return True
-            
-        monkeypatch.setattr("msiconvert.__main__.optimize_zarr_chunks", mock_optimize_zarr_chunks)
-        
-        # Mock convert_msi to always return True
-        monkeypatch.setattr("msiconvert.__main__.convert_msi", lambda *args, **kwargs: True)
-        
-        # Set up command line arguments with chunk optimization
-        sys.argv = [
-            "msiconvert",
-            str(imzml_path),
-            str(output_path),
-            "--format", "lightweight",
-            "--optimize-chunks"
-        ]
-        
-        # Run main
-        try:
-            main()
-            code = 0
-        except SystemExit as e:
-            code = e.code
-        
-        # Check results
-        assert code == 0
-        assert optimize_called is True
+    
     
     def test_cli_log_level(self, create_minimal_imzml, temp_dir, monkeypatch):
         """Test CLI with different log levels."""

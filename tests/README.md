@@ -9,7 +9,7 @@ The tests are organized as follows:
 - `unit/`: Fast tests for individual components
   - Core functionality (registry, base classes)
   - Readers (imzML and Bruker)
-  - Converters (SpatialData, AnnData, Lightweight)
+  - Converters (SpatialData)
   - Utility functions
 
 - `integration/`: End-to-end tests for the full conversion workflow

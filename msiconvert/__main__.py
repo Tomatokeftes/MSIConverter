@@ -9,15 +9,15 @@ from .utils.data_processors import optimize_zarr_chunks
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Convert MSI data to SpatialData or lightweight format')
+    parser = argparse.ArgumentParser(description='Convert MSI data to SpatialData format')
     
     parser.add_argument('input', help='Path to input MSI file or directory')
     parser.add_argument('output', help='Path for output file')
     parser.add_argument(
         '--format', 
-        choices=['spatialdata', 'lightweight', 'anndata'], 
-        default='anndata',
-        help='Output format type: spatialdata (full SpatialData format), anndata (standard AnnData), or lightweight (basic zarr)'
+        choices=['spatialdata'], 
+        default='spatialdata',
+        help='Output format type: spatialdata (full SpatialData format)'
     )
     parser.add_argument(
         '--dataset-id',
@@ -70,10 +70,6 @@ def main():
         if args.format == 'spatialdata':
             # For SpatialData format, optimize the table's X array
             optimize_zarr_chunks(args.output, f'tables/{args.dataset_id}/X')
-        else:
-            # For lightweight format, optimize the sparse_data arrays
-            optimize_zarr_chunks(args.output, 'sparse_data/data')
-            optimize_zarr_chunks(args.output, 'sparse_data/indices')
     
     if success:
         print(f"Conversion completed successfully. Output stored at {args.output}")
