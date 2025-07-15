@@ -4,6 +4,7 @@ load_dotenv()  # Load environment variables from .env file
 
 import argparse
 import logging
+import sys
 from .convert import convert_msi
 from .utils.data_processors import optimize_zarr_chunks
 
@@ -46,7 +47,47 @@ def main():
         default='INFO',
         help='Set the logging level'
     )
-    
+    # Binning parameters
+    parser.add_argument(
+        '--bin-mz',
+        action='store_true',
+        help='Enable m/z binning to reduce data size'
+    )
+    parser.add_argument(
+        '--bin-mode',
+        choices=['linear', 'reflector'],
+        default='linear',
+        help='Binning mode based on instrument type (default: linear)'
+    )
+    # Mutually exclusive group for bin size vs num bins
+    bin_group = parser.add_mutually_exclusive_group()
+    bin_group.add_argument(
+        '--bin-size',
+        type=float,
+        help='Bin size in milli-Daltons (mDa)'
+    )
+    bin_group.add_argument(
+        '--num-bins',
+        type=int,
+        help='Total number of bins'
+    )
+    parser.add_argument(
+        '--bin-reference-mz',
+        type=float,
+        default=1000.0,
+        help='Reference m/z for bin size calculation (default: 1000.0)'
+    )
+    parser.add_argument(
+        '--bin-min-mz',
+        type=float,
+        help='Minimum m/z for binning (auto-detected if not specified)'
+    )
+    parser.add_argument(
+        '--bin-max-mz',
+        type=float,
+        help='Maximum m/z for binning (auto-detected if not specified)'
+    )
+
     args = parser.parse_args()
     
     # Configure logging
@@ -54,7 +95,24 @@ def main():
         level=getattr(logging, args.log_level),
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
-    
+
+    # Prepare binning parameters
+    binning_params = None
+    if args.bin_mz:
+        if not args.bin_size and not args.num_bins:
+            print("Error: --bin-size or --num-bins must be specified when --bin-mz is enabled")
+            sys.exit(1)
+            
+        binning_params = {
+            'enabled': True,
+            'mode': args.bin_mode,
+            'bin_size_mu': args.bin_size,
+            'num_bins': args.num_bins,
+            'reference_mz': args.bin_reference_mz,
+            'min_mz': args.bin_min_mz,
+            'max_mz': args.bin_max_mz
+        }
+
     # Convert MSI data
     success = convert_msi(
         args.input,
@@ -62,7 +120,8 @@ def main():
         format_type=args.format,
         dataset_id=args.dataset_id,
         pixel_size_um=args.pixel_size,
-        handle_3d=args.handle_3d
+        handle_3d=args.handle_3d,
+        binning_params=binning_params
     )
     
     if success and args.optimize_chunks:

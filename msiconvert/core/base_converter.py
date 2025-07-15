@@ -269,30 +269,37 @@ class BaseMSIConverter(ABC):
     
     def _map_mass_to_indices(self, mzs: NDArray[np.float64]) -> NDArray[np.int_]:
         """
-        Map m/z values to indices in the common mass axis with high accuracy.
+        Map m/z values to indices in the common mass axis.
         
-        Parameters:
+        For binned data, the mzs will already match the common mass axis exactly.
+        For unbinned data, we find the closest matches.
+        
+        Parameters
         -----------
-        mzs: Array of m/z values
+        mzs : NDArray[np.float64]
+            Array of m/z values
         
-        Returns:
+        Returns
         --------
-        NDArray[np.int_]: Array of indices in common mass axis
+        NDArray[np.int_]
+            Array of indices in common mass axis
         """
         if self._common_mass_axis is None:
             raise ValueError("Common mass axis is not initialized.")
             
         if mzs.size == 0:
             return np.array([], dtype=int)
-            
-        # Use searchsorted for exact mapping
-        indices = np.searchsorted(self._common_mass_axis, mzs)
         
-        # Ensure indices are within bounds
+        # Check if this is binned data (mzs match common axis exactly)
+        if len(mzs) == len(self._common_mass_axis) and np.allclose(mzs, self._common_mass_axis):
+            # Direct mapping for binned data
+            return np.arange(len(self._common_mass_axis), dtype=int)
+        
+        # Original implementation for unbinned data
+        indices = np.searchsorted(self._common_mass_axis, mzs)
         indices = np.clip(indices, 0, len(self._common_mass_axis) - 1)
         
-        # For complete accuracy, validate the indices
-        max_diff = 1e-6  # Very small tolerance threshold for floating point differences
+        max_diff = 1e-6
         mask = np.abs(self._common_mass_axis[indices] - mzs) <= max_diff
         
         return indices[mask]
@@ -303,29 +310,38 @@ class BaseMSIConverter(ABC):
         """
         Add intensity values to a sparse matrix efficiently.
         
-        Parameters:
+        For binned data, we can optimize by directly assigning the full spectrum.
+        
+        Parameters
         -----------
-        sparse_matrix: Target sparse matrix
-        pixel_idx: Flat pixel index
-        mz_indices: Indices in common mass axis
-        intensities: Intensity values
+        sparse_matrix : sparse.lil_matrix
+            Target sparse matrix
+        pixel_idx : int
+            Flat pixel index
+        mz_indices : NDArray[np.int_]
+            Indices in common mass axis
+        intensities : NDArray[np.float64]
+            Intensity values
         """
         if self._common_mass_axis is None:
             raise ValueError("Common mass axis is not initialized.")
             
         if mz_indices.size == 0 or intensities.size == 0:
             return
-            
+        
         n_masses = len(self._common_mass_axis)
         
-        # Filter out invalid indices and zero intensities in a single pass
-        valid_mask = (mz_indices < n_masses) & (intensities > 0)
-        if not np.any(valid_mask):
-            return
+        # Check if this is a complete binned spectrum
+        if len(mz_indices) == n_masses and np.array_equal(mz_indices, np.arange(n_masses)):
+            # Direct assignment for binned data
+            sparse_matrix[pixel_idx, :] = intensities
+        else:
+            # Original implementation for sparse data
+            valid_mask = (mz_indices < n_masses) & (intensities > 0)
+            if not np.any(valid_mask):
+                return
+                
+            valid_indices = mz_indices[valid_mask]
+            valid_intensities = intensities[valid_mask]
             
-        # Extract valid values
-        valid_indices = mz_indices[valid_mask]
-        valid_intensities = intensities[valid_mask]
-        
-        # Use bulk assignment for better performance
-        sparse_matrix[pixel_idx, valid_indices] = valid_intensities
+            sparse_matrix[pixel_idx, valid_indices] = valid_intensities
