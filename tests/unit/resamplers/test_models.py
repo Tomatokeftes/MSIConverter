@@ -1,20 +1,20 @@
-# tests/unit/binning_module/test_models.py
+# tests/unit/resampling_module/test_models.py
 """Unit tests for data models."""
 
 import pytest
 import numpy as np
 
-from msiconvert.binning_module.application.models import BinningRequest
-from msiconvert.binning_module.domain.models import BinningResult
-from msiconvert.binning_module.exceptions import InvalidParametersError
+from msiconvert.resamplers.application.models import ResamplingRequest
+from msiconvert.resamplers.domain.models import ResamplingResult
+from msiconvert.resamplers.exceptions import InvalidParametersError
 
 
-class TestBinningRequest:
-    """Test BinningRequest validation."""
+class TestResamplingRequest:
+    """Test ResamplingRequest validation."""
     
     def test_valid_request_with_num_bins(self):
         """Test creating valid request with num_bins."""
-        request = BinningRequest(
+        request = ResamplingRequest(
             min_mz=100.0,
             max_mz=2000.0,
             model_type='linear',
@@ -30,7 +30,7 @@ class TestBinningRequest:
     
     def test_valid_request_with_bin_size(self):
         """Test creating valid request with bin_size_mu."""
-        request = BinningRequest(
+        request = ResamplingRequest(
             min_mz=100.0,
             max_mz=2000.0,
             model_type='reflector',
@@ -48,7 +48,7 @@ class TestBinningRequest:
     def test_invalid_mz_range(self):
         """Test invalid m/z range validation."""
         with pytest.raises(InvalidParametersError, match="min_mz must be less than max_mz"):
-            BinningRequest(
+            ResamplingRequest(
                 min_mz=2000.0,
                 max_mz=100.0,  # Invalid: min > max
                 model_type='linear',
@@ -58,7 +58,7 @@ class TestBinningRequest:
     def test_invalid_model_type(self):
         """Test invalid model type validation."""
         with pytest.raises(InvalidParametersError, match="Invalid model_type"):
-            BinningRequest(
+            ResamplingRequest(
                 min_mz=100.0,
                 max_mz=2000.0,
                 model_type='unknown',
@@ -68,7 +68,7 @@ class TestBinningRequest:
     def test_missing_size_parameters(self):
         """Test that either num_bins or bin_size_mu must be provided."""
         with pytest.raises(InvalidParametersError, match="Either num_bins or bin_size_mu"):
-            BinningRequest(
+            ResamplingRequest(
                 min_mz=100.0,
                 max_mz=2000.0,
                 model_type='linear'
@@ -77,7 +77,7 @@ class TestBinningRequest:
     def test_both_size_parameters(self):
         """Test that only one size parameter can be provided."""
         with pytest.raises(InvalidParametersError, match="Only one of num_bins or bin_size_mu"):
-            BinningRequest(
+            ResamplingRequest(
                 min_mz=100.0,
                 max_mz=2000.0,
                 model_type='linear',
@@ -88,7 +88,7 @@ class TestBinningRequest:
     def test_invalid_num_bins(self):
         """Test num_bins validation."""
         with pytest.raises(InvalidParametersError, match="num_bins must be positive"):
-            BinningRequest(
+            ResamplingRequest(
                 min_mz=100.0,
                 max_mz=2000.0,
                 model_type='linear',
@@ -98,7 +98,7 @@ class TestBinningRequest:
     def test_invalid_bin_size(self):
         """Test bin_size_mu validation."""
         with pytest.raises(InvalidParametersError, match="bin_size_mu must be positive"):
-            BinningRequest(
+            ResamplingRequest(
                 min_mz=100.0,
                 max_mz=2000.0,
                 model_type='linear',
@@ -108,7 +108,7 @@ class TestBinningRequest:
     def test_invalid_reference_mz(self):
         """Test reference_mz validation."""
         with pytest.raises(InvalidParametersError, match="reference_mz must be positive"):
-            BinningRequest(
+            ResamplingRequest(
                 min_mz=100.0,
                 max_mz=2000.0,
                 model_type='linear',
@@ -117,13 +117,13 @@ class TestBinningRequest:
             )
 
 
-class TestBinningResult:
-    """Test BinningResult validation."""
-    
+class TestResamplingResult:
+    """Test ResamplingResult validation."""
+
     @pytest.fixture
     def sample_request(self):
         """Create sample request for testing."""
-        return BinningRequest(
+        return ResamplingRequest(
             min_mz=100.0,
             max_mz=2000.0,
             model_type='linear',
@@ -134,7 +134,7 @@ class TestBinningResult:
         """Test creating valid result."""
         bin_edges = np.linspace(100.0, 2000.0, 101)  # 100 bins
         
-        result = BinningResult(
+        result = ResamplingResult(
             bin_edges=bin_edges,
             final_num_bins=100,
             achieved_width_at_ref_mz_da=19.0,
@@ -150,7 +150,7 @@ class TestBinningResult:
         """Test computed properties of result."""
         bin_edges = np.array([100.0, 150.0, 220.0, 310.0, 420.0])  # 4 bins
         
-        result = BinningResult(
+        result = ResamplingResult(
             bin_edges=bin_edges,
             final_num_bins=4,
             achieved_width_at_ref_mz_da=50.0,
@@ -169,12 +169,12 @@ class TestBinningResult:
     
     def test_invalid_bin_edges(self, sample_request):
         """Test validation of bin edges."""
-        # The BinningResult model validates monotonic edges in __post_init__
+        # The ResamplingResult model validates monotonic edges in __post_init__
         # So this test should verify that non-monotonic edges raise an error
         bin_edges = np.array([100.0, 200.0, 150.0, 300.0])  # Non-monotonic
         
         with pytest.raises(ValueError, match="Bin edges must be monotonically increasing"):
-            BinningResult(
+            ResamplingResult(
                 bin_edges=bin_edges,
                 final_num_bins=3,
                 achieved_width_at_ref_mz_da=50.0,
@@ -185,7 +185,7 @@ class TestBinningResult:
         """Test that bin_edges length is consistent with final_num_bins."""
         bin_edges = np.linspace(100.0, 2000.0, 51)  # 50 bins
         
-        result = BinningResult(
+        result = ResamplingResult(
             bin_edges=bin_edges,
             final_num_bins=50,
             achieved_width_at_ref_mz_da=38.0,

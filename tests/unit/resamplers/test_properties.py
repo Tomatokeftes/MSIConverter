@@ -1,15 +1,15 @@
-# tests/unit/binning_module/test_properties.py
-"""Property-based tests for binning strategies."""
+# tests/unit/resampling_module/test_properties.py
+"""Property-based tests for resampling strategies."""
 
 import pytest
 import numpy as np
 from hypothesis import given, strategies as st, assume
 from hypothesis.strategies import composite
 
-from msiconvert.binning_module.domain.strategies import LinearTOFStrategy, ReflectorTOFStrategy
-from msiconvert.binning_module.application.models import BinningRequest
-from msiconvert.binning_module.application.factory import StrategyFactory
-from msiconvert.binning_module.services.binning_service import BinningService
+from msiconvert.resamplers.domain.strategies import LinearTOFStrategy, ReflectorTOFStrategy
+from msiconvert.resamplers.application.models import ResamplingRequest
+from msiconvert.resamplers.application.factory import StrategyFactory
+from msiconvert.resamplers.services.resampling_service import ResamplingService
 
 
 # Custom strategies for generating test data
@@ -22,8 +22,8 @@ def mz_range(draw):
 
 
 @composite
-def binning_request(draw, model_type=None):
-    """Generate valid binning requests."""
+def resampling_request(draw, model_type=None):
+    """Generate valid resampling requests."""
     min_mz, max_mz = draw(mz_range())
     
     if model_type is None:
@@ -34,7 +34,7 @@ def binning_request(draw, model_type=None):
     
     if use_num_bins:
         num_bins = draw(st.integers(min_value=1, max_value=10000))
-        return BinningRequest(
+        return ResamplingRequest(
             min_mz=min_mz,
             max_mz=max_mz,
             model_type=model_type,
@@ -43,8 +43,8 @@ def binning_request(draw, model_type=None):
         )
     else:
         # Use larger bin sizes to avoid exceeding limits
-        bin_size_mu = draw(st.floats(min_value=10.0, max_value=1000.0))  # 10-1000 mDa
-        return BinningRequest(
+        bin_size_mu = draw(st.floats(min_value=10.0, max_value=1000.0))  # 10-1000 mu
+        return ResamplingRequest(
             min_mz=min_mz,
             max_mz=max_mz,
             model_type=model_type,
@@ -56,7 +56,7 @@ def binning_request(draw, model_type=None):
 class TestStrategyProperties:
     """Property-based tests for strategies."""
     
-    @given(binning_request())
+    @given(resampling_request())
     def test_bin_edges_properties(self, request):
         """Test that bin edges always satisfy basic properties."""
         strategy = StrategyFactory.create_strategy(request.model_type)
@@ -117,17 +117,17 @@ class TestStrategyProperties:
         # In log space, bins should be approximately equal
         assert np.allclose(log_widths, log_widths[0], rtol=1e-10)
     
-    @given(binning_request(model_type='linear'))
+    @given(resampling_request(model_type='linear'))
     def test_width_consistency(self, request):
         """Test that calculated and achieved widths are consistent."""
         if request.bin_size_mu is None:
             return  # Skip if using num_bins
             
         strategy = LinearTOFStrategy()
-        service = BinningService(strategy)
+        service = ResamplingService(strategy)
         
         try:
-            result = service.generate_binned_axis(request)
+            result = service.generate_resampled_axis(request)
         except Exception:
             assume(False)
             return
@@ -159,14 +159,14 @@ class TestStrategyProperties:
         # Should be within 1 due to rounding
         assert abs(num_bins_2 - num_bins_1) <= 1
     
-    @given(binning_request())
+    @given(resampling_request())
     def test_no_empty_bins(self, request):
         """Test that all bins have positive width."""
         strategy = StrategyFactory.create_strategy(request.model_type)
-        service = BinningService(strategy)
+        service = ResamplingService(strategy)
         
         try:
-            result = service.generate_binned_axis(request)
+            result = service.generate_resampled_axis(request)
         except Exception:
             assume(False)
             return

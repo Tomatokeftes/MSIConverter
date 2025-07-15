@@ -1,11 +1,11 @@
-# msiconvert/binning_module/infrastructure/config.py
-"""System-wide configuration and limits for the binning module."""
+# msiconvert/resampling_module/infrastructure/config.py
+"""System-wide configuration and limits for the resampling module."""
 
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class BinningConfig:
+class ResamplingConfig:
     """
     System-wide configuration and limits.
     
@@ -14,7 +14,7 @@ class BinningConfig:
     DEFAULT_REFERENCE_MZ : float
         Default reference m/z value for bin width calculations
     DEFAULT_BIN_SIZE_MU : float
-        Default bin size in milli-Daltons
+        Default bin size in milli-u
     MAX_ALLOWED_BINS : int
         Maximum number of bins allowed to prevent memory issues
     """

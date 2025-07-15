@@ -271,8 +271,8 @@ class BaseMSIConverter(ABC):
         """
         Map m/z values to indices in the common mass axis.
         
-        For binned data, the mzs will already match the common mass axis exactly.
-        For unbinned data, we find the closest matches.
+        For resampled data, the mzs will already match the common mass axis exactly.
+        For non-resampled data, we find the closest matches.
         
         Parameters
         -----------
@@ -290,12 +290,12 @@ class BaseMSIConverter(ABC):
         if mzs.size == 0:
             return np.array([], dtype=int)
         
-        # Check if this is binned data (mzs match common axis exactly)
+        # Check if this is resampled data (mzs match common axis exactly)
         if len(mzs) == len(self._common_mass_axis) and np.allclose(mzs, self._common_mass_axis):
-            # Direct mapping for binned data
+            # Direct mapping for resampled data
             return np.arange(len(self._common_mass_axis), dtype=int)
         
-        # Original implementation for unbinned data
+        # Original implementation for non-resampled data
         indices = np.searchsorted(self._common_mass_axis, mzs)
         indices = np.clip(indices, 0, len(self._common_mass_axis) - 1)
         
@@ -310,7 +310,7 @@ class BaseMSIConverter(ABC):
         """
         Add intensity values to a sparse matrix efficiently.
         
-        For binned data, we can optimize by directly assigning the full spectrum.
+        For resampled data, we can optimize by directly assigning the full spectrum.
         
         Parameters
         -----------
@@ -331,9 +331,9 @@ class BaseMSIConverter(ABC):
         
         n_masses = len(self._common_mass_axis)
         
-        # Check if this is a complete binned spectrum
+        # Check if this is a complete resampled spectrum
         if len(mz_indices) == n_masses and np.array_equal(mz_indices, np.arange(n_masses)):
-            # Direct assignment for binned data
+            # Direct assignment for resampled data
             sparse_matrix[pixel_idx, :] = intensities
         else:
             # Original implementation for sparse data

@@ -1,43 +1,43 @@
-# tests/unit/binning_module/test_binning_service.py
-"""Unit tests for BinningService."""
+# tests/unit/resampling_module/test_resampling_service.py
+"""Unit tests for ResamplingService."""
 
 import pytest
 import numpy as np
 
-from msiconvert.binning_module.services.binning_service import BinningService
-from msiconvert.binning_module.domain.strategies import LinearTOFStrategy, ReflectorTOFStrategy
-from msiconvert.binning_module.application.models import BinningRequest
-from msiconvert.binning_module.infrastructure.config import BinningConfig
-from msiconvert.binning_module.exceptions import BinningLimitExceededError, InvalidParametersError
+from msiconvert.resamplers.services.resampling_service import ResamplingService
+from msiconvert.resamplers.domain.strategies import LinearTOFStrategy, ReflectorTOFStrategy
+from msiconvert.resamplers.application.models import ResamplingRequest
+from msiconvert.resamplers.infrastructure.config import ResamplingConfig
+from msiconvert.resamplers.exceptions import ResamplingLimitExceededError, InvalidParametersError
 
 
-class TestBinningService:
-    """Test BinningService orchestration."""
+class TestResamplingService:
+    """Test ResamplingService orchestration."""
     
     @pytest.fixture
     def linear_service(self):
         """Create service with linear strategy."""
         strategy = LinearTOFStrategy()
-        config = BinningConfig()
-        return BinningService(strategy, config)
+        config = ResamplingConfig()
+        return ResamplingService(strategy, config)
     
     @pytest.fixture
     def reflector_service(self):
         """Create service with reflector strategy."""
         strategy = ReflectorTOFStrategy()
-        config = BinningConfig()
-        return BinningService(strategy, config)
+        config = ResamplingConfig()
+        return ResamplingService(strategy, config)
     
     def test_generate_with_num_bins(self, linear_service):
         """Test generation with specified number of bins."""
-        request = BinningRequest(
+        request = ResamplingRequest(
             min_mz=100.0,
             max_mz=2000.0,
             model_type='linear',
             num_bins=1000
         )
         
-        result = linear_service.generate_binned_axis(request)
+        result = linear_service.generate_resampled_axis(request)
         
         assert result.final_num_bins == 1000
         assert len(result.bin_edges) == 1001
@@ -48,15 +48,15 @@ class TestBinningService:
     
     def test_generate_with_bin_size(self, reflector_service):
         """Test generation with specified bin size."""
-        request = BinningRequest(
+        request = ResamplingRequest(
             min_mz=100.0,
             max_mz=2000.0,
             model_type='reflector',
-            bin_size_mu=50.0,  # 50 mDa - larger to avoid exceeding limits
+            bin_size_mu=50.0,  # 50 mu - larger to avoid exceeding limits
             reference_mz=1000.0
         )
         
-        result = reflector_service.generate_binned_axis(request)
+        result = reflector_service.generate_resampled_axis(request)
         
         assert result.final_num_bins > 0
         assert len(result.bin_edges) == result.final_num_bins + 1
@@ -69,27 +69,27 @@ class TestBinningService:
     def test_max_bins_limit(self, linear_service):
         """Test that service enforces maximum bins limit."""
         # Create config with low limit
-        config = BinningConfig(MAX_ALLOWED_BINS=100)
-        service = BinningService(LinearTOFStrategy(), config)
+        config = ResamplingConfig(MAX_ALLOWED_BINS=100)
+        service = ResamplingService(LinearTOFStrategy(), config)
         
-        request = BinningRequest(
+        request = ResamplingRequest(
             min_mz=100.0,
             max_mz=2000.0,
             model_type='linear',
             num_bins=200  # Exceeds limit
         )
         
-        with pytest.raises(BinningLimitExceededError, match="exceeds maximum allowed"):
-            service.generate_binned_axis(request)
+        with pytest.raises(ResamplingLimitExceededError, match="exceeds maximum allowed"):
+            service.generate_resampled_axis(request)
     
     def test_mz_range_validation(self, linear_service):
         """Test m/z range validation against config."""
         # Create config with restricted range
-        config = BinningConfig(MIN_MZ_VALUE=50.0, MAX_MZ_VALUE=1000.0)
-        service = BinningService(LinearTOFStrategy(), config)
+        config = ResamplingConfig(MIN_MZ_VALUE=50.0, MAX_MZ_VALUE=1000.0)
+        service = ResamplingService(LinearTOFStrategy(), config)
         
         # Test below minimum
-        request = BinningRequest(
+        request = ResamplingRequest(
             min_mz=10.0,  # Below MIN_MZ_VALUE
             max_mz=500.0,
             model_type='linear',
@@ -97,10 +97,10 @@ class TestBinningService:
         )
         
         with pytest.raises(InvalidParametersError, match="below minimum allowed"):
-            service.generate_binned_axis(request)
+            service.generate_resampled_axis(request)
         
         # Test above maximum
-        request = BinningRequest(
+        request = ResamplingRequest(
             min_mz=100.0,
             max_mz=2000.0,  # Above MAX_MZ_VALUE
             model_type='linear',
@@ -108,11 +108,11 @@ class TestBinningService:
         )
         
         with pytest.raises(InvalidParametersError, match="exceeds maximum allowed"):
-            service.generate_binned_axis(request)
+            service.generate_resampled_axis(request)
     
     def test_achieved_width_calculation(self, linear_service):
         """Test calculation of achieved width at reference m/z."""
-        request = BinningRequest(
+        request = ResamplingRequest(
             min_mz=100.0,
             max_mz=2000.0,
             model_type='linear',
@@ -120,7 +120,7 @@ class TestBinningService:
             reference_mz=1000.0
         )
         
-        result = linear_service.generate_binned_axis(request)
+        result = linear_service.generate_resampled_axis(request)
         
         # Find bin containing reference m/z
         bin_idx = np.searchsorted(result.bin_edges, 1000.0, side='right') - 1
@@ -142,9 +142,9 @@ class TestBinningService:
                 # Return non-monotonic edges
                 return np.array([100.0, 200.0, 150.0, 300.0])
         
-        service = BinningService(BadStrategy(), BinningConfig())
+        service = ResamplingService(BadStrategy(), ResamplingConfig())
         
-        request = BinningRequest(
+        request = ResamplingRequest(
             min_mz=100.0,
             max_mz=300.0,
             model_type='linear',
@@ -152,12 +152,12 @@ class TestBinningService:
         )
         
         with pytest.raises(InvalidParametersError, match="not monotonically increasing"):
-            service.generate_binned_axis(request)
+            service.generate_resampled_axis(request)
     
     def test_different_reference_mz(self, linear_service):
-        """Test binning with different reference m/z values."""
+        """Test resampling with different reference m/z values."""
         # Low reference m/z
-        request1 = BinningRequest(
+        request1 = ResamplingRequest(
             min_mz=100.0,
             max_mz=2000.0,
             model_type='linear',
@@ -165,10 +165,10 @@ class TestBinningService:
             reference_mz=200.0
         )
         
-        result1 = linear_service.generate_binned_axis(request1)
+        result1 = linear_service.generate_resampled_axis(request1)
         
         # High reference m/z
-        request2 = BinningRequest(
+        request2 = ResamplingRequest(
             min_mz=100.0,
             max_mz=2000.0,
             model_type='linear',
@@ -176,7 +176,7 @@ class TestBinningService:
             reference_mz=1800.0
         )
         
-        result2 = linear_service.generate_binned_axis(request2)
+        result2 = linear_service.generate_resampled_axis(request2)
         
         # Different reference m/z should result in different number of bins
         assert result1.final_num_bins != result2.final_num_bins

@@ -47,24 +47,24 @@ def main():
         default='INFO',
         help='Set the logging level'
     )
-    # Binning parameters
+    # Resampling parameters
     parser.add_argument(
-        '--bin-mz',
+        '--resample-mz',
         action='store_true',
-        help='Enable m/z binning to reduce data size'
+        help='Enable m/z resampling to reduce data size'
     )
     parser.add_argument(
-        '--bin-mode',
+        '--resample-mode',
         choices=['linear', 'reflector'],
         default='linear',
-        help='Binning mode based on instrument type (default: linear)'
+        help='resample mode based on instrument type (default: linear)'
     )
     # Mutually exclusive group for bin size vs num bins
     bin_group = parser.add_mutually_exclusive_group()
     bin_group.add_argument(
         '--bin-size',
         type=float,
-        help='Bin size in milli-Daltons (mDa)'
+        help='Bin size in milli-u (mu)'
     )
     bin_group.add_argument(
         '--num-bins',
@@ -80,12 +80,12 @@ def main():
     parser.add_argument(
         '--bin-min-mz',
         type=float,
-        help='Minimum m/z for binning (auto-detected if not specified)'
+        help='Minimum m/z for resampling (auto-detected if not specified)'
     )
     parser.add_argument(
         '--bin-max-mz',
         type=float,
-        help='Maximum m/z for binning (auto-detected if not specified)'
+        help='Maximum m/z for resampling (auto-detected if not specified)'
     )
 
     args = parser.parse_args()
@@ -96,16 +96,16 @@ def main():
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
-    # Prepare binning parameters
-    binning_params = None
-    if args.bin_mz:
+    # Prepare resampling parameters
+    resampling_params = None
+    if args.resample_mz:
         if not args.bin_size and not args.num_bins:
             print("Error: --bin-size or --num-bins must be specified when --bin-mz is enabled")
             sys.exit(1)
             
-        binning_params = {
+        resampling_params = {
             'enabled': True,
-            'mode': args.bin_mode,
+            'mode': args.resample_mode,
             'bin_size_mu': args.bin_size,
             'num_bins': args.num_bins,
             'reference_mz': args.bin_reference_mz,
@@ -121,7 +121,7 @@ def main():
         dataset_id=args.dataset_id,
         pixel_size_um=args.pixel_size,
         handle_3d=args.handle_3d,
-        binning_params=binning_params
+        resampling_params=resampling_params
     )
     
     if success and args.optimize_chunks:

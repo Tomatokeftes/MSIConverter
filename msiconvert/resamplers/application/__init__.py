@@ -1,11 +1,11 @@
 
-# msiconvert/binning_module/application/__init__.py
+# msiconvert/resampling_module/application/__init__.py
 """Application layer containing DTOs and factories."""
 
-from .models import BinningRequest
+from .models import ResamplingRequest
 from .factory import StrategyFactory
 
 __all__ = [
-    'BinningRequest',
+    'ResamplingRequest',
     'StrategyFactory',
 ]

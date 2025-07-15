@@ -1,11 +1,11 @@
-# tests/unit/binning_module/test_strategies.py
-"""Unit tests for binning strategies."""
+# tests/unit/resampling_module/test_strategies.py
+"""Unit tests for resampling strategies."""
 
 import pytest
 import numpy as np
 from numpy.testing import assert_array_almost_equal
 
-from msiconvert.binning_module.domain.strategies import LinearTOFStrategy, ReflectorTOFStrategy
+from msiconvert.resamplers.domain.strategies import LinearTOFStrategy, ReflectorTOFStrategy
 
 
 class TestLinearTOFStrategy:
@@ -20,7 +20,7 @@ class TestLinearTOFStrategy:
         """Test number of bins calculation."""
         # Test basic calculation with larger bin width
         num_bins = strategy.calculate_num_bins(
-            target_width_da=0.1,  # 100 mDa - larger to get reasonable number
+            target_width_da=0.1,  # 100 mu - larger to get reasonable number
             reference_mz=1000.0,
             min_mz=100.0,
             max_mz=2000.0
@@ -94,7 +94,7 @@ class TestReflectorTOFStrategy:
     def test_calculate_num_bins(self, strategy):
         """Test number of bins calculation."""
         num_bins = strategy.calculate_num_bins(
-            target_width_da=0.1,  # 100 mDa - larger to get reasonable number
+            target_width_da=0.1,  # 100 mu - larger to get reasonable number
             reference_mz=1000.0,
             min_mz=100.0,
             max_mz=2000.0

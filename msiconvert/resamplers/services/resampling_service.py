@@ -1,22 +1,22 @@
-# msiconvert/binning_module/services/binning_service.py
-"""Service layer for orchestrating the binning process."""
+# msiconvert/resampling_module/services/resampling_service.py
+"""Service layer for orchestrating the resampling process."""
 
 import logging
 from typing import Optional
 
-from ..domain.strategies import BinningStrategy
-from ..domain.models import BinningResult
-from ..application.models import BinningRequest
-from ..infrastructure.config import BinningConfig
-from ..exceptions import BinningLimitExceededError, InvalidParametersError
+from ..domain.strategies import ResamplingStrategy
+from ..domain.models import ResamplingResult
+from ..application.models import ResamplingRequest
+from ..infrastructure.config import ResamplingConfig
+from ..exceptions import ResamplingLimitExceededError, InvalidParametersError
 
 
 logger = logging.getLogger(__name__)
 
 
-class BinningService:
+class ResamplingService:
     """
-    Orchestrate the binning process using appropriate strategy.
+    Orchestrate the resampling process using appropriate strategy.
     
     This service handles the business logic of:
     - Parameter validation against configuration limits
@@ -24,43 +24,43 @@ class BinningService:
     - Building the final result
     """
     
-    def __init__(self, strategy: BinningStrategy, config: Optional[BinningConfig] = None):
+    def __init__(self, strategy: ResamplingStrategy, config: Optional[ResamplingConfig] = None):
         """
-        Initialize the binning service.
+        Initialize the resampling service.
         
         Parameters
         ----------
-        strategy : BinningStrategy
-            Strategy instance to use for binning
-        config : Optional[BinningConfig]
+        strategy : ResamplingStrategy
+            Strategy instance to use for resampling
+        config : Optional[ResamplingConfig]
             Configuration instance (uses defaults if not provided)
         """
         self.strategy = strategy
-        self.config = config or BinningConfig()
+        self.config = config or ResamplingConfig()
     
-    def generate_binned_axis(self, request: BinningRequest) -> BinningResult:
+    def generate_resampled_axis(self, request: ResamplingRequest) -> ResamplingResult:
         """
-        Generate binned axis based on request parameters.
+        Generate resampled axis based on request parameters.
         
         Parameters
         ----------
-        request : BinningRequest
+        request : ResamplingRequest
             Validated request parameters
             
         Returns
         -------
-        BinningResult
+        ResamplingResult
             Result containing bin edges and metadata
             
         Raises
         ------
-        BinningLimitExceededError
+        ResamplingLimitExceededError
             If calculated bins exceed maximum allowed
         InvalidParametersError
-            If parameters result in invalid binning
+            If parameters result in invalid resampling
         """
         logger.info(
-            f"Generating binned axis for {request.model_type} model "
+            f"Generating resampled axis for {request.model_type} model "
             f"with m/z range [{request.min_mz}, {request.max_mz}]"
         )
         
@@ -79,10 +79,10 @@ class BinningService:
             )
             logger.info(
                 f"Using specified {num_bins} bins, "
-                f"resulting in {bin_width_da*1000:.3f} mDa width at m/z {request.reference_mz}"
+                f"resulting in {bin_width_da*1000:.3f} mu width at m/z {request.reference_mz}"
             )
         else:
-            # Convert milli-Daltons to Daltons
+            # Convert milli-u to u
             target_width_da = request.bin_size_mu / 1000.0
             
             # Calculate required number of bins
@@ -94,13 +94,13 @@ class BinningService:
             )
             bin_width_da = target_width_da
             logger.info(
-                f"Targeting {request.bin_size_mu} mDa width at m/z {request.reference_mz}, "
+                f"Targeting {request.bin_size_mu} mu width at m/z {request.reference_mz}, "
                 f"requires {num_bins} bins"
             )
         
         # Validate against maximum bins limit
         if num_bins > self.config.MAX_ALLOWED_BINS:
-            raise BinningLimitExceededError(
+            raise ResamplingLimitExceededError(
                 f"Calculated bins ({num_bins}) exceeds maximum allowed "
                 f"({self.config.MAX_ALLOWED_BINS}). Consider using a larger bin size."
             )
@@ -126,12 +126,12 @@ class BinningService:
             relative_error = abs(achieved_width * 1000 - request.bin_size_mu) / request.bin_size_mu
             if relative_error > self.config.BIN_WIDTH_TOLERANCE:
                 logger.warning(
-                    f"Achieved bin width ({achieved_width*1000:.3f} mDa) differs from "
-                    f"target ({request.bin_size_mu} mDa) by {relative_error*100:.1f}%"
+                    f"Achieved bin width ({achieved_width*1000:.3f} mu) differs from "
+                    f"target ({request.bin_size_mu} mu) by {relative_error*100:.1f}%"
                 )
         
         # Build and return result
-        result = BinningResult(
+        result = ResamplingResult(
             bin_edges=bin_edges,
             final_num_bins=num_bins,
             achieved_width_at_ref_mz_da=achieved_width,
@@ -140,7 +140,7 @@ class BinningService:
         
         logger.info(
             f"Successfully generated {result.final_num_bins} bins "
-            f"with {result.achieved_width_at_ref_mz_da*1000:.3f} mDa width "
+            f"with {result.achieved_width_at_ref_mz_da*1000:.3f} mu width "
             f"at reference m/z {request.reference_mz}"
         )
         
@@ -226,7 +226,7 @@ class BinningService:
         Returns
         -------
         float
-            Bin width in Daltons at reference m/z
+            Bin width in u at reference m/z
         """
         import numpy as np
         

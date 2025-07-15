@@ -1,23 +1,23 @@
-# msiconvert/binning_module/application/factory.py
+# msiconvert/resampling_module/application/factory.py
 """Factory for creating strategy instances."""
 
 from typing import Dict, Type
 
-from ..domain.strategies import BinningStrategy, LinearTOFStrategy, ReflectorTOFStrategy
+from ..domain.strategies import ResamplingStrategy, LinearTOFStrategy, ReflectorTOFStrategy
 from ..exceptions import UnknownStrategyError
 
 
 class StrategyFactory:
-    """Factory for creating binning strategy instances based on model type."""
+    """Factory for creating resampling strategy instances based on model type."""
     
     # Registry of available strategies
-    _strategies: Dict[str, Type[BinningStrategy]] = {
+    _strategies: Dict[str, Type[ResamplingStrategy]] = {
         'linear': LinearTOFStrategy,
         'reflector': ReflectorTOFStrategy,
     }
     
     @classmethod
-    def create_strategy(cls, model_type: str) -> BinningStrategy:
+    def create_strategy(cls, model_type: str) -> ResamplingStrategy:
         """
         Create a strategy instance based on model type string.
         
@@ -28,7 +28,7 @@ class StrategyFactory:
             
         Returns
         -------
-        BinningStrategy
+        ResamplingStrategy
             Concrete strategy instance
             
         Raises
@@ -51,7 +51,7 @@ class StrategyFactory:
         return strategy_class()
     
     @classmethod
-    def register_strategy(cls, model_type: str, strategy_class: Type[BinningStrategy]):
+    def register_strategy(cls, model_type: str, strategy_class: Type[ResamplingStrategy]):
         """
         Register a new strategy type (for extensibility).
         
@@ -59,7 +59,7 @@ class StrategyFactory:
         ----------
         model_type : str
             Identifier for the strategy
-        strategy_class : Type[BinningStrategy]
+        strategy_class : Type[ResamplingStrategy]
             Strategy class to register
         """
         cls._strategies[model_type.lower()] = strategy_class

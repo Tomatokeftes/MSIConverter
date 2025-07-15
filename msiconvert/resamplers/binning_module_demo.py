@@ -1,14 +1,14 @@
-# examples/binning_module_demo.py
+# examples/resampling_module_demo.py
 """
-Demonstration of the binning module functionality.
+Demonstration of the resampling module functionality.
 
-This script shows various use cases for the modular binning system.
+This script shows various use cases for the modular resampling system.
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-from msiconvert.binning_module import (
-    BinningRequest, BinningService, StrategyFactory, BinningConfig
+from msiconvert.resamplers import (
+    ResamplingRequest, ResamplingService, StrategyFactory, ResamplingConfig
 )
 
 
@@ -26,9 +26,9 @@ def plot_bin_edges(result, title):
     # Plot bin widths
     widths = np.diff(result.bin_edges)
     centers = (result.bin_edges[:-1] + result.bin_edges[1:]) / 2
-    ax2.plot(centers, widths * 1000, linewidth=1)  # Convert to mDa
+    ax2.plot(centers, widths * 1000, linewidth=1)  # Convert to mu
     ax2.set_xlabel('m/z')
-    ax2.set_ylabel('Bin Width (mDa)')
+    ax2.set_ylabel('Bin Width (mu)')
     ax2.set_title(f'{title} - Bin Widths')
     ax2.grid(True, alpha=0.3)
     
@@ -38,7 +38,7 @@ def plot_bin_edges(result, title):
                 label=f'Reference m/z = {ref_mz}')
     ax2.axhline(result.achieved_width_at_ref_mz_da * 1000, 
                 color='red', linestyle='--', alpha=0.5,
-                label=f'Width at ref = {result.achieved_width_at_ref_mz_da*1000:.2f} mDa')
+                label=f'Width at ref = {result.achieved_width_at_ref_mz_da*1000:.2f} mu')
     ax2.legend()
     
     plt.tight_layout()
@@ -48,29 +48,29 @@ def plot_bin_edges(result, title):
 def example_1_linear_tof_with_bin_size():
     """Example 1: Linear TOF with specified bin size."""
     print("=" * 60)
-    print("Example 1: Linear TOF with 5 mDa bin size at m/z 1000")
+    print("Example 1: Linear TOF with 5 mu bin size at m/z 1000")
     print("=" * 60)
     
     # Create request
-    request = BinningRequest(
+    request = ResamplingRequest(
         min_mz=100.0,
         max_mz=2000.0,
         model_type='linear',
-        bin_size_mu=5.0,  # 5 milli-Daltons
+        bin_size_mu=5.0,  # 5 milli-u
         reference_mz=1000.0
     )
     
     # Create service
     strategy = StrategyFactory.create_strategy(request.model_type)
-    service = BinningService(strategy)
+    service = ResamplingService(strategy)
     
     # Generate bins
-    result = service.generate_binned_axis(request)
+    result = service.generate_resampled_axis(request)
     
     # Display results
     print(f"Generated {result.final_num_bins} bins")
     print(f"Bin width at m/z {request.reference_mz}: "
-          f"{result.achieved_width_at_ref_mz_da*1000:.3f} mDa")
+          f"{result.achieved_width_at_ref_mz_da*1000:.3f} mu")
     print(f"First 5 edges: {result.bin_edges[:5]}")
     print(f"Last 5 edges: {result.bin_edges[-5:]}")
     
@@ -88,7 +88,7 @@ def example_2_reflector_tof_with_num_bins():
     print("=" * 60)
     
     # Create request
-    request = BinningRequest(
+    request = ResamplingRequest(
         min_mz=50.0,
         max_mz=3000.0,
         model_type='reflector',
@@ -97,20 +97,20 @@ def example_2_reflector_tof_with_num_bins():
     
     # Create service
     strategy = StrategyFactory.create_strategy(request.model_type)
-    service = BinningService(strategy)
+    service = ResamplingService(strategy)
     
     # Generate bins
-    result = service.generate_binned_axis(request)
+    result = service.generate_resampled_axis(request)
     
     # Display results
     print(f"Generated {result.final_num_bins} bins")
     print(f"Bin width at m/z {request.reference_mz}: "
-          f"{result.achieved_width_at_ref_mz_da*1000:.3f} mDa")
+          f"{result.achieved_width_at_ref_mz_da*1000:.3f} mu")
     
     # Show bin width variation
     widths = np.diff(result.bin_edges)
-    print(f"Minimum bin width: {np.min(widths)*1000:.3f} mDa at m/z {result.bin_edges[np.argmin(widths)]:.1f}")
-    print(f"Maximum bin width: {np.max(widths)*1000:.3f} mDa at m/z {result.bin_edges[np.argmax(widths)]:.1f}")
+    print(f"Minimum bin width: {np.min(widths)*1000:.3f} mu at m/z {result.bin_edges[np.argmin(widths)]:.1f}")
+    print(f"Maximum bin width: {np.max(widths)*1000:.3f} mu at m/z {result.bin_edges[np.argmax(widths)]:.1f}")
     
     # Plot
     fig = plot_bin_edges(result, "Reflector TOF")
@@ -136,10 +136,10 @@ def example_3_compare_strategies():
     # Create both strategies
     results = {}
     for model_type in ['linear', 'reflector']:
-        request = BinningRequest(**params, model_type=model_type)
+        request = ResamplingRequest(**params, model_type=model_type)
         strategy = StrategyFactory.create_strategy(model_type)
-        service = BinningService(strategy)
-        results[model_type] = service.generate_binned_axis(request)
+        service = ResamplingService(strategy)
+        results[model_type] = service.generate_resampled_axis(request)
     
     # Compare results
     print(f"Linear TOF: {results['linear'].final_num_bins} bins")
@@ -155,8 +155,8 @@ def example_3_compare_strategies():
                 linewidth=2, alpha=0.7)
     
     ax.set_xlabel('m/z')
-    ax.set_ylabel('Bin Width (mDa)')
-    ax.set_title('Comparison of Binning Strategies')
+    ax.set_ylabel('Bin Width (mu)')
+    ax.set_title('Comparison of Resampling Strategies')
     ax.legend()
     ax.grid(True, alpha=0.3)
     ax.set_xlim(100, 2000)
@@ -173,14 +173,14 @@ def example_4_custom_configuration():
     print("=" * 60)
     
     # Create custom configuration
-    config = BinningConfig(
+    config = ResamplingConfig(
         MAX_ALLOWED_BINS=1000,
         MIN_MZ_VALUE=50.0,
         MAX_MZ_VALUE=1500.0
     )
     
     # Try to create request that would exceed limits
-    request = BinningRequest(
+    request = ResamplingRequest(
         min_mz=100.0,
         max_mz=1400.0,
         model_type='linear',
@@ -189,53 +189,53 @@ def example_4_custom_configuration():
     
     # Create service with custom config
     strategy = StrategyFactory.create_strategy(request.model_type)
-    service = BinningService(strategy, config)
+    service = ResamplingService(strategy, config)
     
     # This might fail if it exceeds MAX_ALLOWED_BINS
     try:
-        result = service.generate_binned_axis(request)
+        result = service.generate_resampled_axis(request)
         print(f"Success! Generated {result.final_num_bins} bins (within limit)")
     except Exception as e:
         print(f"Failed as expected: {e}")
         
         # Try again with larger bin size
-        request = BinningRequest(
+        request = ResamplingRequest(
             min_mz=100.0,
             max_mz=1400.0,
             model_type='linear',
             bin_size_mu=5.0  # Larger bins
         )
-        result = service.generate_binned_axis(request)
+        result = service.generate_resampled_axis(request)
         print(f"Success with larger bins! Generated {result.final_num_bins} bins")
     
     return result
 
 
-def example_5_binning_real_data():
-    """Example 5: Binning for real MSI data processing."""
+def example_5_resampling_real_data():
+    """Example 5: Resampling for real MSI data processing."""
     print("\n" + "=" * 60)
-    print("Example 5: Practical binning for MSI data")
+    print("Example 5: Practical resampling for MSI data")
     print("=" * 60)
     
     # Typical MALDI-TOF MSI parameters
-    request = BinningRequest(
+    request = ResamplingRequest(
         min_mz=500.0,
         max_mz=3000.0,
         model_type='linear',  # MALDI-TOF is typically linear
-        bin_size_mu=20.0,     # 20 mDa for reasonable data size
+        bin_size_mu=20.0,     # 20 mu for reasonable data size
         reference_mz=1500.0   # Middle of typical peptide range
     )
     
     # Generate bins
     strategy = StrategyFactory.create_strategy(request.model_type)
-    service = BinningService(strategy)
-    result = service.generate_binned_axis(request)
+    service = ResamplingService(strategy)
+    result = service.generate_resampled_axis(request)
     
-    print(f"Binning configuration for MSI:")
+    print(f"Resampling configuration for MSI:")
     print(f"  - m/z range: {request.min_mz} - {request.max_mz}")
     print(f"  - Number of bins: {result.final_num_bins}")
-    print(f"  - Target resolution: {request.bin_size_mu} mDa at m/z {request.reference_mz}")
-    print(f"  - Achieved resolution: {result.achieved_width_at_ref_mz_da*1000:.2f} mDa")
+    print(f"  - Target resolution: {request.bin_size_mu} mu at m/z {request.reference_mz}")
+    print(f"  - Achieved resolution: {result.achieved_width_at_ref_mz_da*1000:.2f} mu")
     
     # Estimate memory usage
     num_pixels = 256 * 256  # Typical small MSI dataset
@@ -252,7 +252,7 @@ if __name__ == "__main__":
     example_2_reflector_tof_with_num_bins()
     example_3_compare_strategies()
     example_4_custom_configuration()
-    example_5_binning_real_data()
+    example_5_resampling_real_data()
     
     print("\n" + "=" * 60)
     print("All examples completed successfully!")

@@ -1,13 +1,13 @@
-# msiconvert/binning_module/domain/strategies.py
-"""Abstract and concrete binning strategies for different instrument types."""
+# msiconvert/resampling_module/domain/strategies.py
+"""Abstract and concrete resampling strategies for different instrument types."""
 
 from abc import ABC, abstractmethod
 import numpy as np
 from numpy.typing import NDArray
 
 
-class BinningStrategy(ABC):
-    """Abstract base class defining the interface for binning algorithms."""
+class ResamplingStrategy(ABC):
+    """Abstract base class defining the interface for resampling algorithms."""
     
     @abstractmethod
     def calculate_num_bins(
@@ -23,7 +23,7 @@ class BinningStrategy(ABC):
         Parameters
         ----------
         target_width_da : float
-            Target bin width in Daltons at reference m/z
+            Target bin width in u at reference m/z
         reference_mz : float
             Reference m/z value for bin width calculation
         min_mz : float
@@ -47,7 +47,7 @@ class BinningStrategy(ABC):
         max_mz: float
     ) -> float:
         """
-        Calculate resulting bin width in Daltons at reference m/z for given number of bins.
+        Calculate resulting bin width in u at reference m/z for given number of bins.
         
         Parameters
         ----------
@@ -63,7 +63,7 @@ class BinningStrategy(ABC):
         Returns
         -------
         float
-            Bin width in Daltons at reference m/z
+            Bin width in u at reference m/z
         """
         pass
     
@@ -94,9 +94,9 @@ class BinningStrategy(ABC):
         pass
 
 
-class LinearTOFStrategy(BinningStrategy):
+class LinearTOFStrategy(ResamplingStrategy):
     """
-    Implement binning for Linear TOF instruments using square root transformation.
+    Implement resampling for Linear TOF instruments using square root transformation.
     
     Linear TOF instruments have flight time proportional to sqrt(m/z),
     so uniform bins in flight time space create appropriate non-linear bins in m/z space.
@@ -170,9 +170,9 @@ class LinearTOFStrategy(BinningStrategy):
         return mz_edges
 
 
-class ReflectorTOFStrategy(BinningStrategy):
+class ReflectorTOFStrategy(ResamplingStrategy):
     """
-    Implement binning for Reflector TOF instruments using logarithmic transformation.
+    Implement resampling for Reflector TOF instruments using logarithmic transformation.
     
     Reflector TOF instruments have approximately logarithmic relationship between
     flight time and m/z, so uniform bins in log space create appropriate bins.

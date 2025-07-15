@@ -1,37 +1,37 @@
-# tests/integration/binning_module/test_full_workflow.py
-"""Integration tests for the complete binning workflow."""
+# tests/integration/resampling_module/test_full_workflow.py
+"""Integration tests for the complete resampling workflow."""
 
 import pytest
 import numpy as np
 from typing import List
 
-from msiconvert.binning_module.application.models import BinningRequest
-from msiconvert.binning_module.application.factory import StrategyFactory
-from msiconvert.binning_module.services.binning_service import BinningService
-from msiconvert.binning_module.infrastructure.config import BinningConfig
+from msiconvert.resamplers.application.models import ResamplingRequest
+from msiconvert.resamplers.application.factory import StrategyFactory
+from msiconvert.resamplers.services.resampling_service import ResamplingService
+from msiconvert.resamplers.infrastructure.config import ResamplingConfig
 
 
 class TestFullWorkflow:
-    """Test complete binning workflows."""
+    """Test complete resampling workflows."""
     
     def test_linear_tof_workflow(self):
         """Test complete workflow for linear TOF instrument."""
         # Create request with larger bin size to avoid limits
-        request = BinningRequest(
+        request = ResamplingRequest(
             min_mz=100.0,
             max_mz=2000.0,
             model_type='linear',
-            bin_size_mu=50.0,  # 50 milli-Daltons
+            bin_size_mu=50.0,  # 50 milli-u
             reference_mz=1000.0
         )
         
         # Create service with appropriate strategy
-        config = BinningConfig()
+        config = ResamplingConfig()
         strategy = StrategyFactory.create_strategy(request.model_type)
-        service = BinningService(strategy, config)
+        service = ResamplingService(strategy, config)
         
         # Generate bin edges
-        result = service.generate_binned_axis(request)
+        result = service.generate_resampled_axis(request)
         
         # Validate result
         assert result.final_num_bins > 0
@@ -50,7 +50,7 @@ class TestFullWorkflow:
     def test_reflector_tof_workflow(self):
         """Test complete workflow for reflector TOF instrument."""
         # Create request with number of bins
-        request = BinningRequest(
+        request = ResamplingRequest(
             min_mz=50.0,
             max_mz=3000.0,
             model_type='reflector',
@@ -59,10 +59,10 @@ class TestFullWorkflow:
         
         # Create service
         strategy = StrategyFactory.create_strategy(request.model_type)
-        service = BinningService(strategy)
+        service = ResamplingService(strategy)
         
         # Generate bin edges
-        result = service.generate_binned_axis(request)
+        result = service.generate_resampled_axis(request)
         
         # Validate result
         assert result.final_num_bins == 5000
@@ -78,12 +78,12 @@ class TestFullWorkflow:
     def test_workflow_with_different_configs(self):
         """Test workflow with custom configuration."""
         # Create custom config with higher limits
-        custom_config = BinningConfig(
+        custom_config = ResamplingConfig(
             MAX_ALLOWED_BINS=200000,
             BIN_WIDTH_TOLERANCE=0.05
         )
         
-        request = BinningRequest(
+        request = ResamplingRequest(
             min_mz=100.0,
             max_mz=2000.0,
             model_type='linear',
@@ -92,9 +92,9 @@ class TestFullWorkflow:
         )
         
         strategy = StrategyFactory.create_strategy(request.model_type)
-        service = BinningService(strategy, custom_config)
+        service = ResamplingService(strategy, custom_config)
         
-        result = service.generate_binned_axis(request)
+        result = service.generate_resampled_axis(request)
         
         assert result.final_num_bins > 0
         assert result.final_num_bins <= custom_config.MAX_ALLOWED_BINS
@@ -113,16 +113,16 @@ class TestFullWorkflow:
         }
         
         # Linear TOF
-        linear_request = BinningRequest(**base_params, model_type='linear')
+        linear_request = ResamplingRequest(**base_params, model_type='linear')
         linear_strategy = StrategyFactory.create_strategy('linear')
-        linear_service = BinningService(linear_strategy)
-        linear_result = linear_service.generate_binned_axis(linear_request)
+        linear_service = ResamplingService(linear_strategy)
+        linear_result = linear_service.generate_resampled_axis(linear_request)
         
         # Reflector TOF
-        reflector_request = BinningRequest(**base_params, model_type='reflector')
+        reflector_request = ResamplingRequest(**base_params, model_type='reflector')
         reflector_strategy = StrategyFactory.create_strategy('reflector')
-        reflector_service = BinningService(reflector_strategy)
-        reflector_result = reflector_service.generate_binned_axis(reflector_request)
+        reflector_service = ResamplingService(reflector_strategy)
+        reflector_result = reflector_service.generate_resampled_axis(reflector_request)
         
         # Number of bins should be in same order of magnitude
         ratio = linear_result.final_num_bins / reflector_result.final_num_bins
@@ -135,9 +135,9 @@ class TestFullWorkflow:
     def test_error_handling_workflow(self):
         """Test error handling in complete workflow."""
         # Test with parameters that would exceed limits
-        config = BinningConfig(MAX_ALLOWED_BINS=1000)  # Low limit
+        config = ResamplingConfig(MAX_ALLOWED_BINS=1000)  # Low limit
         
-        request = BinningRequest(
+        request = ResamplingRequest(
             min_mz=100.0,
             max_mz=2000.0,
             model_type='linear',
@@ -146,17 +146,17 @@ class TestFullWorkflow:
         )
         
         strategy = StrategyFactory.create_strategy(request.model_type)
-        service = BinningService(strategy, config)
+        service = ResamplingService(strategy, config)
         
-        # Should raise BinningLimitExceededError
-        from msiconvert.binning_module.exceptions import BinningLimitExceededError
-        with pytest.raises(BinningLimitExceededError):
-            service.generate_binned_axis(request)
+        # Should raise ResamplingLimitExceededError
+        from msiconvert.resamplers.exceptions import ResamplingLimitExceededError
+        with pytest.raises(ResamplingLimitExceededError):
+            service.generate_resampled_axis(request)
     
     def test_edge_case_workflows(self):
         """Test edge case scenarios in workflows."""
         # Test with very small m/z range
-        request = BinningRequest(
+        request = ResamplingRequest(
             min_mz=999.0,
             max_mz=1001.0,
             model_type='reflector',
@@ -164,22 +164,22 @@ class TestFullWorkflow:
         )
         
         strategy = StrategyFactory.create_strategy(request.model_type)
-        service = BinningService(strategy)
-        result = service.generate_binned_axis(request)
+        service = ResamplingService(strategy)
+        result = service.generate_resampled_axis(request)
         
         assert result.final_num_bins == 10
         assert len(result.bin_edges) == 11
         assert np.all(np.diff(result.bin_edges) > 0)
         
         # Test with single bin
-        request_single = BinningRequest(
+        request_single = ResamplingRequest(
             min_mz=100.0,
             max_mz=200.0,
             model_type='linear',
             num_bins=1
         )
         
-        result_single = service.generate_binned_axis(request_single)
+        result_single = service.generate_resampled_axis(request_single)
         assert result_single.final_num_bins == 1
         assert len(result_single.bin_edges) == 2
         assert result_single.bin_edges[0] == 100.0

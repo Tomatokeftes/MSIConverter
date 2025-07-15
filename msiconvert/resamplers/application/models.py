@@ -1,5 +1,5 @@
-# msiconvert/binning_module/application/models.py
-"""Data Transfer Objects for binning requests."""
+# msiconvert/resampling_module/application/models.py
+"""Data Transfer Objects for resampling requests."""
 
 from dataclasses import dataclass
 from typing import Optional
@@ -8,9 +8,9 @@ from ..exceptions import InvalidParametersError
 
 
 @dataclass
-class BinningRequest:
+class ResamplingRequest:
     """
-    Data Transfer Object for validated binning parameters.
+    Data Transfer Object for validated resampling parameters.
     
     Attributes
     ----------
@@ -23,7 +23,7 @@ class BinningRequest:
     num_bins : Optional[int]
         Total number of bins (if specified)
     bin_size_mu : Optional[float]
-        Bin size in milli-Daltons at reference m/z (if specified)
+        Bin size in milli-u at reference m/z (if specified)
     reference_mz : float
         Reference m/z for bin size calculation (default: 1000.0)
     """

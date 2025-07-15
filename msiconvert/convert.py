@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional
 from cryptography.utils import CryptographyDeprecationWarning
 
 from .core.registry import detect_format, get_reader_class, get_converter_class
-from .core.binned_reader import BinnedReader
+from .core.resampled_reader import ResampledReader
 
 warnings.filterwarnings(
     "ignore", 
@@ -29,7 +29,7 @@ def convert_msi(
     dataset_id: str = "msi_dataset",
     pixel_size_um: float = 1.0,
     handle_3d: bool = False,
-    binning_params: Optional[Dict[str, Any]] = None,
+    resampling_params: Optional[Dict[str, Any]] = None,
     **kwargs
 ) -> bool:
     """Convert MSI data to the specified format with enhanced error handling."""
@@ -56,14 +56,14 @@ def convert_msi(
         logging.info(f"Using reader: {reader_class.__name__}")
         reader = reader_class(input_path)
         
-        # Apply binning wrapper if requested
-        if binning_params and binning_params.get('enabled', False):
-            logging.info(f"Applying {binning_params['mode']} binning to reduce data size")
-            reader = BinnedReader(reader, binning_params)
+        # Apply resampling wrapper if requested
+        if resampling_params and resampling_params.get('enabled', False):
+            logging.info(f"Applying {resampling_params['mode']} resampling to reduce data size")
+            reader = ResampledReader(reader, resampling_params)
             
-            # Log binning results
+            # Log resampling results
             mass_axis = reader.get_common_mass_axis()
-            logging.info(f"Binned mass axis: {len(mass_axis)} bins")
+            logging.info(f"Resampled mass axis: {len(mass_axis)} bins")
             
         # Create converter
         converter_class = get_converter_class(format_type.lower())
