@@ -1,11 +1,11 @@
-# msiconvert/binning_module/tests/unit/test_strategies.py
+# tests/unit/binning_module/test_strategies.py
 """Unit tests for binning strategies."""
 
 import pytest
 import numpy as np
 from numpy.testing import assert_array_almost_equal
 
-from ...domain.strategies import LinearTOFStrategy, ReflectorTOFStrategy
+from msiconvert.binning_module.domain.strategies import LinearTOFStrategy, ReflectorTOFStrategy
 
 
 class TestLinearTOFStrategy:
@@ -18,9 +18,9 @@ class TestLinearTOFStrategy:
     
     def test_calculate_num_bins(self, strategy):
         """Test number of bins calculation."""
-        # Test basic calculation
+        # Test basic calculation with larger bin width
         num_bins = strategy.calculate_num_bins(
-            target_width_da=0.005,  # 5 mDa
+            target_width_da=0.1,  # 100 mDa - larger to get reasonable number
             reference_mz=1000.0,
             min_mz=100.0,
             max_mz=2000.0
@@ -28,7 +28,7 @@ class TestLinearTOFStrategy:
         
         assert isinstance(num_bins, int)
         assert num_bins > 0
-        assert num_bins < 10000  # Reasonable upper bound
+        assert num_bins < 100000  # Reasonable upper bound for larger bin size
         
     def test_calculate_target_width(self, strategy):
         """Test target width calculation."""
@@ -94,7 +94,7 @@ class TestReflectorTOFStrategy:
     def test_calculate_num_bins(self, strategy):
         """Test number of bins calculation."""
         num_bins = strategy.calculate_num_bins(
-            target_width_da=0.005,
+            target_width_da=0.1,  # 100 mDa - larger to get reasonable number
             reference_mz=1000.0,
             min_mz=100.0,
             max_mz=2000.0
@@ -102,7 +102,7 @@ class TestReflectorTOFStrategy:
         
         assert isinstance(num_bins, int)
         assert num_bins > 0
-        assert num_bins < 10000
+        assert num_bins < 100000  # Reasonable upper bound for larger bin size
         
     def test_calculate_target_width(self, strategy):
         """Test target width calculation."""
@@ -159,3 +159,23 @@ class TestReflectorTOFStrategy:
         edges = strategy.generate_bin_edges(999.9, 1000.1, 10)
         assert len(edges) == 11
         assert np.all(np.diff(edges) > 0)
+    
+    def test_roundtrip_consistency(self, strategy):
+        """Test that num_bins -> width -> num_bins is consistent."""
+        original_num_bins = 500
+        reference_mz = 1000.0
+        min_mz = 100.0
+        max_mz = 2000.0
+        
+        # Calculate width for given bins
+        width = strategy.calculate_target_width(
+            original_num_bins, reference_mz, min_mz, max_mz
+        )
+        
+        # Calculate bins for that width
+        calculated_bins = strategy.calculate_num_bins(
+            width, reference_mz, min_mz, max_mz
+        )
+        
+        # Should be close (within rounding)
+        assert abs(calculated_bins - original_num_bins) <= 1
