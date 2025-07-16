@@ -460,4 +460,4 @@ class PostProcessResampler:
                 self._resampling_result.achieved_width_at_ref_mz_da * 1000
             )
         
-        store.attrs.update(metadata)
+        store.attrs.update(metadata) 
