@@ -7,11 +7,14 @@ import logging
 import sys
 from .convert import convert_msi
 from .utils.data_processors import optimize_zarr_chunks
-
+# This import will be needed for the new resampling step
+from .postprocessing import PostProcessResampler 
 
 def main():
+    """Main entry point for msiconvert CLI."""
     parser = argparse.ArgumentParser(description='Convert MSI data to SpatialData format')
     
+    # --- Argument parsing remains the same as your file ---
     parser.add_argument('input', help='Path to input MSI file or directory')
     parser.add_argument('output', help='Path for output file')
     parser.add_argument(
@@ -39,7 +42,7 @@ def main():
     parser.add_argument(
         '--optimize-chunks',
         action='store_true',
-        help='Optimize Zarr chunks after conversion'
+        help='Optimize Zarr chunks after all processing'
     )
     parser.add_argument(
         '--log-level',
@@ -59,7 +62,6 @@ def main():
         default='linear',
         help='resample mode based on instrument type (default: linear)'
     )
-    # Mutually exclusive group for bin size vs num bins
     bin_group = parser.add_mutually_exclusive_group()
     bin_group.add_argument(
         '--bin-size',
@@ -95,16 +97,15 @@ def main():
         level=getattr(logging, args.log_level),
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
-
-    # Prepare resampling parameters
+    
+    # --- Logic from saved function: Build resampling params separately ---
     resampling_params = None
     if args.resample_mz:
         if not args.bin_size and not args.num_bins:
-            print("Error: --bin-size or --num-bins must be specified when --bin-mz is enabled")
+            logging.error("Error: --bin-size or --num-bins must be specified when --resample-mz is enabled")
             sys.exit(1)
             
         resampling_params = {
-            'enabled': True,
             'mode': args.resample_mode,
             'bin_size_mu': args.bin_size,
             'num_bins': args.num_bins,
@@ -113,7 +114,8 @@ def main():
             'max_mz': args.bin_max_mz
         }
 
-    # Convert MSI data
+    # --- Step 1: Perform the initial conversion WITHOUT resampling ---
+    logging.info(f"Starting conversion of {args.input}...")
     success = convert_msi(
         args.input,
         args.output,
@@ -121,19 +123,43 @@ def main():
         dataset_id=args.dataset_id,
         pixel_size_um=args.pixel_size,
         handle_3d=args.handle_3d,
-        resampling_params=resampling_params
+        resampling_params=None  # Resampling is now a post-processing step
     )
     
-    if success and args.optimize_chunks:
-        # Optimize chunks for better performance
-        if args.format == 'spatialdata':
-            # For SpatialData format, optimize the table's X array
-            optimize_zarr_chunks(args.output, f'tables/{args.dataset_id}/X')
+    if not success:
+        logging.error("Initial conversion failed.")
+        sys.exit(1)
     
-    if success:
-        print(f"Conversion completed successfully. Output stored at {args.output}")
-    else:
-        print("Conversion failed.")
+    logging.info("Initial conversion completed successfully.")
+
+    # --- Step 2: Apply post-processing resampling if requested ---
+    if success and args.resample_mz and resampling_params:
+        logging.info("Starting post-processing resampling...")
+        try:
+            resampler = PostProcessResampler(resampling_params)
+            resample_result = resampler.process_zarr_file(
+                args.output,
+                in_place=True  # Modify the output file in-place
+            )
+            
+            if not resample_result:
+                logging.error("Resampling failed.")
+                sys.exit(1)
+            
+            logging.info("Post-processing resampling completed successfully!")
+            
+        except Exception as e:
+            logging.error(f"Error during resampling: {e}", exc_info=True)
+            sys.exit(1)
+
+    # --- Step 3: Optimize Zarr chunks if requested ---
+    if success and args.optimize_chunks:
+        logging.info("Optimizing Zarr chunks for better performance...")
+        # For SpatialData format, optimize the table's X array
+        optimize_zarr_chunks(args.output, f'tables/{args.dataset_id}/X')
+        logging.info("Chunk optimization complete.")
+    
+    logging.info(f"All processing completed successfully. Output stored at {args.output}")
 
 if __name__ == '__main__':
     main()

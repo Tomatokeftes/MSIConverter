@@ -7,11 +7,12 @@ from typing import Dict, Any, Optional
 from cryptography.utils import CryptographyDeprecationWarning
 
 from .core.registry import detect_format, get_reader_class, get_converter_class
-from .core.resampled_reader import ResampledReader
+# The ResampledReader is no longer needed here as resampling is a post-processing step
+# from .postprocessing.resampler import ResampledReader 
 
 warnings.filterwarnings(
     "ignore", 
-    message=r"Accession IMS:1000046.*",  # or just "ignore" all UserWarning from that module
+    message=r"Accession IMS:1000046.*",
     category=UserWarning,
     module=r"pyimzml.ontology.ontology"
 )
@@ -29,7 +30,7 @@ def convert_msi(
     dataset_id: str = "msi_dataset",
     pixel_size_um: float = 1.0,
     handle_3d: bool = False,
-    resampling_params: Optional[Dict[str, Any]] = None,
+    # The resampling_params parameter is removed from the function signature
     **kwargs
 ) -> bool:
     """Convert MSI data to the specified format with enhanced error handling."""
@@ -55,16 +56,10 @@ def convert_msi(
         reader_class = get_reader_class(input_format)
         logging.info(f"Using reader: {reader_class.__name__}")
         reader = reader_class(input_path)
-        
-        # Apply resampling wrapper if requested
-        if resampling_params and resampling_params.get('enabled', False):
-            logging.info(f"Applying {resampling_params['mode']} resampling to reduce data size")
-            reader = ResampledReader(reader, resampling_params)
-            
-            # Log resampling results
-            mass_axis = reader.get_common_mass_axis()
-            logging.info(f"Resampled mass axis: {len(mass_axis)} bins")
-            
+
+        # All resampling-related code, including the ResampledReader wrapper, is removed.
+        # The reader is now passed directly to the converter.
+
         # Create converter
         converter_class = get_converter_class(format_type.lower())
         logging.info(f"Using converter: {converter_class.__name__}")
@@ -82,6 +77,7 @@ def convert_msi(
         result = converter.convert()
         logging.info(f"Conversion {'completed successfully' if result else 'failed'}")
         return result
+    
     except Exception as e:
         logging.error(f"Error during conversion: {e}")
         # Log detailed traceback for debugging
