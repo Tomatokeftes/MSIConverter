@@ -2,9 +2,10 @@
 """Wrapper for readers that applies resampling to the data."""
 
 import numpy as np
-from typing import Dict, Any, Tuple, Generator, Optional
+from typing import Dict, Any, Tuple, Generator, Optional, List
 from numpy.typing import NDArray
 import logging
+from scipy.interpolate import interp1d
 
 from .base_reader import BaseMSIReader
 from ..resamplers import ResamplingRequest, ResamplingService, StrategyFactory
@@ -20,7 +21,7 @@ class ResampledReader(BaseMSIReader):
     applying resampling and interpolation to reduce data size.
     """
     
-    def __init__(self, reader: BaseMSIReader, resampling_params: Dict[str, Any]):
+    def __init__(self, reader: BaseMSIReader, resampling_params: Dict[str, Any], batch_size: int = 1000):
         """
         Initialize resampled reader wrapper.
         
@@ -33,9 +34,9 @@ class ResampledReader(BaseMSIReader):
         """
         self.reader = reader
         self.resampling_params = resampling_params
+        self.batch_size = batch_size
         self._resampled_mass_axis: Optional[NDArray[np.float64]] = None
         self._resampling_result = None
-        self._bin_centers: Optional[NDArray[np.float64]] = None
     
     def get_metadata(self) -> Dict[str, Any]:
         """Return metadata including resampling information."""
@@ -104,36 +105,93 @@ class ResampledReader(BaseMSIReader):
         
         return self._resampled_mass_axis
     
-    def iter_spectra(
-        self, 
-        batch_size: Optional[int] = None
-    ) -> Generator[Tuple[Tuple[int, int, int], NDArray[np.float64], NDArray[np.float64]], None, None]:
+    def iter_spectra(self, batch_size: Optional[int] = None) -> Generator[Tuple[Tuple[int, int, int], NDArray[np.float64], NDArray[np.float64]], None, None]:
         """
         Iterate through spectra, applying resampling via interpolation.
         
         For each spectrum, interpolates intensities to bin centers.
         """
-        # Ensure resampled mass axis is created
+        effective_batch_size = batch_size or self.batch_size
         resampled_mzs = self.get_common_mass_axis()
-        bin_edges = self._resampling_result.bin_edges
         
-        # Iterate through original spectra
-        for coords, mzs, intensities in self.reader.iter_spectra(batch_size):
+        batch_coords = []
+        batch_mzs = []
+        batch_intensities = []
+        
+        for coords, mzs, intensities in self.reader.iter_spectra():
+            batch_coords.append(coords)
+            batch_mzs.append(mzs)
+            batch_intensities.append(intensities)
+            
+            if len(batch_coords) >= effective_batch_size:
+                # Process batch
+                for i, resampled_intensities in enumerate(self._interpolate_batch(batch_mzs, batch_intensities, resampled_mzs)):
+                    yield batch_coords[i], resampled_mzs, resampled_intensities
+                
+                # Reset batch
+                batch_coords.clear()
+                batch_mzs.clear()
+                batch_intensities.clear()
+        
+        # Process remaining spectra
+        if batch_coords:
+            for i, resampled_intensities in enumerate(self._interpolate_batch(batch_mzs, batch_intensities, resampled_mzs)):
+                yield batch_coords[i], resampled_mzs, resampled_intensities
+
+        effective_batch_size = batch_size or self.batch_size
+        resampled_mzs = self.get_common_mass_axis()
+        
+        batch_coords = []
+        batch_mzs = []
+        batch_intensities = []
+        
+        for coords, mzs, intensities in self.reader.iter_spectra():
+            batch_coords.append(coords)
+            batch_mzs.append(mzs)
+            batch_intensities.append(intensities)
+            
+            if len(batch_coords) >= effective_batch_size:
+                # Process batch
+                for i, resampled_intensities in enumerate(self._interpolate_batch(batch_mzs, batch_intensities, resampled_mzs)):
+                    yield batch_coords[i], resampled_mzs, resampled_intensities
+                
+                # Reset batch
+                batch_coords.clear()
+                batch_mzs.clear()
+                batch_intensities.clear()
+        
+        # Process remaining spectra
+        if batch_coords:
+            for i, resampled_intensities in enumerate(self._interpolate_batch(batch_mzs, batch_intensities, resampled_mzs)):
+                yield batch_coords[i], resampled_mzs, resampled_intensities
+
+    def _interpolate_batch(self, batch_mzs: List[NDArray], batch_intensities: List[NDArray], 
+                          target_mzs: NDArray) -> List[NDArray]:
+        """
+        Vectorized interpolation for a batch of spectra.
+        
+        Strategy 1: Use scipy.interpolate.interp1d with batch processing
+        """
+        results = []
+        
+        # Pre-allocate result array
+        n_target = len(target_mzs)
+        batch_size = len(batch_mzs)
+        
+        for i in range(batch_size):
+            mzs = batch_mzs[i]
+            intensities = batch_intensities[i]
+            
             if len(mzs) == 0:
-                yield coords, resampled_mzs, np.zeros_like(resampled_mzs)
+                results.append(np.zeros(n_target))
                 continue
             
-            # Interpolate intensities to bin centers
-            # Using linear interpolation with extrapolation as 0
-            resampled_intensities = np.interp(
-                resampled_mzs,  # New x values (bin centers)
-                mzs,         # Original x values
-                intensities, # Original y values
-                left=0.0,    # Value for extrapolation below
-                right=0.0    # Value for extrapolation above
-            )
-            
-            yield coords, resampled_mzs, resampled_intensities
+            # Use interp1d for potentially better performance with repeated calls
+            f = interp1d(mzs, intensities, kind='linear', bounds_error=False, fill_value=0.0)
+            resampled = f(target_mzs)
+            results.append(resampled)
+        
+        return results
     
     def close(self) -> None:
         """Close underlying reader."""
