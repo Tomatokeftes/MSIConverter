@@ -910,7 +910,7 @@ class BrukerReader(BaseMSIReader):
         is_maldi: bool = bool(self._position_cache) or self._frame_positions is not None
         
         # Process in batches with standardized progress bar
-        with tqdm(total=total_spectra, desc="Reading spectra", unit="spectrum") as pbar:
+        with tqdm(total=total_spectra, desc="Processing spectra", unit="spectrum") as pbar:
             if batch_size <= 1:
                 # Process one at a time
                 for frame_id in range(1, self._frame_count + 1):

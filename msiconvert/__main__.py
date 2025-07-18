@@ -1,7 +1,6 @@
 # msiconvert/__main__.py
 from dotenv import load_dotenv
 load_dotenv()  # Load environment variables from .env file
-
 import argparse
 import logging
 from .convert import convert_msi
@@ -55,29 +54,45 @@ def main():
     
     args = parser.parse_args()
     
-    # Configure logging
-    setup_logging(log_level=getattr(logging, args.log_level), log_file=args.log_file)
-    
-    # Convert MSI data
-    success = convert_msi(
-        args.input,
-        args.output,
-        format_type=args.format,
-        dataset_id=args.dataset_id,
-        pixel_size_um=args.pixel_size,
-        handle_3d=args.handle_3d
-    )
-    
-    if success and args.optimize_chunks:
-        # Optimize chunks for better performance
-        if args.format == 'spatialdata':
-            # For SpatialData format, optimize the table's X array
-            optimize_zarr_chunks(args.output, f'tables/{args.dataset_id}/X')
-    
-    if success:
-        logging.info(f"Conversion completed successfully. Output stored at {args.output}")
-    else:
-        logging.error("Conversion failed.")
+    # Setup logging for the 'msiconvert' logger
+    setup_logging(args.log_level, args.log_file)
+
+    # Get the correct logger instance
+    logger = logging.getLogger("msiconvert")
+
+    logger.info("Logging configured.")
+    logger.debug(f"Command-line arguments: {args}")
+
+    try:
+        logger.info(f"Starting conversion of '{args.input}' to '{args.output}'")
+        
+        # Convert MSI data
+        success = convert_msi(
+            args.input,
+            args.output,
+            format_type=args.format,
+            dataset_id=args.dataset_id,
+            pixel_size_um=args.pixel_size,
+            handle_3d=args.handle_3d
+        )
+        
+        if success and args.optimize_chunks:
+            logger.info("Optimizing Zarr chunks...")
+            # Optimize chunks for better performance
+            if args.format == 'spatialdata':
+                # For SpatialData format, optimize the table's X array
+                optimize_zarr_chunks(args.output, f'tables/{args.dataset_id}/X')
+            logger.info("Chunk optimization complete.")
+        
+        if success:
+            logger.info(f"Conversion completed successfully. Output stored at {args.output}")
+        else:
+            # This 'else' block might be redundant if convert_msi raises exceptions on failure,
+            # but it is kept for cases where it might return False without an exception.
+            logger.error("Conversion failed for an unknown reason.")
+
+    except Exception as e:
+        logger.critical("A critical error occurred during the conversion process.", exc_info=True)
 
 if __name__ == '__main__':
     main()

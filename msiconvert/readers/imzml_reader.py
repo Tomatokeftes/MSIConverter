@@ -306,7 +306,7 @@ class ImzMLReader(BaseMSIReader):
         logging.info(f"Processing {total_spectra} spectra in a grid of {total_pixels} pixels")
         
         # Process in batches
-        with tqdm(total=total_spectra, desc="Reading spectra", unit="spectrum") as pbar:
+        with tqdm(total=total_spectra, desc="Processing spectra", unit="spectrum") as pbar:
             if batch_size <= 1:
                 # Process one at a time
                 for idx in range(total_spectra):

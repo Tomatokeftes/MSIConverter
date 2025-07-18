@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Tuple, Union, Optional
+from typing import Any, Tuple, Union, Optional, Dict
 from os import PathLike
 import numpy as np
 import logging
@@ -30,10 +30,10 @@ class BaseMSIConverter(ABC):
         self.pixel_size_um = pixel_size_um
         self.compression_level = compression_level
         self.handle_3d = handle_3d
-        self.options: dict[str, Any] = kwargs
+        self.options: Dict[str, Any] = kwargs
         self._common_mass_axis: Optional[NDArray[np.float64]] = None
         self._dimensions: Optional[Tuple[int, int, int]] = None
-        self._metadata: Optional[dict[str, Any]] = None
+        self._metadata: Optional[Dict[str, Any]] = None
         self._buffer_size = 100000  # Default buffer size for processing spectra
     
     def convert(self) -> bool:
@@ -82,7 +82,7 @@ class BaseMSIConverter(ABC):
                 raise ValueError("Common mass axis is empty. Cannot proceed with conversion.")
                 
             self._metadata = self.reader.get_metadata()
-            if self._metadata is None: # type: ignore
+            if self._metadata is None:
                 self._metadata = {}  # Initialize with empty dict if None
                 
             logging.info(f"Dataset dimensions: {self._dimensions}")
@@ -114,11 +114,14 @@ class BaseMSIConverter(ABC):
         if self._dimensions is None:
             raise ValueError("Dimensions are not initialized.")
         
+        # Calculate total number of spectra for progress tracking
+        # total_spectra = int(np.prod(self._dimensions))
+        
         # Process spectra with progress tracking
-        with tqdm(desc="Processing spectra", unit="spectrum") as pbar:
-            for coords, mzs, intensities in self.reader.iter_spectra(batch_size=self._buffer_size):
-                self._process_single_spectrum(data_structures, coords, mzs, intensities)
-                pbar.update(1)
+        # with tqdm(desc="Processing spectra", unit="spectrum", total=total_spectra) as pbar:
+        for coords, mzs, intensities in self.reader.iter_spectra(batch_size=self._buffer_size):
+            self._process_single_spectrum(data_structures, coords, mzs, intensities)
+                # pbar.update(1)
     
     def _process_single_spectrum(
         self,
@@ -216,7 +219,7 @@ class BaseMSIConverter(ABC):
             for y in range(n_y):
                 for x in range(n_x):
                     pixel_idx = z * (n_y * n_x) + y * n_x + x
-                    coords.append({ # type: ignore
+                    coords.append({
                         'z': z,
                         'y': y, 
                         'x': x,
@@ -224,7 +227,7 @@ class BaseMSIConverter(ABC):
                     })
         
         coords_df: pd.DataFrame = pd.DataFrame(coords)
-        coords_df.set_index('pixel_id', inplace=True) # type: ignore
+        coords_df.set_index('pixel_id', inplace=True)
         
         # Add spatial coordinates
         coords_df['spatial_x'] = coords_df['x'] * self.pixel_size_um
@@ -246,7 +249,7 @@ class BaseMSIConverter(ABC):
         var_df: DataFrame = pd.DataFrame({'mz': self._common_mass_axis})
         # Convert to string index for compatibility
         var_df['mz_str'] = var_df['mz'].astype(str)
-        var_df.set_index('mz_str', inplace=True) # type: ignore
+        var_df.set_index('mz_str', inplace=True)
 
         return var_df
     
