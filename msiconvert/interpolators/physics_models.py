@@ -62,30 +62,10 @@ class InstrumentPhysics(ABC):
     def _create_axis_from_bins(self, min_mz: float, max_mz: float, 
                               target_bins: int) -> NDArray[np.float64]:
         """Create axis with approximately target number of bins"""
-        # First, estimate average width needed
-        avg_width_estimate = (max_mz - min_mz) / target_bins
-        
-        # Use this to estimate width at reference m/z (e.g., 400)
-        ref_mz = 400.0
-        if min_mz <= ref_mz <= max_mz:
-            width_at_ref = avg_width_estimate
-        else:
-            # Use middle of range as reference
-            ref_mz = (min_mz + max_mz) / 2
-            width_at_ref = avg_width_estimate
-            
-        # Create initial axis
-        axis = self._create_axis_from_width(min_mz, max_mz, width_at_ref, ref_mz)
-        
-        # Adjust if we're far from target
-        actual_bins = len(axis)
-        if abs(actual_bins - target_bins) > target_bins * 0.1:  # >10% off
-            # Scale the reference width
-            scaling_factor = actual_bins / target_bins
-            adjusted_width = width_at_ref / scaling_factor
-            axis = self._create_axis_from_width(min_mz, max_mz, adjusted_width, ref_mz)
-            
-        return axis
+        # For now, use simple linear spacing to respect user's bin count exactly
+        # This ensures the user gets the number of bins they requested
+        # TODO: In future, implement proper physics-based spacing that converges to target
+        return np.linspace(min_mz, max_mz, target_bins)
 
 class TOFPhysics(InstrumentPhysics):
     """Time-of-Flight physics model"""

@@ -7,6 +7,64 @@ from pathlib import Path
 from .core.registry import detect_format, get_converter_class, get_reader_class
 
 
+def _log_interpolation_performance(interpolation_config, reader_stats, total_time_sec, reader):
+    """Log detailed interpolation performance statistics"""
+    
+    logging.info("=" * 60)
+    logging.info("INTERPOLATION PERFORMANCE SUMMARY")
+    logging.info("=" * 60)
+    
+    # Basic configuration
+    logging.info(f"Method: {interpolation_config.method}")
+    if interpolation_config.interpolation_bins:
+        logging.info(f"Target bins: {interpolation_config.interpolation_bins:,}")
+    if interpolation_config.interpolation_width:
+        logging.info(f"Target width: {interpolation_config.interpolation_width} Da at {interpolation_config.interpolation_width_mz} m/z")
+    
+    # Dataset information
+    n_spectra = 0
+    try:
+        dimensions = reader.get_dimensions()
+        n_spectra = reader.n_spectra
+        mass_axis_length = len(reader.get_common_mass_axis())
+        
+        logging.info(f"Dataset dimensions: {dimensions[0]} x {dimensions[1]} x {dimensions[2]}")  
+        logging.info(f"Total spectra processed: {n_spectra:,}")
+        logging.info(f"Original mass axis length: {mass_axis_length:,}")
+        
+        # Calculate size reduction
+        if interpolation_config.interpolation_bins:
+            reduction_factor = mass_axis_length / interpolation_config.interpolation_bins
+            reduction_percent = (1 - 1/reduction_factor) * 100 if reduction_factor > 1 else 0
+            logging.info(f"Mass axis reduction: {reduction_factor:.1f}x ({reduction_percent:.1f}% size reduction)")
+        
+    except Exception as e:
+        logging.warning(f"Could not retrieve dataset statistics: {e}")
+    
+    # Performance metrics
+    logging.info(f"Total conversion time: {total_time_sec:.1f} seconds")
+    
+    if n_spectra > 0:
+        spectra_per_sec = n_spectra / total_time_sec
+        logging.info(f"Processing throughput: {spectra_per_sec:.0f} spectra/second")
+    
+    # Memory and worker information
+    logging.info(f"Workers used: {interpolation_config.min_workers}-{interpolation_config.max_workers}")
+    logging.info(f"Quality validation: {'enabled' if interpolation_config.validate_quality else 'disabled'}")
+    logging.info(f"Physics model: {interpolation_config.physics_model}")
+    
+    # Reader-specific performance stats
+    if reader_stats:
+        if 'average_read_time_ms' in reader_stats:
+            logging.info(f"Average spectrum read time: {reader_stats['average_read_time_ms']:.2f} ms")
+        if 'memory_stats' in reader_stats:
+            memory_stats = reader_stats['memory_stats']
+            if 'process_memory_gb' in memory_stats:
+                logging.info(f"Peak memory usage: {memory_stats['process_memory_gb']:.1f} GB")
+    
+    logging.info("=" * 60)
+
+
 
 warnings.filterwarnings(
     "ignore",
@@ -29,9 +87,26 @@ def convert_msi(
     pixel_size_um: float = None,
     handle_3d: bool = False,
     pixel_size_detection_info_override: dict = None,
+    interpolation_config: 'InterpolationConfig' = None,
     **kwargs,
 ) -> bool:
-    """Convert MSI data to the specified format with enhanced error handling and automatic pixel size detection."""
+    """
+    Convert MSI data to the specified format with enhanced error handling and automatic pixel size detection.
+    
+    Args:
+        input_path: Path to input MSI file or directory
+        output_path: Path for output file
+        format_type: Output format type (default: "spatialdata")
+        dataset_id: Identifier for the dataset (default: "msi_dataset")
+        pixel_size_um: Size of each pixel in micrometers (None for auto-detection)
+        handle_3d: Process as 3D data (default: False for 2D slices)
+        pixel_size_detection_info_override: Override pixel size detection metadata
+        interpolation_config: Configuration for interpolation functionality (None to disable)
+        **kwargs: Additional arguments passed to converter
+        
+    Returns:
+        bool: True if conversion succeeded, False otherwise
+    """
 
     if not input_path or not isinstance(input_path, (str, Path)):
         logging.error("Input path must be a valid string or Path object")
@@ -58,6 +133,13 @@ def convert_msi(
     if not isinstance(handle_3d, bool):
         logging.error("handle_3d must be a boolean value")
         return False
+
+    # Validate interpolation config if provided
+    if interpolation_config is not None:
+        from .config import InterpolationConfig
+        if not isinstance(interpolation_config, InterpolationConfig):
+            logging.error("interpolation_config must be an InterpolationConfig instance")
+            return False
 
     input_path = Path(input_path).resolve()
     output_path = Path(output_path).resolve()
@@ -134,9 +216,25 @@ def convert_msi(
             **kwargs,
         )
 
-        # Run conversion
-        logging.info("Starting conversion...")
-        result = converter.convert()
+        # Run conversion (with interpolation if configured)
+        if interpolation_config is not None and interpolation_config.enabled:
+            logging.info(f"Starting conversion with interpolation: {interpolation_config.get_summary()}")
+            
+            # Get reader stats for performance comparison
+            reader_stats = getattr(reader, 'get_performance_stats', lambda: {})()
+            
+            import time
+            start_time = time.time()
+            result = converter.convert_with_interpolation(interpolation_config)
+            total_time = time.time() - start_time
+            
+            if result:
+                # Log performance statistics
+                _log_interpolation_performance(interpolation_config, reader_stats, total_time, reader)
+        else:
+            logging.info("Starting standard conversion...")
+            result = converter.convert()
+            
         logging.info(f"Conversion {'completed successfully' if result else 'failed'}")
         return result
     except Exception as e:

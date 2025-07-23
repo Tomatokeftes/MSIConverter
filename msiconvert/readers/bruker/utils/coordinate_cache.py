@@ -294,9 +294,10 @@ class CoordinateCache:
         if not x_coords:
             return (1, 1, 1)
 
-        x_size = max(x_coords) + 1  # Convert from max index to size
-        y_size = max(y_coords) + 1
-        z_size = max(z_coords) + 1
+        # Calculate actual dimensions using min/max bounds (not assuming 0-based)
+        x_size = max(x_coords) - min(x_coords) + 1
+        y_size = max(y_coords) - min(y_coords) + 1
+        z_size = max(z_coords) - min(z_coords) + 1
 
         self._dimensions = (x_size, y_size, z_size)
         logger.info(f"Calculated dimensions: {self._dimensions}")

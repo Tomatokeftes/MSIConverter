@@ -44,6 +44,11 @@ class SpectrumBuffer:
     def fill(self, mz: NDArray, intensity: NDArray) -> None:
         """Fill buffer with data"""
         self.actual_size = len(mz)
+        # Handle case where input data is larger than buffer
+        if self.actual_size > len(self.mz_buffer):
+            # Resize buffers to accommodate larger data
+            self.mz_buffer = np.empty(self.actual_size, dtype=np.float64)
+            self.intensity_buffer = np.empty(self.actual_size, dtype=np.float32)
         self.mz_buffer[:self.actual_size] = mz
         self.intensity_buffer[:self.actual_size] = intensity
         

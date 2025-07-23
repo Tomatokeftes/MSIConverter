@@ -8,6 +8,7 @@ from msiconvert.convert import convert_msi
 from msiconvert.core.registry import detect_format, get_reader_class
 from msiconvert.utils.data_processors import optimize_zarr_chunks
 from msiconvert.utils.logging_config import setup_logging
+from msiconvert.config import InterpolationConfig
 
 
 def prompt_for_pixel_size(detected_size=None):
@@ -242,6 +243,60 @@ def main():
         action="store_true",
         help="Simulate conversion process without writing output files",
     )
+    
+    # Interpolation arguments
+    parser.add_argument(
+        "--interpolate",
+        action="store_true",
+        help="Enable intelligent interpolation for data size reduction and performance",
+    )
+    parser.add_argument(
+        "--interpolation-bins",
+        type=int,
+        default=None,
+        help="Number of bins for interpolated mass axis (default: 90000)",
+    )
+    parser.add_argument(
+        "--interpolation-width",
+        type=float,
+        default=None,
+        help="Mass axis width specification in Da (alternative to --interpolation-bins)",
+    )
+    parser.add_argument(
+        "--interpolation-width-mz",
+        type=float,
+        default=400.0,
+        help="Reference m/z for width specification (default: 400.0)",
+    )
+    parser.add_argument(
+        "--interpolation-method",
+        choices=["pchip", "linear", "adaptive"],
+        default="pchip",
+        help="Interpolation method (default: pchip for scientific data integrity)",
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=None,
+        help="Maximum number of interpolation workers (default: auto-detect)",
+    )
+    parser.add_argument(
+        "--min-workers",
+        type=int,
+        default=4,
+        help="Minimum number of interpolation workers (default: 4)",
+    )
+    parser.add_argument(
+        "--no-quality-validation",
+        action="store_true",
+        help="Disable interpolation quality validation (not recommended)",
+    )
+    parser.add_argument(
+        "--physics-model",
+        choices=["auto", "tof", "orbitrap", "fticr"],
+        default="auto",
+        help="Physics model for optimal mass axis generation (default: auto)",
+    )
 
     args = parser.parse_args()
 
@@ -280,6 +335,22 @@ def main():
             f"Output path already exists (use --dry-run to preview): {output_path}"
         )
 
+    # Validate interpolation arguments
+    if args.interpolation_bins is not None and args.interpolation_bins <= 0:
+        parser.error("Interpolation bins must be positive (got: {})".format(args.interpolation_bins))
+    
+    if args.interpolation_width is not None and args.interpolation_width <= 0:
+        parser.error("Interpolation width must be positive (got: {})".format(args.interpolation_width))
+        
+    if args.interpolation_bins and args.interpolation_width:
+        parser.error("Cannot specify both --interpolation-bins and --interpolation-width")
+        
+    if args.min_workers <= 0:
+        parser.error("Minimum workers must be positive (got: {})".format(args.min_workers))
+        
+    if args.max_workers is not None and args.max_workers < args.min_workers:
+        parser.error("Maximum workers must be >= minimum workers ({} < {})".format(args.max_workers, args.min_workers))
+
     # Configure logging
     setup_logging(log_level=getattr(logging, args.log_level), log_file=args.log_file)
 
@@ -306,6 +377,22 @@ def main():
             logging.error("Conversion aborted.")
             return
 
+    # Create interpolation configuration if requested
+    interpolation_config = None
+    if args.interpolate:
+        interpolation_config = InterpolationConfig(
+            enabled=True,
+            method=args.interpolation_method,
+            interpolation_bins=args.interpolation_bins,
+            interpolation_width=args.interpolation_width,
+            interpolation_width_mz=args.interpolation_width_mz,
+            max_workers=args.max_workers or 80,  # Use default max if not specified
+            min_workers=args.min_workers,
+            validate_quality=not args.no_quality_validation,
+            physics_model=args.physics_model,
+        )
+        logging.info(f"Interpolation enabled: {interpolation_config.get_summary()}")
+
     # Handle dry-run mode
     if args.dry_run:
         success = dry_run_conversion(
@@ -329,6 +416,7 @@ def main():
             pixel_size_um=final_pixel_size,
             handle_3d=args.handle_3d,
             pixel_size_detection_info_override=detection_info_override,
+            interpolation_config=interpolation_config,
         )
 
     if success and args.optimize_chunks and not args.dry_run:

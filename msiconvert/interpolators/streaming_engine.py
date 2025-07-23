@@ -54,7 +54,13 @@ class StreamingInterpolationEngine:
         self.shutdown_event = Event()
         
         # Buffer pool and memory management
-        estimated_spectrum_size = len(config.target_mass_axis) if config.target_mass_axis is not None else 100000
+        # Use a larger buffer size to accommodate original spectrum data
+        # The buffer needs to hold the original spectrum, not the interpolated size
+        estimated_spectrum_size = 100000  # Conservative estimate for original spectrum size
+        if config.target_mass_axis is not None:
+            # Make buffer at least 2x the target size to handle original spectra
+            estimated_spectrum_size = max(100000, len(config.target_mass_axis) * 2)
+            
         self.memory_manager = AdaptiveMemoryManager(
             target_memory_gb=config.max_memory_gb
         )
@@ -82,6 +88,11 @@ class StreamingInterpolationEngine:
         
         # Quality monitoring
         self.quality_metrics = []
+        if config.validate_quality:
+            from .quality_monitor import InterpolationQualityMonitor
+            self.quality_monitor = InterpolationQualityMonitor()
+        else:
+            self.quality_monitor = None
         
         logging.info(f"Initialized streaming engine with {config.n_workers} workers, "
                     f"{optimal_buffers} buffers")

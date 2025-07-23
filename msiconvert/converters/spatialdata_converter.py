@@ -91,6 +91,31 @@ class SpatialDataConverter(BaseMSIConverter):
 
         self._non_empty_pixel_count: int = 0
         self._pixel_size_detection_info = pixel_size_detection_info
+        
+        # Get spatial bounds for coordinate normalization
+        if hasattr(reader, 'get_spatial_bounds'):
+            self._spatial_bounds = reader.get_spatial_bounds()
+        else:
+            # Fallback: assume 0-based coordinates
+            self._spatial_bounds = {
+                'min_x': 0, 'max_x': self._dimensions[0] - 1,
+                'min_y': 0, 'max_y': self._dimensions[1] - 1
+            }
+
+    def _normalize_coordinates(self, x: int, y: int, z: int) -> Tuple[int, int, int]:
+        """
+        Normalize coordinates from raw data coordinates to 0-based array indices.
+        
+        Args:
+            x, y, z: Raw coordinates from the data
+            
+        Returns:
+            Tuple of (normalized_x, normalized_y, normalized_z) for array indexing
+        """
+        norm_x = x - self._spatial_bounds['min_x']
+        norm_y = y - self._spatial_bounds['min_y']
+        norm_z = z  # Z coordinate typically starts at 0
+        return norm_x, norm_y, norm_z
 
     def _create_data_structures(self) -> Dict[str, Any]:
         """
@@ -267,6 +292,9 @@ class SpatialDataConverter(BaseMSIConverter):
         y: int
         z: int
         x, y, z = coords
+        
+        # Normalize coordinates for array indexing
+        norm_x, norm_y, norm_z = self._normalize_coordinates(x, y, z)
 
         # Calculate TIC for this pixel (sum of all intensities)
         tic_value: float = float(np.sum(intensities))
@@ -281,10 +309,10 @@ class SpatialDataConverter(BaseMSIConverter):
             slice_id: str = f"{self.dataset_id}_z{z}"
             if slice_id in data_structures["slices_data"]:
                 slice_data: Dict[str, Any] = data_structures["slices_data"][slice_id]
-                pixel_idx: int = y * self._dimensions[0] + x
+                pixel_idx: int = norm_y * self._dimensions[0] + norm_x
 
-                # Store TIC value for this pixel
-                slice_data["tic_values"][y, x] = tic_value
+                # Store TIC value for this pixel using normalized coordinates
+                slice_data["tic_values"][norm_y, norm_x] = tic_value
 
                 # Add to sparse matrix for this slice
                 self._add_to_sparse_matrix(
@@ -292,10 +320,10 @@ class SpatialDataConverter(BaseMSIConverter):
                 )
         else:
             # For 3D volume mode, add data to the single sparse matrix
-            pixel_idx: int = self._get_pixel_index(x, y, z)
+            pixel_idx: int = self._get_pixel_index(norm_x, norm_y, norm_z)
 
-            # Store TIC value for this pixel
-            data_structures["tic_values"][y, x, z] = tic_value
+            # Store TIC value for this pixel using normalized coordinates
+            data_structures["tic_values"][norm_y, norm_x, norm_z] = tic_value
 
             # Add to sparse matrix
             self._add_to_sparse_matrix(
@@ -694,3 +722,168 @@ class SpatialDataConverter(BaseMSIConverter):
                 metadata_dict["pixel_size_provenance"] = self._pixel_size_detection_info
 
             metadata.metadata = metadata_dict  # type: ignore
+
+    # --- Interpolation Integration Methods ---
+
+    def convert_with_interpolation(self, interpolation_config: 'InterpolationConfig') -> bool:
+        """
+        Convert using interpolation pipeline.
+        
+        Args:
+            interpolation_config: Configuration for interpolation
+            
+        Returns:
+            bool: True if conversion succeeded
+        """
+        # Store interpolation config for use by base class methods
+        self.interpolation_config = interpolation_config
+        
+        # Use the base class interpolation conversion path
+        return self._convert_with_interpolation()
+        
+    def _create_interpolation_writer(self, data_structures: Any) -> callable:
+        """
+        Create writer function for interpolated data specific to SpatialData format.
+        
+        Args:
+            data_structures: SpatialData-specific data structures
+            
+        Returns:
+            callable: Writer function that accepts (coords, mass_axis, intensities)
+        """
+        mode = data_structures.get("mode", "3d_volume")
+        
+        def write_interpolated_spectrum(coords: Tuple[int, int, int],
+                                      mass_axis: np.ndarray,
+                                      intensities: np.ndarray):
+            """Write single interpolated spectrum to SpatialData structures"""
+            x, y, z = coords
+            
+            # Normalize coordinates for array indexing
+            norm_x, norm_y, norm_z = self._normalize_coordinates(x, y, z)
+            
+            # Convert intensities to float64 for consistency with existing code
+            intensities_f64 = intensities.astype(np.float64)
+            
+            # Calculate TIC for the spectrum
+            tic_value = np.sum(intensities_f64)
+            
+            if mode == "2d_slices":
+                # Handle slice-by-slice processing
+                slice_id = f"{self.dataset_id}_z{z}"
+                if slice_id in data_structures["slices_data"]:
+                    slice_data = data_structures["slices_data"][slice_id]
+                    
+                    # Calculate pixel index for this slice (2D indexing) using normalized coordinates
+                    pixel_idx = norm_y * self._dimensions[0] + norm_x
+                    
+                    # Store interpolated intensities directly
+                    slice_data["sparse_data"][pixel_idx, :] = intensities_f64
+                    
+                    # Update TIC values using normalized coordinates
+                    slice_data["tic_values"][norm_y, norm_x] = tic_value
+                    
+            else:
+                # Handle 3D volume processing
+                pixel_idx = self._get_pixel_index(norm_x, norm_y, norm_z)
+                
+                # Store interpolated intensities directly
+                data_structures["sparse_data"][pixel_idx, :] = intensities_f64
+                
+                # Update TIC values using normalized coordinates
+                data_structures["tic_values"][norm_y, norm_x, norm_z] = tic_value
+            
+            # Update global statistics
+            data_structures["total_intensity"] += intensities_f64
+            data_structures["pixel_count"] += 1
+            
+            # Track non-empty pixels
+            if tic_value > 0:
+                self._non_empty_pixel_count += 1
+                
+        return write_interpolated_spectrum
+        
+    def _finalize_interpolated_output(self, data_structures: Any, stats: dict):
+        """
+        Finalize SpatialData output with interpolation metadata.
+        
+        Args:
+            data_structures: SpatialData-specific data structures
+            stats: Interpolation performance statistics
+        """
+        # Call standard finalization first
+        super()._finalize_interpolated_output(data_structures, stats)
+        
+        # Add interpolation-specific metadata to SpatialData structures
+        if hasattr(self, '_common_mass_axis') and self._common_mass_axis is not None:
+            interpolation_metadata = {
+                'interpolation_enabled': True,
+                'interpolation_method': getattr(self.interpolation_config, 'method', 'unknown'),
+                'original_mass_points': stats.get('config', {}).get('original_mass_points', 'unknown'),
+                'interpolated_mass_points': len(self._common_mass_axis),
+                'interpolation_throughput_spectra_per_sec': stats.get('overall_throughput_per_sec', 0),
+                'interpolation_quality_summary': stats.get('quality_summary', {}),
+                'physics_model_used': getattr(self.interpolation_config, 'physics_model', 'auto'),
+                'total_processing_time_sec': stats.get('elapsed_time', 0),
+                'memory_usage_mb': stats.get('memory_stats', {}).get('process_memory_gb', 0) * 1024,
+                'size_reduction_estimate': self._calculate_size_reduction(stats)
+            }
+            
+            # Store for later use in metadata addition
+            self._interpolation_metadata = interpolation_metadata
+            
+        logging.info(f"Interpolation completed for SpatialData: "
+                    f"{stats.get('spectra_written', 0)} spectra processed")
+                    
+    def _calculate_size_reduction(self, stats: dict) -> dict:
+        """
+        Calculate estimated file size reduction from interpolation.
+        
+        Args:
+            stats: Interpolation performance statistics
+            
+        Returns:
+            dict: Size reduction estimates
+        """
+        config = stats.get('config', {})
+        original_bins = config.get('original_mass_points', 0)
+        interpolated_bins = config.get('target_bins', len(self._common_mass_axis) if self._common_mass_axis else 0)
+        
+        if original_bins > 0 and interpolated_bins > 0:
+            reduction_factor = original_bins / interpolated_bins
+            reduction_percentage = (1 - 1/reduction_factor) * 100 if reduction_factor > 1 else 0
+            
+            return {
+                'original_bins': original_bins,
+                'interpolated_bins': interpolated_bins,
+                'reduction_factor': reduction_factor,
+                'estimated_size_reduction_percent': reduction_percentage
+            }
+        else:
+            return {
+                'original_bins': original_bins,
+                'interpolated_bins': interpolated_bins,
+                'reduction_factor': 1.0,
+                'estimated_size_reduction_percent': 0.0
+            }
+    
+    def add_metadata(self, metadata: Any) -> None:
+        """
+        Enhanced metadata addition with interpolation information.
+        
+        Args:
+            metadata: Metadata object to enhance
+        """
+        # Call parent implementation first
+        super().add_metadata(metadata)
+        
+        # Add interpolation metadata if available
+        if hasattr(self, '_interpolation_metadata'):
+            if hasattr(metadata, 'attrs'):
+                metadata.attrs.update(self._interpolation_metadata)
+            elif hasattr(metadata, 'metadata'):
+                if metadata.metadata is None:
+                    metadata.metadata = {}
+                metadata.metadata.update(self._interpolation_metadata)
+                
+        logging.debug("Enhanced metadata with interpolation information")

@@ -50,3 +50,70 @@ ESTIMATED_BYTES_PER_SPECTRUM_POINT = 4  # For float32 values
 
 # Progress reporting
 DEFAULT_PROGRESS_UPDATE_INTERVAL = 1.0  # Seconds between progress updates
+
+# Interpolation settings
+DEFAULT_INTERPOLATION_BINS = 90000  # Default number of bins for interpolation
+DEFAULT_INTERPOLATION_METHOD = "pchip"  # Default interpolation method
+DEFAULT_INTERPOLATION_WORKERS = 4  # Default number of interpolation workers
+MAX_INTERPOLATION_WORKERS = 80  # Maximum workers for interpolation (as per review)
+MIN_INTERPOLATION_WORKERS = 4  # Minimum workers for interpolation
+DEFAULT_INTERPOLATION_MEMORY_GB = 8.0  # Default memory limit for interpolation
+DEFAULT_INTERPOLATION_WIDTH_MZ = 400.0  # Default reference m/z for width specification
+
+# Configuration classes
+from dataclasses import dataclass
+from typing import Optional
+
+@dataclass
+class InterpolationConfig:
+    """Configuration for interpolation functionality"""
+    enabled: bool = False
+    method: str = DEFAULT_INTERPOLATION_METHOD
+    
+    # SCiLS-like bin specification (either bins OR width, not both)
+    interpolation_bins: Optional[int] = None
+    interpolation_width: Optional[float] = None
+    interpolation_width_mz: float = DEFAULT_INTERPOLATION_WIDTH_MZ
+    
+    # Performance settings
+    max_workers: int = MAX_INTERPOLATION_WORKERS
+    min_workers: int = MIN_INTERPOLATION_WORKERS
+    max_memory_gb: float = DEFAULT_INTERPOLATION_MEMORY_GB
+    adaptive_workers: bool = True
+    buffer_size: int = 1000
+    
+    # Quality settings
+    validate_quality: bool = True
+    tic_deviation_threshold: float = 0.01  # 1% TIC deviation allowed
+    peak_preservation_threshold: float = 0.95  # 95% peak preservation required
+    
+    # Physics model settings
+    use_physics_model: bool = True
+    physics_model: str = "auto"  # auto, tof, orbitrap, fticr
+    
+    def __post_init__(self):
+        """Validate configuration after initialization"""
+        if self.interpolation_bins and self.interpolation_width:
+            raise ValueError("Cannot specify both interpolation_bins and interpolation_width")
+        
+        if self.enabled and not self.interpolation_bins and not self.interpolation_width:
+            # Set default if none specified
+            self.interpolation_bins = DEFAULT_INTERPOLATION_BINS
+            
+        if not 1 <= self.min_workers <= self.max_workers:
+            raise ValueError("Worker count limits must satisfy: 1 <= min_workers <= max_workers")
+            
+        if self.method not in ["pchip", "linear", "adaptive"]:
+            raise ValueError(f"Invalid interpolation method: {self.method}")
+            
+    def get_summary(self) -> dict:
+        """Get configuration summary for logging"""
+        return {
+            "enabled": self.enabled,
+            "method": self.method,
+            "target_bins": self.interpolation_bins,
+            "target_width": self.interpolation_width,
+            "max_workers": self.max_workers,
+            "physics_model": self.physics_model,
+            "validate_quality": self.validate_quality
+        }

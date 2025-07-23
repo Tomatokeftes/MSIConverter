@@ -166,3 +166,82 @@ class BaseMSIReader(ABC):
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit with cleanup."""
         self.close()
+
+    # --- Interpolation Support Methods ---
+
+    def get_mass_bounds(self) -> Tuple[float, float]:
+        """
+        Get mass bounds WITHOUT scanning all spectra (for interpolation efficiency).
+        
+        Returns:
+            Tuple of (min_mz, max_mz)
+            
+        Note:
+            Base implementation uses mass_range property as fallback.
+            Subclasses should override this for efficient metadata-based bounds detection.
+        """
+        return self.mass_range
+
+    def get_spatial_bounds(self) -> Dict[str, int]:
+        """
+        Get spatial bounds WITHOUT scanning all spectra (for interpolation efficiency).
+        
+        Returns:
+            Dictionary with keys: min_x, max_x, min_y, max_y
+            
+        Note:
+            Base implementation derives from dimensions.
+            Subclasses should override this for efficient metadata-based bounds detection.
+        """
+        dimensions = self.get_dimensions()
+        return {
+            'min_x': 0,
+            'max_x': dimensions[0] - 1,
+            'min_y': 0,
+            'max_y': dimensions[1] - 1
+        }
+
+    def get_estimated_memory_usage(self) -> Dict[str, float]:
+        """
+        Estimate memory requirements for interpolation processing.
+        
+        Returns:
+            Dictionary with memory usage estimates in bytes
+        """
+        dimensions = self.get_dimensions()
+        mass_axis_length = len(self.get_common_mass_axis())
+        
+        # Estimate based on typical spectrum characteristics
+        n_spectra = dimensions[0] * dimensions[1] * dimensions[2]
+        avg_spectrum_points = mass_axis_length // 10  # Assume sparse data
+        
+        return {
+            'total_spectra': n_spectra,
+            'avg_spectrum_points': avg_spectrum_points,
+            'estimated_raw_memory_mb': (n_spectra * avg_spectrum_points * 12) / 1e6,  # mz + intensity
+            'estimated_interpolated_memory_mb': (n_spectra * mass_axis_length * 4) / 1e6  # float32 intensities
+        }
+
+    def iter_spectra_buffered(self, buffer_pool: 'SpectrumBufferPool') -> Generator['SpectrumBuffer', None, None]:
+        """
+        Iterate through spectra using pre-allocated buffers for zero-copy operations.
+        
+        Args:
+            buffer_pool: Pool of pre-allocated spectrum buffers
+            
+        Yields:
+            SpectrumBuffer: Buffer containing spectrum data
+            
+        Note:
+            Base implementation converts regular iteration to buffered format.
+            Subclasses should override this for native buffered iteration.
+        """
+        for coords, mzs, intensities in self.iter_spectra():
+            # Get buffer from pool
+            buffer = buffer_pool.get_buffer()
+            
+            # Fill buffer with spectrum data
+            buffer.coords = coords
+            buffer.fill(mzs, intensities.astype(np.float32))
+            
+            yield buffer
