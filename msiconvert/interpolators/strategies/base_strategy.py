@@ -22,8 +22,8 @@ class InterpolationStrategy(ABC):
     @abstractmethod
     def interpolate_spectrum(self, 
                            mz_old: NDArray[np.float64],
-                           intensity_old: NDArray[np.float32],
-                           mz_new: NDArray[np.float64]) -> NDArray[np.float32]:
+                           intensity_old: NDArray[np.float64],
+                           mz_new: NDArray[np.float64]) -> NDArray[np.float64]:
         """
         Interpolate spectrum to new mass axis.
         
@@ -39,9 +39,9 @@ class InterpolationStrategy(ABC):
         
     def validate_interpolation(self, 
                              mz_old: NDArray[np.float64],
-                             intensity_old: NDArray[np.float32],
+                             intensity_old: NDArray[np.float64],
                              mz_new: NDArray[np.float64],
-                             intensity_new: NDArray[np.float32],
+                             intensity_new: NDArray[np.float64],
                              interpolation_time: float) -> QualityMetrics:
         """
         Validate interpolation quality.
@@ -76,7 +76,7 @@ class InterpolationStrategy(ABC):
             interpolation_time=interpolation_time
         )
         
-    def _find_peaks(self, intensities: NDArray[np.float32], 
+    def _find_peaks(self, intensities: NDArray[np.float64], 
                    min_height_ratio: float = 0.01) -> NDArray[np.int32]:
         """
         Simple peak detection for quality assessment.

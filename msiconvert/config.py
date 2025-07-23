@@ -46,7 +46,7 @@ MAX_BUFFERS_PER_SIZE = 10  # Maximum number of buffers to keep per size
 PIXEL_SIZE_TOLERANCE = 0.01  # Tolerance for pixel size comparison (micrometers)
 
 # File size estimation (rough)
-ESTIMATED_BYTES_PER_SPECTRUM_POINT = 4  # For float32 values
+ESTIMATED_BYTES_PER_SPECTRUM_POINT = 8  # For float64 values
 
 # Progress reporting
 DEFAULT_PROGRESS_UPDATE_INTERVAL = 1.0  # Seconds between progress updates
@@ -75,6 +75,11 @@ class InterpolationConfig:
     interpolation_width: Optional[float] = None
     interpolation_width_mz: float = DEFAULT_INTERPOLATION_WIDTH_MZ
     
+    # Peak preservation settings
+    preserve_peaks: bool = True
+    use_physics_model: bool = True
+    physics_model: str = "auto"  # auto, tof, orbitrap, fticr
+    
     # Performance settings
     max_workers: int = MAX_INTERPOLATION_WORKERS
     min_workers: int = MIN_INTERPOLATION_WORKERS
@@ -87,9 +92,13 @@ class InterpolationConfig:
     tic_deviation_threshold: float = 0.01  # 1% TIC deviation allowed
     peak_preservation_threshold: float = 0.95  # 95% peak preservation required
     
-    # Physics model settings
-    use_physics_model: bool = True
-    physics_model: str = "auto"  # auto, tof, orbitrap, fticr
+    # Reporting settings
+    quality_report: bool = False
+    
+    # Performance optimization settings
+    use_simd: bool = True
+    cache_coefficients: bool = True
+    buffer_pool_size: int = 1000
     
     def __post_init__(self):
         """Validate configuration after initialization"""

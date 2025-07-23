@@ -25,15 +25,25 @@ def detect_bounds_from_reader(reader: 'BaseMSIReader') -> BoundsInfo:
     Raises:
         ValueError: If bounds cannot be determined from metadata
     """
+    import logging
+    logging.info("[DEBUG] detect_bounds_from_reader started")
+    
     # Try to get bounds from reader if it has the new methods
     if hasattr(reader, 'get_mass_bounds') and hasattr(reader, 'get_spatial_bounds'):
         try:
+            logging.info("[DEBUG] Getting mass bounds from reader...")
             min_mz, max_mz = reader.get_mass_bounds()
+            logging.info(f"[DEBUG] Mass bounds: {min_mz} - {max_mz}")
+            
+            logging.info("[DEBUG] Getting spatial bounds from reader...")
             spatial_bounds = reader.get_spatial_bounds()
+            logging.info(f"[DEBUG] Spatial bounds: {spatial_bounds}")
             
             # Get dimensions to calculate n_spectra
+            logging.info("[DEBUG] Getting dimensions from reader...")
             dimensions = reader.get_dimensions()
             n_spectra = dimensions[0] * dimensions[1] * dimensions[2]
+            logging.info(f"[DEBUG] Dimensions: {dimensions}, n_spectra: {n_spectra}")
             
             return BoundsInfo(
                 min_mz=min_mz,
@@ -44,11 +54,13 @@ def detect_bounds_from_reader(reader: 'BaseMSIReader') -> BoundsInfo:
                 max_y=spatial_bounds['max_y'],
                 n_spectra=n_spectra
             )
-        except Exception:
+        except Exception as e:
             # Fall back to metadata extraction
+            logging.info(f"[DEBUG] Failed to get bounds from reader: {e}")
             pass
     
     # Fall back to direct metadata extraction
+    logging.info("[DEBUG] Falling back to detect_bounds_from_path")
     return detect_bounds_from_path(reader.data_path)
 
 def detect_bounds_from_path(data_path: Path) -> BoundsInfo:

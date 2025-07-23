@@ -19,8 +19,8 @@ if TYPE_CHECKING:
     from ..core.base_reader import BaseMSIReader
 
 @dataclass
-class InterpolationConfig:
-    """Configuration for interpolation pipeline"""
+class StreamingInterpolationConfig:
+    """Configuration for streaming interpolation pipeline"""
     method: str = "pchip"
     target_mass_axis: Optional[np.ndarray] = None
     n_workers: int = 4
@@ -30,11 +30,70 @@ class InterpolationConfig:
     adaptive_workers: bool = True
     validate_quality: bool = True
     queue_timeout: float = 1.0  # Timeout for queue operations
+    
+    def __post_init__(self):
+        """Validate configuration after initialization"""
+        self.validate_target_mass_axis()
+        
+    def validate_target_mass_axis(self):
+        """
+        Validate target mass axis before interpolation.
+        
+        Raises:
+            ValueError: If target mass axis is invalid for interpolation
+        """
+        if self.target_mass_axis is None:
+            raise ValueError("Target mass axis is required for interpolation")
+            
+        if not isinstance(self.target_mass_axis, np.ndarray):
+            raise ValueError("Target mass axis must be a numpy array")
+            
+        if self.target_mass_axis.size == 0:
+            raise ValueError("Target mass axis cannot be empty")
+            
+        if len(self.target_mass_axis.shape) != 1:
+            raise ValueError("Target mass axis must be a 1-dimensional array")
+            
+        if self.target_mass_axis.dtype not in [np.float32, np.float64]:
+            raise ValueError("Target mass axis must contain float values")
+            
+        # Check for NaN or infinite values
+        if np.any(np.isnan(self.target_mass_axis)):
+            raise ValueError("Target mass axis contains NaN values")
+            
+        if np.any(np.isinf(self.target_mass_axis)):
+            raise ValueError("Target mass axis contains infinite values")
+            
+        # Check that values are sorted (required for interpolation)
+        if not np.all(np.diff(self.target_mass_axis) > 0):
+            raise ValueError("Target mass axis must be strictly increasing (sorted)")
+            
+        # Check for reasonable m/z range
+        min_mz = float(np.min(self.target_mass_axis))
+        max_mz = float(np.max(self.target_mass_axis))
+        
+        if min_mz <= 0:
+            raise ValueError("Target mass axis must contain positive m/z values")
+            
+        if max_mz > 10000:  # Reasonable upper bound for most MS applications
+            logging.warning(f"Target mass axis contains very high m/z values (max: {max_mz:.2f})")
+            
+        if max_mz - min_mz < 1.0:  # Very narrow range
+            logging.warning(f"Target mass axis has narrow range: {min_mz:.2f} - {max_mz:.2f}")
+            
+        # Check for reasonable resolution
+        median_diff = float(np.median(np.diff(self.target_mass_axis)))
+        if median_diff > 1.0:  # Very coarse resolution
+            logging.warning(f"Target mass axis has coarse resolution: {median_diff:.4f} m/z per bin")
+            
+        logging.info(f"Target mass axis validated: {len(self.target_mass_axis)} bins, "
+                    f"range {min_mz:.4f} - {max_mz:.4f}, "
+                    f"median resolution {median_diff:.4f} m/z")
 
 class StreamingInterpolationEngine:
     """High-performance streaming interpolation engine"""
     
-    def __init__(self, config: InterpolationConfig):
+    def __init__(self, config: StreamingInterpolationConfig):
         """
         Initialize streaming interpolation engine.
         
@@ -100,7 +159,7 @@ class StreamingInterpolationEngine:
     def process_dataset(self, 
                        reader: 'BaseMSIReader',
                        output_writer: Callable,
-                       progress_callback: Optional[Callable] = None):
+                       progress_callback: Optional[Callable] = None) -> None:
         """
         Main entry point for processing a dataset.
         
@@ -110,23 +169,30 @@ class StreamingInterpolationEngine:
             progress_callback: Optional progress callback function
         """
         try:
+            logging.info("[DEBUG] StreamingInterpolationEngine.process_dataset started")
             self.stats['start_time'] = time.time()
             
             # Step 1: Get bounds and validate target mass axis
+            logging.info("[DEBUG] Extracting bounds from reader...")
             bounds = self._extract_bounds(reader)
+            logging.info(f"[DEBUG] Bounds extracted: n_spectra={bounds.n_spectra}")
+            
             if self.config.target_mass_axis is None:
+                logging.info("[DEBUG] Creating optimal mass axis...")
                 self.config.target_mass_axis = self._create_optimal_mass_axis(bounds)
                 
             logging.info(f"Processing {bounds.n_spectra} spectra with "
                         f"{len(self.config.target_mass_axis)} target bins")
             
             # Step 2: Start producer thread
+            logging.info("[DEBUG] Starting producer thread...")
             self.producer_thread = Thread(
                 target=self._producer_task,
                 args=(reader, bounds.n_spectra),
                 name="InterpolationProducer"
             )
             self.producer_thread.start()
+            logging.info("[DEBUG] Producer thread started")
             
             # Step 3: Start worker threads
             for i in range(self.config.n_workers):
@@ -169,9 +235,11 @@ class StreamingInterpolationEngine:
             total_spectra: Total number of spectra to read
         """
         try:
-            logging.info("Producer thread started")
+            logging.info("[DEBUG] Producer thread started")
+            spectra_count = 0
             
             if hasattr(reader, 'iter_spectra_buffered'):
+                logging.info("[DEBUG] Using buffered iteration")
                 # Use buffered iteration if available
                 for spectrum_buffer in reader.iter_spectra_buffered(self.buffer_pool):
                     if self.shutdown_event.is_set():
@@ -179,8 +247,12 @@ class StreamingInterpolationEngine:
                         
                     self.input_queue.put(spectrum_buffer, timeout=self.config.queue_timeout)
                     self.stats['spectra_read'] += 1
+                    spectra_count += 1
+                    if spectra_count % 100 == 0:
+                        logging.info(f"[DEBUG] Producer: Read {spectra_count} spectra")
                     
             else:
+                logging.info("[DEBUG] Using regular iteration")
                 # Fallback to regular iteration
                 for spectrum_data in reader.iter_spectra():
                     if self.shutdown_event.is_set():
@@ -191,6 +263,9 @@ class StreamingInterpolationEngine:
                     coords, mz_values, intensities = spectrum_data
                     buffer.coords = coords
                     buffer.fill(mz_values, intensities)
+                    spectra_count += 1
+                    if spectra_count % 100 == 0:
+                        logging.info(f"[DEBUG] Producer: Read {spectra_count} spectra")
                     
                     self.input_queue.put(buffer, timeout=self.config.queue_timeout)
                     self.stats['spectra_read'] += 1

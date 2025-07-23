@@ -1,7 +1,10 @@
 # msiconvert/readers/imzml_reader.py
 import logging
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union, cast, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..interpolators import SpectrumBufferPool, SpectrumBuffer
 
 import numpy as np
 from numpy.typing import NDArray
@@ -555,3 +558,157 @@ class ImzMLReader(BaseMSIReader):
         # Use parser coordinates which is efficient
         parser = cast(ImzMLParser, self.parser)
         return len(parser.coordinates)  # type: ignore
+
+    def get_mass_bounds(self) -> Tuple[float, float]:
+        """
+        Get mass bounds by scanning through spectra.
+        
+        For ImzML files, we need to scan through spectra since metadata 
+        doesn't always contain reliable m/z bounds.
+        
+        Returns:
+            Tuple of (min_mz, max_mz)
+        """
+        if not hasattr(self, "parser") or self.parser is None:
+            if self.filepath:
+                self._initialize_parser(self.filepath)
+            else:
+                raise ValueError("Parser not initialized and no filepath available")
+
+        parser = cast(ImzMLParser, self.parser)
+        
+        min_mz = float('inf')
+        max_mz = float('-inf')
+        
+        logging.info("Scanning spectra to determine mass bounds...")
+        
+        # For continuous mode, we can get bounds from the first spectrum
+        if self.is_continuous:
+            try:
+                spectrum_data = parser.getspectrum(0)
+                if spectrum_data is not None and len(spectrum_data) >= 1:
+                    mzs = spectrum_data[0]
+                    if mzs.size > 0:
+                        min_mz = float(np.min(mzs))
+                        max_mz = float(np.max(mzs))
+                        logging.info(f"Mass bounds from continuous mode: {min_mz:.4f} - {max_mz:.4f}")
+                        return (min_mz, max_mz)
+            except Exception as e:
+                logging.warning(f"Error getting mass bounds from first spectrum: {e}")
+        
+        # For processed mode or if continuous mode failed, scan all spectra
+        total_spectra = len(parser.coordinates)
+        sample_size = min(100, total_spectra)  # Sample first 100 spectra for efficiency
+        
+        for idx in range(sample_size):
+            try:
+                spectrum_data = parser.getspectrum(idx)
+                if spectrum_data is not None and len(spectrum_data) >= 1:
+                    mzs = spectrum_data[0]
+                    if mzs.size > 0:
+                        spec_min = float(np.min(mzs))
+                        spec_max = float(np.max(mzs))
+                        min_mz = min(min_mz, spec_min)
+                        max_mz = max(max_mz, spec_max)
+            except Exception as e:
+                logging.warning(f"Error processing spectrum {idx} for mass bounds: {e}")
+                continue
+        
+        if min_mz == float('inf') or max_mz == float('-inf'):
+            # Fallback to common mass axis if available
+            try:
+                mass_axis = self.get_common_mass_axis()
+                if len(mass_axis) > 0:
+                    min_mz = float(np.min(mass_axis))
+                    max_mz = float(np.max(mass_axis))
+                else:
+                    raise ValueError("No valid m/z values found")
+            except Exception:
+                raise ValueError("Could not determine mass bounds from ImzML file")
+        
+        logging.info(f"Determined mass bounds: {min_mz:.4f} - {max_mz:.4f}")
+        return (min_mz, max_mz)
+
+    def get_spatial_bounds(self) -> Dict[str, int]:
+        """
+        Get spatial bounds from coordinates.
+        
+        Returns:
+            Dictionary with keys: min_x, max_x, min_y, max_y
+        """
+        if not hasattr(self, "parser") or self.parser is None:
+            if self.filepath:
+                self._initialize_parser(self.filepath)
+            else:
+                raise ValueError("Parser not initialized and no filepath available")
+
+        parser = cast(ImzMLParser, self.parser)
+        coordinates = parser.coordinates
+        
+        if not coordinates:
+            raise ValueError("No coordinates found in ImzML file")
+        
+        # Extract x and y coordinates
+        x_coords = [coord[0] for coord in coordinates]
+        y_coords = [coord[1] for coord in coordinates]
+        
+        bounds = {
+            'min_x': min(x_coords) - 1,  # Convert to 0-based indexing
+            'max_x': max(x_coords) - 1,
+            'min_y': min(y_coords) - 1,
+            'max_y': max(y_coords) - 1
+        }
+        
+        logging.info(f"Spatial bounds: x=[{bounds['min_x']}, {bounds['max_x']}], "
+                    f"y=[{bounds['min_y']}, {bounds['max_y']}]")
+        
+        return bounds
+
+    def iter_spectra_buffered(self, buffer_pool: 'SpectrumBufferPool') -> Generator['SpectrumBuffer', None, None]:
+        """
+        Iterate through spectra using pre-allocated buffers for zero-copy operations.
+        
+        Args:
+            buffer_pool: Pool of pre-allocated spectrum buffers
+            
+        Yields:
+            SpectrumBuffer: Buffer containing spectrum data
+        """
+        if not hasattr(self, "parser") or self.parser is None:
+            if self.filepath:
+                self._initialize_parser(self.filepath)
+            else:
+                raise ValueError("Parser not initialized and no filepath available")
+
+        parser = cast(ImzMLParser, self.parser)
+        total_spectra = len(parser.coordinates)
+        
+        for idx in range(total_spectra):
+            try:
+                # Get spectrum data from parser
+                spectrum_data = parser.getspectrum(idx)
+                if spectrum_data is None or len(spectrum_data) < 2:
+                    continue
+                
+                mzs = spectrum_data[0]
+                intensities = spectrum_data[1]
+                
+                if mzs.size == 0 or intensities.size == 0:
+                    continue
+                
+                # Get coordinates (convert to 0-based)
+                coords_1based = parser.coordinates[idx]
+                coords = (coords_1based[0] - 1, coords_1based[1] - 1, coords_1based[2] - 1)
+                
+                # Get buffer from pool
+                buffer = buffer_pool.get_buffer()
+                
+                # Fill buffer with spectrum data
+                buffer.coords = coords
+                buffer.fill(mzs, intensities.astype(np.float64))
+                
+                yield buffer
+                
+            except Exception as e:
+                logging.warning(f"Error processing spectrum {idx}: {e}")
+                continue

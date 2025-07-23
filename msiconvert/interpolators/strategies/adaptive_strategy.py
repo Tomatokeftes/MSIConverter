@@ -39,8 +39,8 @@ class AdaptiveInterpolationStrategy(InterpolationStrategy):
         
     def interpolate_spectrum(self, 
                            mz_old: NDArray[np.float64],
-                           intensity_old: NDArray[np.float32],
-                           mz_new: NDArray[np.float64]) -> NDArray[np.float32]:
+                           intensity_old: NDArray[np.float64],
+                           mz_new: NDArray[np.float64]) -> NDArray[np.float64]:
         """
         Adaptively interpolate spectrum using best method for the data.
         
@@ -69,7 +69,7 @@ class AdaptiveInterpolationStrategy(InterpolationStrategy):
     
     def _analyze_spectrum(self, 
                          mz_old: NDArray[np.float64],
-                         intensity_old: NDArray[np.float32],
+                         intensity_old: NDArray[np.float64],
                          mz_new: NDArray[np.float64]) -> Dict[str, Any]:
         """
         Analyze spectrum characteristics to guide strategy selection.
@@ -165,8 +165,8 @@ class AdaptiveInterpolationStrategy(InterpolationStrategy):
     
     def _linear_interpolation(self, 
                             mz_old: NDArray[np.float64],
-                            intensity_old: NDArray[np.float32],
-                            mz_new: NDArray[np.float64]) -> NDArray[np.float32]:
+                            intensity_old: NDArray[np.float64],
+                            mz_new: NDArray[np.float64]) -> NDArray[np.float64]:
         """
         Linear interpolation implementation.
         
@@ -179,7 +179,7 @@ class AdaptiveInterpolationStrategy(InterpolationStrategy):
             Linearly interpolated intensity values
         """
         if len(mz_old) == 0:
-            return np.zeros(len(mz_new), dtype=np.float32)
+            return np.zeros(len(mz_new), dtype=np.float64)
             
         intensity_new = np.interp(
             mz_new, 
@@ -188,11 +188,11 @@ class AdaptiveInterpolationStrategy(InterpolationStrategy):
             left=0.0, 
             right=0.0
         )
-        return intensity_new.astype(np.float32)
+        return intensity_new.astype(np.float64)
     
     def get_strategy_selection_info(self, 
                                   mz_old: NDArray[np.float64],
-                                  intensity_old: NDArray[np.float32],
+                                  intensity_old: NDArray[np.float64],
                                   mz_new: NDArray[np.float64]) -> Dict[str, Any]:
         """
         Get information about strategy selection for this spectrum.

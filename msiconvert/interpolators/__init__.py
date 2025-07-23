@@ -17,7 +17,7 @@ class SpectrumData(NamedTuple):
     """Standard spectrum representation"""
     coords: Tuple[int, int, int]  # (x, y, z) coordinates
     mz_values: NDArray[np.float64]  # m/z values
-    intensities: NDArray[np.float32]  # intensity values
+    intensities: NDArray[np.float64]  # intensity values
 
 # Bounds information from metadata
 @dataclass
@@ -37,7 +37,7 @@ class SpectrumBuffer:
     """Reusable buffer for spectrum data"""
     buffer_id: int
     mz_buffer: NDArray[np.float64]  # Pre-allocated
-    intensity_buffer: NDArray[np.float32]  # Pre-allocated
+    intensity_buffer: NDArray[np.float64]  # Pre-allocated
     actual_size: int = 0  # Actual data size
     coords: Tuple[int, int, int] = (0, 0, 0)  # Spectrum coordinates
     
@@ -48,7 +48,7 @@ class SpectrumBuffer:
         if self.actual_size > len(self.mz_buffer):
             # Resize buffers to accommodate larger data
             self.mz_buffer = np.empty(self.actual_size, dtype=np.float64)
-            self.intensity_buffer = np.empty(self.actual_size, dtype=np.float32)
+            self.intensity_buffer = np.empty(self.actual_size, dtype=np.float64)
         self.mz_buffer[:self.actual_size] = mz
         self.intensity_buffer[:self.actual_size] = intensity
         

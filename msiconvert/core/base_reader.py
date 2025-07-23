@@ -242,6 +242,6 @@ class BaseMSIReader(ABC):
             
             # Fill buffer with spectrum data
             buffer.coords = coords
-            buffer.fill(mzs, intensities.astype(np.float32))
+            buffer.fill(mzs, intensities.astype(np.float64))
             
             yield buffer

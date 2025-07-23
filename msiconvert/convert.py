@@ -206,34 +206,73 @@ def convert_msi(
         # Create converter
         converter_class = get_converter_class(format_type.lower())
         logging.info(f"Using converter: {converter_class.__name__}")
+        # Prepare converter arguments
+        converter_kwargs = {
+            "dataset_id": dataset_id,
+            "pixel_size_um": final_pixel_size,
+            "handle_3d": handle_3d,
+            "pixel_size_detection_info": pixel_size_detection_info,
+            **kwargs
+        }
+        
+        # Add interpolation config if provided
+        if interpolation_config is not None and interpolation_config.enabled:
+            converter_kwargs.update({
+                "enable_interpolation": True,
+                "interpolation_bins": interpolation_config.interpolation_bins,
+                "interpolation_method": interpolation_config.method,
+                "interpolation_width": interpolation_config.interpolation_width,
+                "interpolation_width_mz": interpolation_config.interpolation_width_mz,
+                "max_workers": interpolation_config.max_workers,
+                "min_workers": interpolation_config.min_workers,
+                "max_memory_gb": interpolation_config.max_memory_gb,
+                "adaptive_workers": interpolation_config.adaptive_workers,
+                "buffer_size": interpolation_config.buffer_size,
+                "validate_quality": interpolation_config.validate_quality,
+                "physics_model": interpolation_config.physics_model
+            })
+        
         converter = converter_class(
             reader,
             output_path,
-            dataset_id=dataset_id,
-            pixel_size_um=final_pixel_size,
-            handle_3d=handle_3d,
-            pixel_size_detection_info=pixel_size_detection_info,
-            **kwargs,
+            **converter_kwargs
         )
 
-        # Run conversion (with interpolation if configured)
+        # Run conversion (auto-detects interpolation from config)
+        import time
+        start_time = time.time()
+        
         if interpolation_config is not None and interpolation_config.enabled:
-            logging.info(f"Starting conversion with interpolation: {interpolation_config.get_summary()}")
-            
+            logging.info(f"Starting conversion with interpolation enabled")
             # Get reader stats for performance comparison
             reader_stats = getattr(reader, 'get_performance_stats', lambda: {})()
-            
-            import time
-            start_time = time.time()
-            result = converter.convert_with_interpolation(interpolation_config)
-            total_time = time.time() - start_time
-            
-            if result:
-                # Log performance statistics
-                _log_interpolation_performance(interpolation_config, reader_stats, total_time, reader)
         else:
             logging.info("Starting standard conversion...")
-            result = converter.convert()
+            reader_stats = None
+            
+        # The converter.convert() method will auto-detect interpolation
+        result = converter.convert()
+        total_time = time.time() - start_time
+        
+        if result and interpolation_config is not None and interpolation_config.enabled:
+            # Log performance statistics
+            _log_interpolation_performance(interpolation_config, reader_stats, total_time, reader)
+            
+            # Generate quality report if requested
+            if getattr(interpolation_config, 'quality_report', False):
+                from .interpolators.quality_report import InterpolationQualityReport
+                
+                report_generator = InterpolationQualityReport(interpolation_config.__dict__)
+                
+                # Add performance stats from converter
+                if hasattr(converter, 'get_performance_stats'):
+                    converter_stats = converter.get_performance_stats()
+                    report_generator.add_stats(converter_stats)
+                
+                # Generate and display report
+                report_path = output_path.parent / f"{output_path.stem}_quality_report.json"
+                quality_report = report_generator.generate_report(report_path)
+                report_generator.print_summary()
             
         logging.info(f"Conversion {'completed successfully' if result else 'failed'}")
         return result

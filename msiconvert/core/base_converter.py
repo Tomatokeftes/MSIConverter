@@ -43,20 +43,64 @@ class BaseMSIConverter(ABC):
         from ..config import DEFAULT_BUFFER_SIZE
 
         self._buffer_size = DEFAULT_BUFFER_SIZE
+        
+        # Initialize interpolation configuration from kwargs
+        self.interpolation_config = self._create_interpolation_config(**kwargs)
+
+    def _create_interpolation_config(self, **kwargs) -> Any:
+        """
+        Create interpolation configuration from kwargs.
+        
+        Returns:
+            Simple configuration object with interpolation settings
+        """
+        # Simple configuration object to avoid circular imports
+        class SimpleInterpolationConfig:
+            def __init__(self, **kwargs):
+                self.enabled = kwargs.get('enable_interpolation', False)
+                self.method = kwargs.get('interpolation_method', 'pchip')
+                self.interpolation_bins = kwargs.get('interpolation_bins')
+                self.interpolation_width = kwargs.get('interpolation_width')
+                self.interpolation_width_mz = kwargs.get('interpolation_width_mz', 400.0)
+                self.max_memory_gb = kwargs.get('max_memory_gb', 8.0)
+                self.buffer_size = kwargs.get('buffer_size', 1000)
+                self.validate_quality = kwargs.get('validate_quality', True)
+                self.adaptive_workers = kwargs.get('adaptive_workers', True)
+                self.max_workers = kwargs.get('max_workers', 80)
+                self.min_workers = kwargs.get('min_workers', 4)
+                
+        return SimpleInterpolationConfig(**kwargs)
 
     def convert(self) -> bool:
         """
         Template method defining the conversion workflow.
+        
+        Automatically detects if interpolation should be used and routes to
+        the appropriate conversion path.
 
         Returns:
         --------
         bool: True if conversion was successful, False otherwise.
         """
         try:
+            logging.info("[DEBUG] BaseMSIConverter.convert() started")
+            # Check if interpolation should be used
+            if self._should_interpolate():
+                logging.info("Using interpolation-based conversion path")
+                return self._convert_with_interpolation()
+            else:
+                logging.info("Using standard conversion path")
+                
+            # Standard conversion path
+            logging.info("[DEBUG] Starting _initialize_conversion...")
             self._initialize_conversion()
+            logging.info("[DEBUG] Starting _create_data_structures...")
             data_structures = self._create_data_structures()
+            logging.info("[DEBUG] Starting _process_spectra...")
             self._process_spectra(data_structures)
+            logging.info("[DEBUG] Starting _finalize_data...")
             self._finalize_data(data_structures)
+            logging.info("[DEBUG] Starting _save_output...")
             success = self._save_output(data_structures)
 
             return success
@@ -73,18 +117,27 @@ class BaseMSIConverter(ABC):
         """Initialize conversion by loading dimensions, mass axis and metadata."""
         logging.info("Initializing conversion...")
         try:
+            logging.info("[DEBUG] Getting dimensions...")
             self._dimensions = self.reader.get_dimensions()
             if any(d <= 0 for d in self._dimensions):
                 raise ValueError(
                     f"Invalid dimensions: {self._dimensions}. All dimensions must be positive."
                 )
+            logging.info(f"[DEBUG] Dimensions: {self._dimensions}")
 
+            logging.info("[DEBUG] Getting common mass axis (this may take several minutes for large datasets)...")
+            import time
+            start_time = time.time()
             self._common_mass_axis = self.reader.get_common_mass_axis()
+            elapsed_time = time.time() - start_time
+            logging.info(f"[DEBUG] Common mass axis retrieved in {elapsed_time:.1f} seconds, length: {len(self._common_mass_axis)}")
+            
             if len(self._common_mass_axis) == 0:
                 raise ValueError(
                     "Common mass axis is empty. Cannot proceed with conversion."
                 )
 
+            logging.info("[DEBUG] Getting metadata...")
             self._metadata = self.reader.get_metadata()
             if self._metadata is None:  # type: ignore
                 self._metadata = {}  # Initialize with empty dict if None
@@ -248,7 +301,7 @@ class BaseMSIConverter(ABC):
 
     def _create_coordinates_dataframe(self) -> pd.DataFrame:
         """
-        Create a DataFrame containing pixel coordinates.
+        Create a DataFrame containing pixel coordinates using a vectorized approach.
 
         Returns:
         --------
@@ -257,27 +310,31 @@ class BaseMSIConverter(ABC):
         if self._dimensions is None:
             raise ValueError("Dimensions are not initialized.")
         n_x, n_y, n_z = self._dimensions
+        
+        # 1. Create coordinate arrays for each dimension using NumPy
+        # np.meshgrid creates coordinate matrices from coordinate vectors.
+        # 'indexing="ij"' ensures the output order matches the nested loop (z, y, x).
+        zz, yy, xx = np.meshgrid(
+            np.arange(n_z),
+            np.arange(n_y),
+            np.arange(n_x),
+            indexing="ij"
+        )
 
-        coords = []
-        for z in range(n_z):
-            for y in range(n_y):
-                for x in range(n_x):
-                    pixel_idx = z * (n_y * n_x) + y * n_x + x
-                    coords.append(
-                        {  # type: ignore
-                            "z": z,
-                            "y": y,
-                            "x": x,
-                            "pixel_id": str(
-                                pixel_idx
-                            ),  # Convert to string for compatibility
-                        }
-                    )
+        # 2. Create the DataFrame in a single, efficient operation
+        # .ravel() flattens the 3D grid arrays into 1D arrays (columns).
+        coords_df = pd.DataFrame({
+            "z": zz.ravel(),
+            "y": yy.ravel(),
+            "x": xx.ravel()
+        })
 
-        coords_df: pd.DataFrame = pd.DataFrame(coords)
-        coords_df.set_index("pixel_id", inplace=True)  # type: ignore
-
-        # Add spatial coordinates
+        # 3. Create the pixel_id index (also vectorized)
+        pixel_count = n_x * n_y * n_z
+        coords_df.index = np.arange(pixel_count).astype(str)
+        coords_df.index.name = "pixel_id"
+        
+        # 4. Calculate spatial coordinates using vectorized multiplication
         coords_df["spatial_x"] = coords_df["x"] * self.pixel_size_um
         coords_df["spatial_y"] = coords_df["y"] * self.pixel_size_um
         coords_df["spatial_z"] = coords_df["z"] * self.pixel_size_um
@@ -397,29 +454,33 @@ class BaseMSIConverter(ABC):
         # Check if interpolation is enabled in configuration
         interpolation_config = getattr(self, 'interpolation_config', None)
         if not interpolation_config or not getattr(interpolation_config, 'enabled', False):
+            logging.info("[DEBUG] Interpolation not enabled in config")
             return False
             
+        logging.info(f"[DEBUG] Interpolation config found: enabled={interpolation_config.enabled}")
+        
         # Check if reader supports required methods for interpolation
         required_methods = ['get_mass_bounds', 'get_spatial_bounds']
         for method in required_methods:
             if not hasattr(self.reader, method):
                 logging.warning(f"Reader missing {method}, skipping interpolation")
                 return False
-                
+        
+        logging.info("[DEBUG] Reader has all required methods for interpolation")
         return True
         
-    def _setup_interpolation(self) -> Optional['InterpolationConfig']:
+    def _setup_interpolation(self) -> Optional['StreamingInterpolationConfig']:
         """
         Setup interpolation configuration based on reader capabilities and user settings.
         
         Returns:
-            InterpolationConfig or None if interpolation not available
+            StreamingInterpolationConfig or None if interpolation not available
         """
         if not self._should_interpolate():
             return None
             
         try:
-            from ..interpolators.streaming_engine import InterpolationConfig
+            from ..interpolators.streaming_engine import StreamingInterpolationConfig
             from ..interpolators.bounds_detector import detect_bounds_from_reader
             from ..interpolators.physics_models import create_physics_model
             
@@ -455,7 +516,7 @@ class BaseMSIConverter(ABC):
                 )
             
             # Create interpolation configuration
-            config = InterpolationConfig(
+            config = StreamingInterpolationConfig(
                 method=getattr(interp_config, 'method', 'pchip'),
                 target_mass_axis=target_mass_axis,
                 n_workers=self._calculate_optimal_workers(),
@@ -549,54 +610,88 @@ class BaseMSIConverter(ABC):
             bool: True if conversion was successful, False otherwise
         """
         try:
+            logging.info("[DEBUG] Starting _convert_with_interpolation")
             # Setup interpolation
+            logging.info("[DEBUG] Setting up interpolation...")
             interp_config = self._setup_interpolation()
             if interp_config is None:
                 logging.warning("Interpolation setup failed, falling back to standard conversion")
                 return self.convert()
                 
-            from ..interpolators.streaming_engine import StreamingInterpolationEngine
+            logging.info("[DEBUG] Interpolation config created successfully")
+            # Try to use Dask pipeline first, fall back to streaming engine
+            try:
+                from ..processing.dask_pipeline import DaskInterpolationPipeline
+                use_dask = True
+                logging.info("Using Dask-based interpolation pipeline")
+            except ImportError:
+                from ..interpolators.streaming_engine import StreamingInterpolationEngine
+                use_dask = False
+                logging.info("Using threading-based interpolation pipeline")
             
             # Initialize conversion WITHOUT building common mass axis
+            logging.info("[DEBUG] Initializing interpolation conversion...")
             self._initialize_interpolation_conversion(interp_config)
             
             # Use the target mass axis from interpolation config
             self._common_mass_axis = interp_config.target_mass_axis
+            logging.info(f"[DEBUG] Set common mass axis with {len(self._common_mass_axis)} bins")
             
             # Create data structures with interpolated mass axis
+            logging.info("[DEBUG] Creating data structures...")
             data_structures = self._create_data_structures()
+            logging.info("[DEBUG] Data structures created")
             
-            # Create streaming engine
-            engine = StreamingInterpolationEngine(interp_config)
+            # Create processing engine
+            logging.info(f"[DEBUG] Creating {'Dask' if use_dask else 'streaming'} engine...")
+            if use_dask:
+                engine = DaskInterpolationPipeline(interp_config)
+            else:
+                engine = StreamingInterpolationEngine(interp_config)
+            logging.info("[DEBUG] Engine created")
             
             # Create output writer specific to the converter format
+            logging.info("[DEBUG] Creating interpolation writer...")
             output_writer = self._create_interpolation_writer(data_structures)
+            logging.info("[DEBUG] Writer created")
             
             # Process dataset with interpolation
-            engine.process_dataset(
-                reader=self.reader,
-                output_writer=output_writer,
-                progress_callback=self._interpolation_progress_callback
-            )
-            
-            # Finalize with interpolation statistics
-            self._finalize_interpolated_output(data_structures, engine.get_performance_stats())
-            
-            # Save output
-            success = self._save_output(data_structures)
-            
-            if success:
-                # Log interpolation performance statistics
-                stats = engine.get_performance_stats()
-                logging.info(f"Interpolation completed: {stats['spectra_written']} spectra, "
-                           f"{stats['overall_throughput_per_sec']:.1f} spectra/sec")
-                           
-                if stats['quality_summary']:
-                    quality = stats['quality_summary']
-                    logging.info(f"Quality metrics: TIC ratio={quality.get('avg_tic_ratio', 'N/A'):.3f}, "
+            try:
+                # Track start time for progress reporting
+                import time
+                self._interpolation_start_time = time.time()
+                
+                logging.info("[DEBUG] Starting engine.process_dataset...")
+                engine.process_dataset(
+                    reader=self.reader,
+                    output_writer=output_writer,
+                    progress_callback=self._interpolation_progress_callback
+                )
+                logging.info("[DEBUG] engine.process_dataset completed")
+                
+                # Finalize with interpolation statistics
+                self._finalize_interpolated_output(data_structures, engine.get_performance_stats())
+                
+                # Save output
+                success = self._save_output(data_structures)
+                
+                if success:
+                    # Log interpolation performance statistics
+                    stats = engine.get_performance_stats()
+                    logging.info(f"Interpolation completed: {stats['spectra_written']} spectra, "
+                               f"{stats['overall_throughput_per_sec']:.1f} spectra/sec")
+                               
+                    if stats.get('quality_summary'):
+                        quality = stats['quality_summary']
+                        logging.info(f"Quality metrics: TIC ratio={quality.get('avg_tic_ratio', 'N/A'):.3f}, "
                                f"peak preservation={quality.get('avg_peak_preservation', 'N/A'):.3f}")
-            
-            return success
+                
+                return success
+                
+            finally:
+                # Clean shutdown of processing engine
+                if hasattr(engine, 'shutdown'):
+                    engine.shutdown()
             
         except Exception as e:
             logging.error(f"Interpolation conversion failed: {e}")
@@ -619,7 +714,7 @@ class BaseMSIConverter(ABC):
         """
         def default_writer(coords: Tuple[int, int, int], 
                           mass_axis: NDArray[np.float64], 
-                          intensities: NDArray[np.float32]):
+                          intensities: NDArray[np.float64]):
             """Default writer that falls back to standard processing"""
             # Convert back to the format expected by _process_single_spectrum
             self._process_single_spectrum(data_structures, coords, mass_axis, intensities)
@@ -635,9 +730,11 @@ class BaseMSIConverter(ABC):
             total: Total number of spectra
         """
         # This can be overridden by subclasses for custom progress reporting
-        if completed % 1000 == 0:  # Log every 1000 spectra
+        if completed % 1000 == 0 or completed == total:  # Log every 1000 spectra and at completion
             progress = (completed / total) * 100 if total > 0 else 0
-            logging.info(f"Interpolation progress: {completed}/{total} ({progress:.1f}%)")
+            import time
+            rate = completed / ((time.time() - getattr(self, '_interpolation_start_time', time.time())) or 1)
+            logging.info(f"Interpolation progress: {completed}/{total} ({progress:.1f}%) - {rate:.0f} spectra/sec")
             
     def _finalize_interpolated_output(self, data_structures: Any, stats: dict):
         """

@@ -1,6 +1,7 @@
 # msiconvert/__main__.py
 import argparse
 import logging
+import signal
 import sys
 from pathlib import Path
 
@@ -9,6 +10,13 @@ from msiconvert.core.registry import detect_format, get_reader_class
 from msiconvert.utils.data_processors import optimize_zarr_chunks
 from msiconvert.utils.logging_config import setup_logging
 from msiconvert.config import InterpolationConfig
+
+
+def signal_handler(signum, frame):
+    """Handle Ctrl+C gracefully"""
+    print("\n\nReceived interrupt signal. Attempting graceful shutdown...")
+    logging.info("Conversion interrupted by user")
+    sys.exit(1)
 
 
 def prompt_for_pixel_size(detected_size=None):
@@ -200,6 +208,10 @@ def dry_run_conversion(
 
 
 def main():
+    # Register signal handler for graceful shutdown
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     parser = argparse.ArgumentParser(
         description="Convert MSI data to SpatialData format"
     )
@@ -295,7 +307,30 @@ def main():
         "--physics-model",
         choices=["auto", "tof", "orbitrap", "fticr"],
         default="auto",
-        help="Physics model for optimal mass axis generation (default: auto)",
+        help="Instrument physics model for optimal spacing (default: auto-detect)"
+    )
+    parser.add_argument(
+        "--interpolation-quality-report",
+        action="store_true",
+        help="Generate quality report after interpolation"
+    )
+    parser.add_argument(
+        "--adaptive-workers",
+        action="store_true",
+        default=True,
+        help="Adaptively scale worker count based on performance"
+    )
+    parser.add_argument(
+        "--max-memory-gb",
+        type=float,
+        default=8.0,
+        help="Maximum memory usage for interpolation (GB) (default: 8.0)"
+    )
+    parser.add_argument(
+        "--buffer-size",
+        type=int,
+        default=1000,
+        help="Buffer size for interpolation processing (default: 1000)"
     )
 
     args = parser.parse_args()
@@ -306,6 +341,10 @@ def main():
 
     if not args.dataset_id.strip():
         parser.error("Dataset ID cannot be empty")
+        
+    # Interpolation argument validation
+    if args.interpolation_bins and args.interpolation_width:
+        parser.error("Cannot specify both --interpolation-bins and --interpolation-width")
 
     # Validate input path exists and is accessible
     input_path = Path(args.input)
@@ -350,6 +389,12 @@ def main():
         
     if args.max_workers is not None and args.max_workers < args.min_workers:
         parser.error("Maximum workers must be >= minimum workers ({} < {})".format(args.max_workers, args.min_workers))
+        
+    if args.max_memory_gb <= 0:
+        parser.error("Maximum memory must be positive (got: {})".format(args.max_memory_gb))
+        
+    if args.buffer_size <= 0:
+        parser.error("Buffer size must be positive (got: {})".format(args.buffer_size))
 
     # Configure logging
     setup_logging(log_level=getattr(logging, args.log_level), log_file=args.log_file)
@@ -386,10 +431,14 @@ def main():
             interpolation_bins=args.interpolation_bins,
             interpolation_width=args.interpolation_width,
             interpolation_width_mz=args.interpolation_width_mz,
-            max_workers=args.max_workers or 80,  # Use default max if not specified
+            max_workers=min(args.max_workers or 4, 4),  # LIMIT to 4 workers max for now
             min_workers=args.min_workers,
             validate_quality=not args.no_quality_validation,
             physics_model=args.physics_model,
+            adaptive_workers=args.adaptive_workers,
+            quality_report=args.interpolation_quality_report,
+            max_memory_gb=args.max_memory_gb,
+            buffer_size=args.buffer_size,
         )
         logging.info(f"Interpolation enabled: {interpolation_config.get_summary()}")
 

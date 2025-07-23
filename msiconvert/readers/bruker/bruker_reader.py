@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 @register_reader("bruker")
 class BrukerReader(BaseMSIReader):
     """
-    Ultimate Bruker reader combining the best features from multiple implementations.
+    Bruker reader combining the best features from multiple implementations.
 
     Features:
     - Lazy loading with intelligent caching
@@ -52,7 +52,7 @@ class BrukerReader(BaseMSIReader):
         **kwargs,
     ):
         """
-        Initialize the Ultimate Bruker reader.
+        Initialize the Bruker reader.
 
         Args:
             data_path: Path to Bruker .d directory
@@ -93,7 +93,7 @@ class BrukerReader(BaseMSIReader):
         }
 
         logger.info(
-            f"Initialized Ultimate BrukerReader for {self.file_type.upper()} data at {data_path}"
+            f"Initialized BrukerReader for {self.file_type.upper()} data at {data_path}"
         )
 
     def _validate_data_path(self) -> None:

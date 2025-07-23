@@ -28,7 +28,7 @@ class SpectrumBufferPool:
             buffer = SpectrumBuffer(
                 buffer_id=i,
                 mz_buffer=np.empty(buffer_size, dtype=np.float64),
-                intensity_buffer=np.empty(buffer_size, dtype=np.float32)
+                intensity_buffer=np.empty(buffer_size, dtype=np.float64)
             )
             self.free_buffers.append(buffer)
             
@@ -51,7 +51,7 @@ class SpectrumBufferPool:
                 buffer = SpectrumBuffer(
                     buffer_id=1000 + self.allocated_count,
                     mz_buffer=np.empty(self.buffer_size, dtype=np.float64),
-                    intensity_buffer=np.empty(self.buffer_size, dtype=np.float32)
+                    intensity_buffer=np.empty(self.buffer_size, dtype=np.float64)
                 )
                 self.allocated_count += 1
                 self.emergency_allocations += 1
@@ -244,9 +244,11 @@ class AdaptiveMemoryManager:
             
         optimal_count = int(buffer_memory / memory_per_buffer)
         
-        # Ensure reasonable bounds
-        min_buffers = n_workers * 2
-        max_buffers = n_workers * 10
+        # Ensure reasonable bounds based on pipeline depth
+        # Need buffers for: reading (n_workers), processing (n_workers), writing (n_workers)
+        # Plus pipeline depth buffering (100-500 spectra in flight)
+        min_buffers = n_workers * 3
+        max_buffers = max(n_workers * 50, 2000)  # Much higher limit for large datasets
         
         return max(min_buffers, min(optimal_count, max_buffers))
         

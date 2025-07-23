@@ -50,6 +50,9 @@ class SpatialDataConverter(BaseMSIConverter):
         pixel_size_um: float = 1.0,
         handle_3d: bool = False,
         pixel_size_detection_info: Optional[Dict[str, Any]] = None,
+        enable_interpolation: bool = False,
+        interpolation_bins: Optional[int] = None,
+        interpolation_method: str = "pchip",
         **kwargs: Any,
     ) -> None:
         """
@@ -62,6 +65,9 @@ class SpatialDataConverter(BaseMSIConverter):
             pixel_size_um: Size of each pixel in micrometers
             handle_3d: Whether to process as 3D data (True) or 2D slices (False)
             pixel_size_detection_info: Optional metadata about pixel size detection
+            enable_interpolation: Whether to enable intelligent interpolation (default: True)
+            interpolation_bins: Number of bins for interpolation (default: auto-detect)
+            interpolation_method: Interpolation method to use (default: "pchip")
             **kwargs: Additional keyword arguments
 
         Raises:
@@ -91,6 +97,25 @@ class SpatialDataConverter(BaseMSIConverter):
 
         self._non_empty_pixel_count: int = 0
         self._pixel_size_detection_info = pixel_size_detection_info
+        
+        # Setup interpolation configuration
+        from dataclasses import dataclass
+        
+        @dataclass
+        class InterpolationConfig:
+            enabled: bool = False
+            method: str = "pchip"
+            interpolation_bins: Optional[int] = None
+            max_workers: int = 80
+            max_memory_gb: float = 8.0
+            validate_quality: bool = True
+            adaptive_workers: bool = True
+            
+        self.interpolation_config = InterpolationConfig(
+            enabled=enable_interpolation,
+            method=interpolation_method,
+            interpolation_bins=interpolation_bins
+        )
         
         # Get spatial bounds for coordinate normalization
         if hasattr(reader, 'get_spatial_bounds'):
@@ -847,7 +872,7 @@ class SpatialDataConverter(BaseMSIConverter):
         """
         config = stats.get('config', {})
         original_bins = config.get('original_mass_points', 0)
-        interpolated_bins = config.get('target_bins', len(self._common_mass_axis) if self._common_mass_axis else 0)
+        interpolated_bins = config.get('target_bins', len(self._common_mass_axis) if self._common_mass_axis is not None and len(self._common_mass_axis) > 0 else 0)
         
         if original_bins > 0 and interpolated_bins > 0:
             reduction_factor = original_bins / interpolated_bins

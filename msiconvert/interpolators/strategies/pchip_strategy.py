@@ -35,8 +35,8 @@ class PchipInterpolationStrategy(InterpolationStrategy):
         
     def interpolate_spectrum(self, 
                            mz_old: NDArray[np.float64],
-                           intensity_old: NDArray[np.float32],
-                           mz_new: NDArray[np.float64]) -> NDArray[np.float32]:
+                           intensity_old: NDArray[np.float64],
+                           mz_new: NDArray[np.float64]) -> NDArray[np.float64]:
         """
         Interpolate spectrum using PCHIP method.
         
@@ -57,11 +57,11 @@ class PchipInterpolationStrategy(InterpolationStrategy):
             
         # Handle edge cases
         if len(mz_old) == 0:
-            return np.zeros(len(mz_new), dtype=np.float32)
+            return np.zeros(len(mz_new), dtype=np.float64)
             
         if len(mz_old) == 1:
             # Single peak - place at nearest new m/z
-            result = np.zeros(len(mz_new), dtype=np.float32)
+            result = np.zeros(len(mz_new), dtype=np.float64)
             if len(mz_new) > 0:
                 idx = np.searchsorted(mz_new, mz_old[0])
                 if 0 <= idx < len(mz_new):
@@ -97,7 +97,7 @@ class PchipInterpolationStrategy(InterpolationStrategy):
             # Ensure non-negative values (PCHIP should guarantee this, but be safe)
             intensity_new = np.maximum(intensity_new, 0.0)
             
-            return intensity_new.astype(np.float32)
+            return intensity_new.astype(np.float64)
             
         except Exception as e:
             logging.warning(f"PCHIP interpolation failed: {e}. Falling back to linear.")
@@ -105,8 +105,8 @@ class PchipInterpolationStrategy(InterpolationStrategy):
     
     def _linear_interpolation(self, 
                             mz_old: NDArray[np.float64],
-                            intensity_old: NDArray[np.float32],
-                            mz_new: NDArray[np.float64]) -> NDArray[np.float32]:
+                            intensity_old: NDArray[np.float64],
+                            mz_new: NDArray[np.float64]) -> NDArray[np.float64]:
         """
         Fallback linear interpolation for edge cases.
         
@@ -125,12 +125,12 @@ class PchipInterpolationStrategy(InterpolationStrategy):
             left=0.0, 
             right=0.0
         )
-        return intensity_new.astype(np.float32)
+        return intensity_new.astype(np.float64)
     
     def interpolate_with_validation(self, 
                                   mz_old: NDArray[np.float64],
-                                  intensity_old: NDArray[np.float32],
-                                  mz_new: NDArray[np.float64]) -> Tuple[NDArray[np.float32], QualityMetrics]:
+                                  intensity_old: NDArray[np.float64],
+                                  mz_new: NDArray[np.float64]) -> Tuple[NDArray[np.float64], QualityMetrics]:
         """
         Interpolate spectrum with quality validation.
         
@@ -165,8 +165,8 @@ class PchipInterpolationStrategy(InterpolationStrategy):
             return intensity_new, metrics
     
     def interpolate_batch(self, 
-                         spectra_data: list[Tuple[NDArray[np.float64], NDArray[np.float32]]],
-                         mz_new: NDArray[np.float64]) -> list[NDArray[np.float32]]:
+                         spectra_data: list[Tuple[NDArray[np.float64], NDArray[np.float64]]],
+                         mz_new: NDArray[np.float64]) -> list[NDArray[np.float64]]:
         """
         Batch interpolation for multiple spectra (future optimization point).
         
