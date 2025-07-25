@@ -74,6 +74,9 @@ class BrukerMetadataExtractor(MetadataExtractor):
             imaging_min_y = bounds_data.get("ImagingAreaMinYIndexPos", min_y_raw or 0)
             imaging_max_y = bounds_data.get("ImagingAreaMaxYIndexPos", max_y_raw or 0)
 
+            # Store imaging area offsets for coordinate normalization
+            imaging_area_offsets = (int(imaging_min_x), int(imaging_min_y), 0)
+            
             # Normalize coordinates to start from 0
             min_x = 0.0  # Normalized coordinates always start from 0
             max_x = float(imaging_max_x - imaging_min_x)
@@ -137,6 +140,7 @@ class BrukerMetadataExtractor(MetadataExtractor):
                 n_spectra=n_spectra,
                 estimated_memory_gb=estimated_memory,
                 source_path=str(self.data_path),
+                coordinate_offsets=imaging_area_offsets,
             )
 
         except sqlite3.OperationalError as e:

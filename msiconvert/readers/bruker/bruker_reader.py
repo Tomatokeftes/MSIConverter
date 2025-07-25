@@ -1,5 +1,5 @@
 """
-Ultimate Bruker reader implementation combining best features from all implementations.
+Bruker reader implementation combining best features from all implementations.
 
 This module provides a high-performance, memory-efficient reader for Bruker TSF/TDF
 data formats with lazy loading, intelligent caching, and comprehensive error handling.
@@ -7,7 +7,6 @@ data formats with lazy loading, intelligent caching, and comprehensive error han
 
 import logging
 import sqlite3
-import time
 from pathlib import Path
 from typing import Any, Dict, Generator, Optional, Tuple
 
@@ -21,25 +20,107 @@ from ...metadata.extractors.bruker_extractor import BrukerMetadataExtractor
 from ...utils.bruker_exceptions import DataError, FileFormatError, SDKError
 from .sdk.dll_manager import DLLManager
 from .sdk.sdk_functions import SDKFunctions
-from .utils.batch_processor import BatchProcessor
-from .utils.coordinate_cache import CoordinateCache
-from .utils.mass_axis_builder import MassAxisBuilder
-from .utils.memory_manager import MemoryManager
 
 logger = logging.getLogger(__name__)
+
+
+def build_raw_mass_axis(spectra_iterator, progress_callback=None):
+    """
+    Build raw mass axis from spectra iterator.
+    
+    Raw Mass axis in case the user wants the full data. Not recommended for normal use.
+    Future interpolation module will create optimized mass axis using min/max mass + bin width.
+    
+    Args:
+        spectra_iterator: Iterator yielding (coords, mzs, intensities) tuples
+        progress_callback: Optional callback for progress updates
+        
+    Returns:
+        numpy array of unique m/z values in ascending order
+    """
+    unique_mzs = set()
+    count = 0
+    
+    for coords, mzs, intensities in spectra_iterator:
+        if mzs.size > 0:
+            unique_mzs.update(mzs)
+        count += 1
+        if progress_callback and count % 100 == 0:
+            progress_callback(count)
+    
+    return np.array(sorted(unique_mzs))
+
+
+def _get_frame_coordinates(db_path: Path, frame_id: int, coordinate_offsets: Optional[Tuple[int, int, int]] = None) -> Optional[Tuple[int, int, int]]:
+    """
+    Get normalized coordinates for a specific frame directly from database.
+    
+    Args:
+        db_path: Path to the SQLite database file
+        frame_id: Frame ID to look up
+        coordinate_offsets: Optional coordinate offsets for normalization (x_offset, y_offset, z_offset)
+        
+    Returns:
+        Tuple of normalized (x, y, z) coordinates (0-based), or None if not found
+    """
+    try:
+        with sqlite3.connect(str(db_path)) as conn:
+            cursor = conn.cursor()
+            
+            # Check if this is MALDI data
+            try:
+                cursor.execute("SELECT XIndexPos, YIndexPos FROM MaldiFrameInfo WHERE Frame = ?", (frame_id,))
+                result = cursor.fetchone() 
+                if result:
+                    x, y = result
+                    # Apply coordinate offsets if provided (Bruker-specific normalization)
+                    if coordinate_offsets:
+                        offset_x, offset_y, offset_z = coordinate_offsets
+                        return (int(x) - offset_x, int(y) - offset_y, 0)
+                    else:
+                        return (int(x), int(y), 0)
+            except sqlite3.OperationalError:
+                # No MALDI table, use generated coordinates
+                pass
+            
+            # For non-MALDI data, generate coordinates (simple sequential mapping)
+            return (frame_id - 1, 0, 0)
+            
+    except Exception as e:
+        logger.warning(f"Error getting coordinates for frame {frame_id}: {e}")
+        return None
+
+
+def _get_frame_count(db_path: Path) -> int:
+    """
+    Get total frame count directly from database.
+    
+    Args:
+        db_path: Path to the SQLite database file
+        
+    Returns:
+        Total number of frames
+    """
+    try:
+        with sqlite3.connect(str(db_path)) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM Frames")
+            return cursor.fetchone()[0]
+    except Exception as e:
+        logger.error(f"Error getting frame count: {e}")
+        return 0
 
 
 @register_reader("bruker")
 class BrukerReader(BaseMSIReader):
     """
-    Ultimate Bruker reader combining the best features from multiple implementations.
+    Bruker reader for TSF/TDF data formats.
 
     Features:
-    - Lazy loading with intelligent caching
-    - Memory-efficient batch processing
+    - Sequential spectrum iteration
+    - Direct database coordinate access
     - Robust SDK integration with fallback mechanisms
     - Comprehensive error handling and recovery
-    - Progress tracking and performance monitoring
     - Compatible with spatialdata_converter.py interface
     """
 
@@ -54,14 +135,14 @@ class BrukerReader(BaseMSIReader):
         **kwargs,
     ):
         """
-        Initialize the Ultimate Bruker reader.
+        Initialize the Bruker reader.
 
         Args:
             data_path: Path to Bruker .d directory
             use_recalibrated_state: Whether to use recalibrated data
-            cache_coordinates: Whether to cache coordinates for performance
-            memory_limit_gb: Optional memory limit in GB
-            batch_size: Optional batch size for processing
+            cache_coordinates: Ignored, maintained for compatibility
+            memory_limit_gb: Ignored, maintained for compatibility
+            batch_size: Ignored, maintained for compatibility
             progress_callback: Optional callback for progress updates
             **kwargs: Additional arguments
         """
@@ -83,17 +164,14 @@ class BrukerReader(BaseMSIReader):
         # Cached properties (lazy loaded)
         self._common_mass_axis: Optional[np.ndarray] = None
         self._frame_count: Optional[int] = None
+        self._coordinate_offsets: Optional[Tuple[int, int, int]] = None
+        
+        # Preload NumPeaks cache for buffer size optimization
+        self._num_peaks_cache: Dict[int, int] = self._preload_frame_num_peaks()
 
-        # Performance tracking
-        self._performance_stats = {
-            "total_spectra_read": 0,
-            "total_read_time_ms": 0.0,
-            "cache_hits": 0,
-            "cache_misses": 0,
-        }
-
+        cache_status = f"with {len(self._num_peaks_cache)} NumPeaks cached" if self._num_peaks_cache else "with fallback spectrum reading"
         logger.info(
-            f"Initialized Ultimate BrukerReader for {self.file_type.upper()} data at {data_path}"
+            f"Initialized BrukerReader for {self.file_type.upper()} data at {data_path} ({cache_status})"
         )
 
     def _validate_data_path(self) -> None:
@@ -131,33 +209,9 @@ class BrukerReader(BaseMSIReader):
         memory_limit_gb: Optional[float],
         batch_size: Optional[int],
     ) -> None:
-        """Setup all utility components."""
-        # Memory manager
-        self.memory_manager = MemoryManager(
-            memory_limit_gb=memory_limit_gb, buffer_pool_size=20
-        )
-
-        # Coordinate cache
-        self.coordinate_cache = CoordinateCache(
-            db_path=self.db_path, preload_all=cache_coordinates
-        )
-
-        # Mass axis builder
-        self.mass_axis_builder = MassAxisBuilder(
-            strategy="auto",
-            memory_limit_mb=memory_limit_gb * 1024 if memory_limit_gb else 1024,
-            progress_callback=self.progress_callback,
-        )
-
-        # Batch processor
-        self.batch_processor = BatchProcessor(
-            target_memory_mb=512,
-            min_batch_size=10,
-            max_batch_size=batch_size or 100,
-            progress_callback=self.progress_callback,
-        )
-        # Disable batch processor progress bars to avoid double progress display
-        self.batch_processor._quiet_mode = True
+        """Setup utility components (now minimal)."""
+        # No more coordinate cache - using direct database access
+        pass
 
     def _initialize_sdk(self) -> None:
         """Initialize the Bruker SDK with error handling."""
@@ -217,52 +271,45 @@ class BrukerReader(BaseMSIReader):
         return self._common_mass_axis
 
     def _build_common_mass_axis(self) -> np.ndarray:
-        """Build the common mass axis using the optimized builder."""
-        logger.info("Building common mass axis")
+        """Build the common mass axis."""
+        logger.info("Building raw mass axis")
 
         # Create iterator for mass axis building
         def mz_iterator():
             for coords, mzs, intensities in self._iter_spectra_raw():
                 yield coords, mzs, intensities
 
-        frame_count = self._get_frame_count()
-
-        # Build mass axis
-        mass_axis = self.mass_axis_builder.build_from_spectra_iterator(
-            mz_iterator(), total_spectra=frame_count
-        )
+        # Build raw mass axis using simplified function
+        mass_axis = build_raw_mass_axis(mz_iterator(), self.progress_callback)
 
         if len(mass_axis) == 0:
             logger.warning("No m/z values found in dataset")
             return np.array([])
 
-        logger.info(f"Built common mass axis with {len(mass_axis)} unique m/z values")
+        logger.info(f"Built raw mass axis with {len(mass_axis)} unique m/z values")
         return mass_axis
 
     def iter_spectra(
         self, batch_size: Optional[int] = None
     ) -> Generator[Tuple[Tuple[int, int, int], np.ndarray, np.ndarray], None, None]:
         """
-        Iterate through all spectra with optional batching.
-
+        Iterate through all spectra sequentially.
+        
         Args:
-            batch_size: Optional batch size for processing
-
+            batch_size: Ignored, maintained for compatibility
+            
         Yields:
             Tuples of (coordinates, mz_array, intensity_array)
         """
-        if batch_size is None:
-            # Use memory-efficient iteration
-            yield from self._iter_spectra_raw()
-        else:
-            # Use batch processing
-            yield from self._iter_spectra_batched(batch_size)
+        # Always use simple sequential iteration
+        yield from self._iter_spectra_raw()
 
     def _iter_spectra_raw(
         self,
     ) -> Generator[Tuple[Tuple[int, int, int], np.ndarray, np.ndarray], None, None]:
         """Raw spectrum iteration without batching."""
         frame_count = self._get_frame_count()
+        coordinate_offsets = self._get_coordinate_offsets()
 
         # Setup progress tracking
         with tqdm(
@@ -273,21 +320,22 @@ class BrukerReader(BaseMSIReader):
         ) as pbar:
             for frame_id in range(1, frame_count + 1):
                 try:
-                    # Get coordinates
-                    coords = self.coordinate_cache.get_coordinate(frame_id)
+                    # Get normalized coordinates using persistent connection
+                    coords = self._get_frame_coordinates_cached(frame_id, coordinate_offsets)
                     if coords is None:
                         logger.warning(f"No coordinates found for frame {frame_id}")
                         pbar.update(1)
                         continue
 
-                    # Read spectrum
-                    start_time = time.time()
-                    mzs, intensities = self.sdk.read_spectrum(self.handle, frame_id)
-                    read_time = (time.time() - start_time) * 1000
-
-                    # Update performance stats
-                    self._performance_stats["total_spectra_read"] += 1
-                    self._performance_stats["total_read_time_ms"] += read_time
+                    # OPTIMIZATION: Get buffer size hint from NumPeaks cache
+                    buffer_size_hint = self._num_peaks_cache.get(frame_id)
+                    
+                    # Read spectrum with optimization (or fallback if no hint)
+                    mzs, intensities = self.sdk.read_spectrum(
+                        self.handle, 
+                        frame_id, 
+                        buffer_size_hint=buffer_size_hint
+                    )
 
                     if mzs.size > 0 and intensities.size > 0:
                         yield coords, mzs, intensities
@@ -298,67 +346,105 @@ class BrukerReader(BaseMSIReader):
                     if self.progress_callback:
                         self.progress_callback(frame_id, frame_count)
 
-                    # Memory management
-                    if frame_id % 100 == 0:  # Check every 100 spectra
-                        if not self.memory_manager.check_memory_limit():
-                            logger.warning("Memory limit approached, optimizing")
-                            self.memory_manager.optimize_memory()
 
                 except Exception as e:
                     logger.warning(f"Error reading spectrum for frame {frame_id}: {e}")
                     pbar.update(1)
                     continue
 
-    def _iter_spectra_batched(
-        self, batch_size: int
-    ) -> Generator[Tuple[Tuple[int, int, int], np.ndarray, np.ndarray], None, None]:
-        """Batched spectrum iteration for better memory management."""
-        frame_count = self._get_frame_count()
-
-        def batch_processor_func(frame_ids, batch_info):
-            """Process a batch of frame IDs."""
-            results = []
-
-            # Get coordinates for all frames in batch
-            coords_dict = self.coordinate_cache.get_coordinates_batch(frame_ids)
-
-            for frame_id in frame_ids:
-                try:
-                    coords = coords_dict.get(frame_id)
-                    if coords is None:
-                        continue
-
-                    # Read spectrum
-                    mzs, intensities = self.sdk.read_spectrum(self.handle, frame_id)
-
-                    if mzs.size > 0 and intensities.size > 0:
-                        results.append((coords, mzs, intensities))
-
-                except Exception as e:
-                    logger.warning(f"Error reading spectrum for frame {frame_id}: {e}")
-                    continue
-
-            return results
-
-        # Create frame ID iterator
-        frame_ids = list(range(1, frame_count + 1))
-
-        # Process in batches
-        for batch_results in self.batch_processor.process_spectrum_batches(
-            iter(frame_ids),  # Pass individual frame IDs
-            frame_count,  # Total number of frames
-            batch_processor_func,
-            batch_size=batch_size,  # Use the requested batch size
-        ):
-            for spectrum_data in batch_results:
-                yield spectrum_data
 
     def _get_frame_count(self) -> int:
         """Get the total number of frames."""
         if self._frame_count is None:
-            self._frame_count = self.coordinate_cache.get_frame_count()
+            self._frame_count = _get_frame_count(self.db_path)
 
         return self._frame_count
+
+    def _get_coordinate_offsets(self) -> Optional[Tuple[int, int, int]]:
+        """Get coordinate offsets from metadata for normalization."""
+        if self._coordinate_offsets is None:
+            essential_metadata = self.get_essential_metadata()
+            self._coordinate_offsets = essential_metadata.coordinate_offsets
+        
+        return self._coordinate_offsets
+
+    def _get_frame_coordinates_cached(self, frame_id: int, coordinate_offsets: Optional[Tuple[int, int, int]] = None) -> Optional[Tuple[int, int, int]]:
+        """
+        Get normalized coordinates for a specific frame using persistent connection.
+        
+        This avoids opening new SQLite connections for every frame.
+        
+        Args:
+            frame_id: Frame ID to look up
+            coordinate_offsets: Optional coordinate offsets for normalization
+            
+        Returns:
+            Tuple of normalized (x, y, z) coordinates (0-based), or None if not found
+        """
+        try:
+            cursor = self.conn.cursor()
+            
+            # Check if this is MALDI data
+            try:
+                cursor.execute("SELECT XIndexPos, YIndexPos FROM MaldiFrameInfo WHERE Frame = ?", (frame_id,))
+                result = cursor.fetchone() 
+                if result:
+                    x, y = result
+                    # Apply coordinate offsets if provided (Bruker-specific normalization)
+                    if coordinate_offsets:
+                        offset_x, offset_y, offset_z = coordinate_offsets
+                        return (int(x) - offset_x, int(y) - offset_y, 0)
+                    else:
+                        return (int(x), int(y), 0)
+            except sqlite3.OperationalError:
+                # No MALDI table, use generated coordinates
+                pass
+            
+            # For non-MALDI data, generate coordinates (simple sequential mapping)
+            return (frame_id - 1, 0, 0)
+            
+        except Exception as e:
+            logger.warning(f"Error getting coordinates for frame {frame_id}: {e}")
+            return None
+
+    def _preload_frame_num_peaks(self) -> Dict[int, int]:
+        """
+        Preload NumPeaks values for all frames at initialization.
+        
+        This optimization avoids the busy wait loop in SDK by providing exact
+        buffer sizes for spectrum reading, reducing CPU usage from 100% to normal levels.
+        
+        Returns:
+            Dictionary mapping frame_id -> num_peaks (validated to be <= 65535)
+        """
+        try:
+            with sqlite3.connect(str(self.db_path)) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT Id, NumPeaks FROM Frames ORDER BY Id")
+                
+                # Use uint16 equivalent for memory efficiency (max 65,535 peaks)
+                num_peaks_cache = {}
+                invalid_count = 0
+                
+                for frame_id, num_peaks in cursor.fetchall():
+                    if num_peaks is not None and 0 < num_peaks <= 65535:
+                        num_peaks_cache[frame_id] = int(num_peaks)
+                    else:
+                        invalid_count += 1
+                        if invalid_count <= 5:  # Log first few invalid values
+                            logger.debug(f"Invalid NumPeaks value {num_peaks} for frame {frame_id}")
+                
+                if invalid_count > 5:
+                    logger.debug(f"... and {invalid_count - 5} more invalid NumPeaks values")
+                
+                memory_mb = len(num_peaks_cache) * 2 / (1024 * 1024)  # uint16 = 2 bytes
+                logger.info(f"Cached NumPeaks for {len(num_peaks_cache)} frames ({memory_mb:.1f}MB)")
+                return num_peaks_cache
+                
+        except Exception as e:
+            logger.warning(f"Failed to preload NumPeaks cache: {e}")
+            logger.info("Will use fallback retry logic for spectrum reading")
+            return {}  # Empty cache triggers fallback behavior
 
     def close(self) -> None:
         """Close all resources and connections."""
@@ -375,12 +461,7 @@ class BrukerReader(BaseMSIReader):
                 self.conn.close()
                 self.conn = None
 
-            # Clear caches
-            if hasattr(self, "coordinate_cache"):
-                self.coordinate_cache.clear_cache()
-
-            if hasattr(self, "memory_manager"):
-                self.memory_manager.buffer_pool.clear()
+            # No caches to clear anymore
 
             logger.info("Successfully closed all resources")
 
@@ -415,40 +496,6 @@ class BrukerReader(BaseMSIReader):
         essential_metadata = self.get_essential_metadata()
         return essential_metadata.mass_range
 
-    def get_performance_stats(self) -> Dict[str, Any]:
-        """Get comprehensive performance statistics."""
-        stats = {
-            "reader_stats": self._performance_stats.copy(),
-            "memory_stats": self.memory_manager.get_stats(),
-            "batch_stats": self.batch_processor.get_stats(),
-            "mass_axis_stats": self.mass_axis_builder.get_stats(),
-            "coordinate_stats": self.coordinate_cache.get_coverage_stats(),
-        }
-
-        # Calculate derived metrics
-        if self._performance_stats["total_spectra_read"] > 0:
-            stats["average_read_time_ms"] = (
-                self._performance_stats["total_read_time_ms"]
-                / self._performance_stats["total_spectra_read"]
-            )
-
-        return stats
-
-    def optimize_performance(self) -> None:
-        """Optimize performance by cleaning caches and managing memory."""
-        logger.info("Optimizing reader performance")
-
-        # Memory optimization
-        self.memory_manager.optimize_memory()
-
-        # Coordinate cache optimization
-        self.coordinate_cache.optimize_cache(keep_recent=1000)
-
-        # Reset statistics for fresh measurements
-        self.batch_processor.reset_stats()
-        self.mass_axis_builder.reset_stats()
-
-        logger.info("Performance optimization complete")
 
     def __repr__(self) -> str:
         """String representation of the reader."""

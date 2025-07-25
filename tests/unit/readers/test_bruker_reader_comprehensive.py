@@ -25,7 +25,6 @@ from msiconvert.utils.bruker_exceptions import (
     DataError,
     SDKError,
 )
-from msiconvert.readers.bruker.utils.memory_manager import MemoryManager
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +64,7 @@ class BrukerReaderTester:
             ("Coordinate Access", self.test_coordinate_access),
             ("Spectrum Reading", self.test_spectrum_reading),
             ("Common Mass Axis", self.test_common_mass_axis),
-            ("Memory Management", self.test_memory_management),
-            ("Batch Processing", self.test_batch_processing),
+            ("Sequential Processing", self.test_sequential_processing),
             ("Performance Metrics", self.test_performance),
             ("Error Handling", self.test_error_handling),
             ("Resource Cleanup", self.test_cleanup),
@@ -252,59 +250,45 @@ class BrukerReaderTester:
                 "mass_range": float(np.max(mass_axis) - np.min(mass_axis)),
             }
 
-    def test_memory_management(self) -> Dict[str, Any]:
-        """Test memory management features."""
-        with BrukerReader(self.test_data_path, memory_limit_gb=1.0) as reader:
-            # Get initial memory stats
-            initial_stats = reader.memory_manager.get_stats()
-
-            # Read some spectra to test buffer management
+    def test_spectrum_reading(self) -> Dict[str, Any]:
+        """Test spectrum reading without memory management complexity."""
+        with BrukerReader(self.test_data_path) as reader:
+            # Read some spectra to test iteration
             spectrum_count = 0
+            total_peaks = 0
+            
             for coords, mzs, intensities in reader.iter_spectra():
                 spectrum_count += 1
+                total_peaks += len(mzs)
                 if spectrum_count >= 20:
                     break
 
-            # Get final memory stats
-            final_stats = reader.memory_manager.get_stats()
-
-            # Test memory optimization
-            reader.memory_manager.optimize_memory()
-
             return {
-                "initial_memory_mb": initial_stats["rss_mb"],
-                "final_memory_mb": final_stats["rss_mb"],
-                "peak_memory_mb": final_stats["peak_mb"],
-                "buffer_pool_stats": reader.memory_manager.buffer_pool.get_stats(),
+                "spectrum_count": spectrum_count,
+                "total_peaks": total_peaks,
+                "avg_peaks_per_spectrum": total_peaks / spectrum_count if spectrum_count > 0 else 0,
             }
 
-    def test_batch_processing(self) -> Dict[str, Any]:
-        """Test batch processing functionality."""
+    def test_sequential_processing(self) -> Dict[str, Any]:
+        """Test sequential processing functionality (no batching)."""
         with BrukerReader(self.test_data_path) as reader:
-            batch_sizes = [5, 10, 20]
-            results = {}
+            start_time = time.time()
+            spectrum_count = 0
 
-            for batch_size in batch_sizes:
-                start_time = time.time()
-                spectrum_count = 0
+            # Test that batch_size parameter is ignored but doesn't break anything
+            for coords, mzs, intensities in reader.iter_spectra(batch_size=10):
+                spectrum_count += 1
+                if spectrum_count >= 30:  # Limit for testing
+                    break
 
-                for coords, mzs, intensities in reader.iter_spectra(
-                    batch_size=batch_size
-                ):
-                    spectrum_count += 1
-                    if spectrum_count >= 30:  # Limit for testing
-                        break
+            end_time = time.time()
 
-                end_time = time.time()
-
-                results[f"batch_size_{batch_size}"] = {
-                    "spectra_processed": spectrum_count,
-                    "duration_ms": (end_time - start_time) * 1000,
-                    "spectra_per_second": spectrum_count
-                    / max(0.001, end_time - start_time),
-                }
-
-            return results
+            return {
+                "spectra_processed": spectrum_count,
+                "duration_ms": (end_time - start_time) * 1000,
+                "spectra_per_second": spectrum_count / max(0.001, end_time - start_time),
+                "note": "batch_size parameter ignored in implementation"
+            }
 
     def test_performance(self) -> Dict[str, Any]:
         """Test performance characteristics."""

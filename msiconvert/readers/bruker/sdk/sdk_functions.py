@@ -176,15 +176,15 @@ class SDKFunctions:
         logger.debug(f"Closed {self.file_type.upper()} file (handle: {handle})")
 
     def read_spectrum(
-        self, handle: int, frame_id: int, buffer_size: int = 1024
+        self, handle: int, frame_id: int, buffer_size_hint: Optional[int] = None
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Read a spectrum from the file.
+        Read a spectrum from the file with optional buffer size optimization.
 
         Args:
             handle: File handle
             frame_id: Frame ID to read
-            buffer_size: Initial buffer size
+            buffer_size_hint: Exact buffer size if known (avoids retry loop for TSF)
 
         Returns:
             Tuple of (m/z array, intensity array)
@@ -192,16 +192,71 @@ class SDKFunctions:
         Raises:
             SDKError: If spectrum cannot be read
         """
+        # Use optimized buffer size if provided, otherwise default
+        buffer_size = buffer_size_hint if buffer_size_hint and buffer_size_hint > 0 else 1024
+        
         if self.file_type == "tsf":
-            return self._read_tsf_spectrum(handle, frame_id, buffer_size)
+            return self._read_tsf_spectrum(handle, frame_id, buffer_size, buffer_size_hint is not None)
         else:  # tdf
             return self._read_tdf_spectrum(handle, frame_id, buffer_size)
 
     def _read_tsf_spectrum(
-        self, handle: int, frame_id: int, buffer_size: int
+        self, handle: int, frame_id: int, buffer_size: int, is_optimized: bool = False
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """Read spectrum from TSF file."""
+        """
+        Read spectrum from TSF file with optional optimization.
+        
+        Args:
+            handle: File handle
+            frame_id: Frame ID to read
+            buffer_size: Buffer size to use
+            is_optimized: Whether buffer_size is exact (avoids retry loop)
+        """
         dll = self.dll_manager.dll
+
+        # OPTIMIZED PATH: Try exact buffer size first (no retries expected)
+        if is_optimized:
+            try:
+                # Allocate buffers with exact size
+                mz_indices = np.empty(buffer_size, dtype=np.float64)
+                intensities = np.empty(buffer_size, dtype=np.float32)
+
+                # Read spectrum
+                result = dll.tsf_read_line_spectrum_v2(
+                    handle,
+                    frame_id,
+                    mz_indices.ctypes.data_as(POINTER(c_double)),
+                    intensities.ctypes.data_as(POINTER(c_float)),
+                    buffer_size,
+                )
+
+                if result < 0:
+                    error_msg = self._get_last_error()
+                    raise SDKError(f"Failed to read TSF spectrum: {error_msg}")
+
+                if result == 0:
+                    return np.array([]), np.array([])
+
+                if result <= buffer_size:
+                    # SUCCESS: Exact buffer size worked!
+                    mzs = self._convert_indices_to_mz(handle, frame_id, mz_indices[:result])
+                    return mzs, intensities[:result].copy()
+                else:
+                    # Buffer hint was too small, fall back to retry logic
+                    logger.debug(f"Buffer hint {buffer_size} too small for frame {frame_id} (needed {result}), falling back")
+                    
+            except Exception as e:
+                logger.debug(f"Optimized read failed for frame {frame_id}: {e}, falling back")
+
+        # FALLBACK PATH: Use original retry loop logic
+        return self._read_tsf_spectrum_with_retries(handle, frame_id, buffer_size)
+
+    def _read_tsf_spectrum_with_retries(
+        self, handle: int, frame_id: int, initial_buffer_size: int
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Original TSF spectrum reading with retry loop (fallback)."""
+        dll = self.dll_manager.dll
+        buffer_size = initial_buffer_size
 
         while True:
             # Allocate buffers
@@ -222,7 +277,10 @@ class SDKFunctions:
                 raise SDKError(f"Failed to read TSF spectrum: {error_msg}")
 
             if result > buffer_size:
-                # Buffer too small, resize and try again
+                logger.debug(
+                    f"Buffer resized from {buffer_size} to {result} for frame {frame_id}"
+                )
+                # Buffer too small, resize and try again (BUSY WAIT LOOP)
                 buffer_size = result
                 continue
 

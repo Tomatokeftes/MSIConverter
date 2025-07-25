@@ -92,13 +92,13 @@ class TestBrukerRealData:
         """Test basic reader functionality with real data."""
         with BrukerReader(bruker_data_path) as reader:
             # Test metadata
-            metadata = reader.get_metadata()
-            assert isinstance(metadata, dict)
-            assert len(metadata) > 0
-            assert "source" in metadata
+            metadata = reader.get_comprehensive_metadata()
+            assert hasattr(metadata, 'essential')
+            assert hasattr(metadata.essential, 'source_path')
+            assert str(metadata.essential.source_path) == str(bruker_data_path)
 
             # Test dimensions
-            dimensions = reader.get_dimensions()
+            dimensions = reader.shape
             assert isinstance(dimensions, tuple)
             assert len(dimensions) == 3
             assert all(isinstance(x, int) and x > 0 for x in dimensions)
