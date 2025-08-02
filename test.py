@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import spatialdata as sd
 import zarr
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Polygon
 from spatialdata.models import Image3DModel, Labels3DModel, PointsModel, ShapesModel
 
 # -- 1. Setup and Initialization --

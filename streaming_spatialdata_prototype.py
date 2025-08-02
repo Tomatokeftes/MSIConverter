@@ -1,5 +1,4 @@
-"""
-Proof-of-concept: Streaming SpatialData converter for MSI data
+"""Proof-of-concept: Streaming SpatialData converter for MSI data.
 
 This prototype demonstrates how to:
 1. Create placeholder SpatialData structure
@@ -11,15 +10,13 @@ Based on successful test.py validation of SpatialData incremental writing.
 """
 
 import logging
-import shutil
-import tempfile
-from multiprocessing import Pool, cpu_count
+from multiprocessing import cpu_count
 from pathlib import Path
-from typing import Any, Dict, Iterator, Optional, Tuple
+from typing import Iterator, Optional, Tuple
 
 import numpy as np
 import zarr
-from scipy.sparse import csr_matrix, vstack
+from scipy.sparse import csr_matrix
 from tqdm import tqdm
 
 from msiconvert.converters.spatialdata.base_spatialdata_converter import (
@@ -95,7 +92,7 @@ class StreamingSpatialDataConverter:
         # Adaptive chunk sizing
         self.chunk_size = self._estimate_optimal_chunk_size()
 
-        logging.info(f"StreamingSpatialDataConverter initialized:")
+        logging.info("StreamingSpatialDataConverter initialized:")
         logging.info(f"  Dataset: {self.dimensions} pixels, {self.n_masses} mass bins")
         logging.info(f"  Chunk size: {self.chunk_size} pixels")
         logging.info(f"  Workers: {self.n_workers}")
@@ -334,7 +331,7 @@ class StreamingSpatialDataConverter:
 
                 # Write interpolated data to zarr incrementally
                 self._write_chunk_to_zarr(
-                    root,
+                    tic_image_handle,
                     interpolated_chunk,
                     tic_chunk,
                     start_idx,
@@ -380,7 +377,7 @@ class StreamingSpatialDataConverter:
 
     def _write_chunk_to_zarr(
         self,
-        root,
+        tic_image_handle,
         interpolated_chunk: np.ndarray,
         tic_chunk: np.ndarray,
         start_idx: int,
