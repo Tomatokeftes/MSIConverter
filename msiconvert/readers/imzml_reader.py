@@ -413,6 +413,53 @@ class ImzMLReader(BaseMSIReader):
             "depth": depth,
         }
 
+    def get_spectrum(self, x: int, y: int, z: int = 0) -> Tuple[Optional[NDArray[np.float64]], Optional[NDArray[np.float64]]]:
+        """
+        Get spectrum data for a specific pixel coordinate.
+        
+        Args:
+            x: X coordinate
+            y: Y coordinate  
+            z: Z coordinate (default: 0)
+            
+        Returns:
+            Tuple of (mzs, intensities) arrays, or (None, None) if pixel is empty
+        """
+        self._ensure_parser_initialized()
+        parser = cast(ImzMLParser, self.parser)
+        
+        try:
+            # Find the spectrum index for this coordinate
+            # ImzML coordinates are 1-based, so add 1
+            target_coord = (x + 1, y + 1, z + 1)
+            
+            # Search for matching coordinate
+            spectrum_idx = None
+            for idx, coord in enumerate(parser.coordinates):
+                if len(coord) >= 3:
+                    if (coord[0], coord[1], coord[2]) == target_coord:
+                        spectrum_idx = idx
+                        break
+                elif len(coord) >= 2:
+                    if (coord[0], coord[1]) == target_coord[:2]:
+                        spectrum_idx = idx
+                        break
+            
+            if spectrum_idx is None:
+                return None, None
+                
+            # Get spectrum data
+            mzs, intensities = parser.getspectrum(spectrum_idx)
+            
+            if len(mzs) == 0 or len(intensities) == 0:
+                return None, None
+                
+            return mzs.astype(np.float64), intensities.astype(np.float64)
+            
+        except Exception as e:
+            logging.debug(f"Error reading spectrum at ({x}, {y}, {z}): {e}")
+            return None, None
+
     def close(self) -> None:
         """Close all open file handles."""
         if hasattr(self, "ibd_file") and self.ibd_file is not None:

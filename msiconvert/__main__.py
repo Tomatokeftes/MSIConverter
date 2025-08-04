@@ -52,6 +52,42 @@ def _create_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--log-file", default=None, help="Path to the log file")
 
+    # Advanced processing options
+    parser.add_argument(
+        "--enable-streaming",
+        action="store_true",
+        help="Enable true streaming mode with incremental Zarr writing for very large datasets",
+    )
+    parser.add_argument(
+        "--dask-chunk-size",
+        type=int,
+        help="Chunk size for Dask processing (auto-detected by default)",
+    )
+    parser.add_argument(
+        "--target-memory-gb",
+        type=float,
+        default=8.0,
+        help="Target memory usage in GB for processing mode selection (default: 8.0)",
+    )
+    parser.add_argument(
+        "--analyzer-type",
+        choices=["tof", "orbitrap", "quadrupole"],
+        default="tof",
+        help="Mass analyzer type for enhanced mass axis generation (default: tof)",
+    )
+
+    # Interpolation parameters
+    parser.add_argument(
+        "--n-bins",
+        type=int,
+        help="Number of bins for mass axis interpolation (overrides analyzer-specific defaults). Default varies by analyzer: TOF=10000, Orbitrap=50000, Quadrupole=20000",
+    )
+    parser.add_argument(
+        "--disable-interpolation",
+        action="store_true",
+        help="Disable interpolation and keep original individual mass axes",
+    )
+
     return parser
 
 
@@ -62,6 +98,22 @@ def _validate_arguments(parser: argparse.ArgumentParser, args) -> None:
 
     if not args.dataset_id.strip():
         parser.error("Dataset ID cannot be empty")
+
+    if args.dask_chunk_size is not None and args.dask_chunk_size <= 0:
+        parser.error(
+            "Dask chunk size must be positive (got: {})".format(args.dask_chunk_size)
+        )
+
+    if args.target_memory_gb <= 0:
+        parser.error(
+            "Target memory must be positive (got: {})".format(args.target_memory_gb)
+        )
+
+    # Validate interpolation parameters
+    if args.n_bins is not None and args.n_bins <= 0:
+        parser.error("N-bins must be positive (got: {})".format(args.n_bins))
+
+    # Dask is always enabled - no validation needed
 
 
 def _check_imzml_requirements(
@@ -114,6 +166,13 @@ def _perform_conversion(args) -> bool:
         dataset_id=args.dataset_id,
         pixel_size_um=args.pixel_size,
         handle_3d=args.handle_3d,
+        use_dask=True,
+        enable_streaming=args.enable_streaming,
+        dask_chunk_size=args.dask_chunk_size,
+        target_memory_gb=args.target_memory_gb,
+        analyzer_type=args.analyzer_type,
+        n_bins=args.n_bins,
+        disable_interpolation=args.disable_interpolation,
     )
 
 

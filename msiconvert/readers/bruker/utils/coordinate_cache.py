@@ -7,6 +7,7 @@ database queries and improve performance for spatial operations.
 
 import logging
 import sqlite3
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -47,6 +48,9 @@ class CoordinateCache:
         self._is_maldi: Optional[bool] = None
         self._loaded_ranges: Set[Tuple[int, int]] = set()
         self._coordinate_offsets: Optional[Tuple[int, int, int]] = None
+        
+        # Thread-local storage for SQLite connections
+        self._local = threading.local()
 
         # Check if this is a MALDI dataset
         self._detect_maldi_format()
@@ -61,21 +65,27 @@ class CoordinateCache:
             f"Initialized CoordinateCache for {'MALDI' if self._is_maldi else 'non-MALDI'} dataset"
         )
 
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get a thread-local SQLite connection."""
+        if not hasattr(self._local, 'connection') or self._local.connection is None:
+            self._local.connection = sqlite3.connect(str(self.db_path))
+        return self._local.connection
+
     def _detect_maldi_format(self) -> None:
         """Detect if this is a MALDI dataset by checking for MaldiFrameInfo table."""
         try:
-            with sqlite3.connect(str(self.db_path)) as conn:
-                cursor = conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
 
-                # Check if MaldiFrameInfo table exists
-                cursor.execute(
-                    """
-                    SELECT name FROM sqlite_master
-                    WHERE type='table' AND name='MaldiFrameInfo'
+            # Check if MaldiFrameInfo table exists
+            cursor.execute(
                 """
-                )
+                SELECT name FROM sqlite_master
+                WHERE type='table' AND name='MaldiFrameInfo'
+            """
+            )
 
-                self._is_maldi = cursor.fetchone() is not None
+            self._is_maldi = cursor.fetchone() is not None
 
         except Exception as e:
             logger.warning(f"Error detecting MALDI format: {e}")
@@ -88,27 +98,27 @@ class CoordinateCache:
             return
 
         try:
-            with sqlite3.connect(str(self.db_path)) as conn:
-                cursor = conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
 
-                # Get imaging area bounds from GlobalMetadata
-                cursor.execute(
-                    """
-                    SELECT Key, Value FROM GlobalMetadata
-                    WHERE Key IN ('ImagingAreaMinXIndexPos', 'ImagingAreaMinYIndexPos')
+            # Get imaging area bounds from GlobalMetadata
+            cursor.execute(
                 """
-                )
+                SELECT Key, Value FROM GlobalMetadata
+                WHERE Key IN ('ImagingAreaMinXIndexPos', 'ImagingAreaMinYIndexPos')
+            """
+            )
 
-                bounds = dict(cursor.fetchall())
+            bounds = dict(cursor.fetchall())
 
-                min_x = int(bounds.get("ImagingAreaMinXIndexPos", 0))
-                min_y = int(bounds.get("ImagingAreaMinYIndexPos", 0))
-                min_z = 0
+            min_x = int(bounds.get("ImagingAreaMinXIndexPos", 0))
+            min_y = int(bounds.get("ImagingAreaMinYIndexPos", 0))
+            min_z = 0
 
-                self._coordinate_offsets = (min_x, min_y, min_z)
-                logger.info(
-                    f"Coordinate offsets for normalization: {self._coordinate_offsets}"
-                )
+            self._coordinate_offsets = (min_x, min_y, min_z)
+            logger.info(
+                f"Coordinate offsets for normalization: {self._coordinate_offsets}"
+            )
 
         except Exception as e:
             logger.warning(f"Error getting coordinate bounds: {e}")
@@ -119,10 +129,10 @@ class CoordinateCache:
         logger.info("Preloading all coordinates")
 
         try:
-            with sqlite3.connect(str(self.db_path)) as conn:
-                cursor = conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
 
-                if self._is_maldi:
+            if self._is_maldi:
                     # Load MALDI coordinates
                     cursor.execute(
                         """
@@ -178,19 +188,19 @@ class CoordinateCache:
         )
 
         try:
-            with sqlite3.connect(str(self.db_path)) as conn:
-                cursor = conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
 
-                if self._is_maldi:
-                    cursor.execute(
-                        """
-                        SELECT Frame, XIndexPos, YIndexPos
-                        FROM MaldiFrameInfo
-                        WHERE Frame BETWEEN ? AND ?
-                        ORDER BY Frame
-                    """,
-                        (start_frame, end_frame),
-                    )
+            if self._is_maldi:
+                cursor.execute(
+                    """
+                    SELECT Frame, XIndexPos, YIndexPos
+                    FROM MaldiFrameInfo
+                    WHERE Frame BETWEEN ? AND ?
+                    ORDER BY Frame
+                """,
+                    (start_frame, end_frame),
+                )
 
                     for frame_id, x, y in cursor.fetchall():
                         if frame_id not in self._coordinates:
@@ -343,10 +353,10 @@ class CoordinateCache:
         # Ensure we have at least some coordinates loaded
         if not self._coordinates:
             try:
-                with sqlite3.connect(str(self.db_path)) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT MIN(Id), MAX(Id) FROM Frames")
-                    min_frame, max_frame = cursor.fetchone()
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT MIN(Id), MAX(Id) FROM Frames")
+                min_frame, max_frame = cursor.fetchone()
 
                     if min_frame and max_frame:
                         self._load_coordinate_range(min_frame, max_frame)
@@ -390,10 +400,10 @@ class CoordinateCache:
     def get_frame_count(self) -> int:
         """Get the total number of frames."""
         try:
-            with sqlite3.connect(str(self.db_path)) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM Frames")
-                return cursor.fetchone()[0]
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM Frames")
+            return cursor.fetchone()[0]
         except Exception as e:
             logger.error(f"Error getting frame count: {e}")
             return len(self._coordinates)
@@ -415,7 +425,14 @@ class CoordinateCache:
         self._coordinates.clear()
         self._loaded_ranges.clear()
         self._dimensions = None
+        self._close_connection()
         logger.info("Cleared coordinate cache")
+    
+    def _close_connection(self) -> None:
+        """Close the thread-local SQLite connection."""
+        if hasattr(self._local, 'connection') and self._local.connection is not None:
+            self._local.connection.close()
+            self._local.connection = None
 
     def optimize_cache(self, keep_recent: int = 1000) -> None:
         """

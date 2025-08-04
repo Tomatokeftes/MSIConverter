@@ -5,6 +5,7 @@ from typing import Any, Dict, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
+from scipy import sparse
 
 from .base_spatialdata_converter import (
     SPATIALDATA_AVAILABLE,
@@ -33,6 +34,10 @@ class SpatialData3DConverter(BaseSpatialDataConverter):
         Returns:
             Dict containing tables, shapes, images, and data arrays for 3D volume
         """
+        # Check processing mode
+        self._use_dask_processing = self._should_use_dask_processing()
+        self._use_chunked_processing = self._should_use_chunked_processing()
+        
         # Return dictionaries to store tables, shapes, and images
         tables: Dict[str, Any] = {}
         shapes: Dict[str, Any] = {}
@@ -45,9 +50,20 @@ class SpatialData3DConverter(BaseSpatialDataConverter):
 
         n_x, n_y, n_z = self._dimensions
 
+        if self._use_dask_processing or self._use_chunked_processing:
+            # For Dask/chunked processing, initialize with sparse storage lists
+            sparse_data = {
+                "sparse_rows": [],
+                "sparse_cols": [], 
+                "sparse_data": [],
+            }
+        else:
+            # Standard processing with upfront sparse matrix allocation
+            sparse_data = self._create_sparse_matrix()
+
         return {
             "mode": "3d_volume",
-            "sparse_data": self._create_sparse_matrix(),
+            "sparse_data": sparse_data,
             "coords_df": self._create_coordinates_dataframe(),
             "var_df": self._create_mass_dataframe(),
             "tables": tables,
@@ -81,13 +97,19 @@ class SpatialData3DConverter(BaseSpatialDataConverter):
 
         x, y, z = coords
 
-        # Calculate TIC for this pixel
+        # Zero out negative intensities to prevent data corruption
+        intensities = np.maximum(intensities, 0.0)
+
+        # Calculate TIC for this pixel after zeroing negatives
         tic_value = float(np.sum(intensities))
 
         # Update total intensity for average spectrum calculation
         mz_indices = self._map_mass_to_indices(mzs)
-        data_structures["total_intensity"][mz_indices] += intensities
-        data_structures["pixel_count"] += 1
+        
+        # Only update if we have valid indices and matching array sizes
+        if len(mz_indices) > 0 and len(mz_indices) == len(intensities):
+            data_structures["total_intensity"][mz_indices] += intensities
+            data_structures["pixel_count"] += 1
 
         # Get pixel index for 3D volume
         pixel_idx = self._get_pixel_index(x, y, z)
@@ -96,9 +118,18 @@ class SpatialData3DConverter(BaseSpatialDataConverter):
         data_structures["tic_values"][y, x, z] = tic_value
 
         # Add to sparse matrix
-        self._add_to_sparse_matrix(
-            data_structures["sparse_data"], pixel_idx, mz_indices, intensities
-        )
+        if self._use_dask_processing or self._use_chunked_processing:
+            # For Dask/chunked processing, accumulate in lists
+            nonzero_mask = intensities > 0
+            if np.any(nonzero_mask):
+                data_structures["sparse_data"]["sparse_rows"].extend([pixel_idx] * np.sum(nonzero_mask))
+                data_structures["sparse_data"]["sparse_cols"].extend(mz_indices[nonzero_mask])
+                data_structures["sparse_data"]["sparse_data"].extend(intensities[nonzero_mask])
+        else:
+            # Standard processing with direct sparse matrix addition
+            self._add_to_sparse_matrix(
+                data_structures["sparse_data"], pixel_idx, mz_indices, intensities
+            )
 
     def _finalize_data(self, data_structures: Dict[str, Any]) -> None:
         """
@@ -114,10 +145,39 @@ class SpatialData3DConverter(BaseSpatialDataConverter):
             # Store pixel count for metadata
             self._non_empty_pixel_count = data_structures["pixel_count"]
 
-            # Convert to CSR format for efficiency
-            data_structures["sparse_data"] = data_structures[
-                "sparse_data"
-            ].tocsr()
+            # Handle sparse data creation based on processing mode
+            if not hasattr(data_structures["sparse_data"], 'tocsr'):
+                # Data is in dictionary format (chunked/standard processing)
+                if (isinstance(data_structures["sparse_data"], dict) and 
+                    data_structures["sparse_data"]["sparse_data"]):  # Check if we have data
+                    from scipy.sparse import coo_matrix
+                    n_x, n_y, n_z = self._dimensions
+                    n_pixels = n_x * n_y * n_z
+                    n_masses = len(self._common_mass_axis)
+                    
+                    sparse_matrix = coo_matrix(
+                        (data_structures["sparse_data"]["sparse_data"], 
+                         (data_structures["sparse_data"]["sparse_rows"], 
+                          data_structures["sparse_data"]["sparse_cols"])),
+                        shape=(n_pixels, n_masses),
+                        dtype=np.float64
+                    ).tocsr()
+                    logging.info(f"3D volume: Created sparse matrix with {sparse_matrix.nnz} non-zero elements")
+                else:
+                    # Empty volume
+                    n_x, n_y, n_z = self._dimensions
+                    n_pixels = n_x * n_y * n_z
+                    n_masses = len(self._common_mass_axis)
+                    sparse_matrix = sparse.csr_matrix((n_pixels, n_masses), dtype=np.float64)
+                    logging.info("3D volume: Created empty sparse matrix")
+                
+                # Update data structures
+                data_structures["sparse_data"] = sparse_matrix
+            else:
+                # Data is already a sparse matrix (streaming processing)
+                if hasattr(data_structures["sparse_data"], 'tocsr'):
+                    data_structures["sparse_data"] = data_structures["sparse_data"].tocsr()
+                logging.info(f"3D volume: Using pre-created sparse matrix with {data_structures['sparse_data'].nnz} non-zero elements")
 
             # Create AnnData
             adata = AnnData(
@@ -258,3 +318,52 @@ class SpatialData3DConverter(BaseSpatialDataConverter):
                     },
                 )
             )
+
+    def _process_dask_result_specific(self, data_structures: Dict[str, Any], result) -> None:
+        """Process Dask result for 3D volume format."""
+        if self._dimensions is None:
+            raise ValueError("Dimensions are not initialized")
+            
+        # Process each InterpolationResult from Dask result
+        for interpolation_result in result:
+            coords = interpolation_result.coords
+            pixel_idx = interpolation_result.pixel_idx
+            sparse_indices = interpolation_result.sparse_indices
+            sparse_values = interpolation_result.sparse_values
+            tic_value = interpolation_result.tic_value
+            
+            x, y, z = coords
+            
+            # Store TIC value
+            data_structures["tic_values"][y, x, z] = tic_value
+            
+            # Add sparse data
+            if len(sparse_values) > 0:
+                data_structures["sparse_data"]["sparse_rows"].extend([pixel_idx] * len(sparse_values))
+                data_structures["sparse_data"]["sparse_cols"].extend(sparse_indices)
+                data_structures["sparse_data"]["sparse_data"].extend(sparse_values)
+                
+            # Update total intensity for average spectrum
+            data_structures["total_intensity"][sparse_indices] += sparse_values
+            data_structures["pixel_count"] += 1
+        
+        logging.info(f"Processed {len(result)} pixels from Dask result for 3D volume")
+        
+    def _add_interpolation_result_to_data_structures(self, data_structures: Dict[str, Any], result) -> None:
+        """Add interpolation result to 3D volume data structures."""
+        coords = result.coords
+        pixel_idx = result.pixel_idx
+        sparse_indices = result.sparse_indices
+        sparse_values = result.sparse_values
+        tic_value = result.tic_value
+        
+        x, y, z = coords
+        
+        # Store TIC value
+        data_structures["tic_values"][y, x, z] = tic_value
+        
+        # Add sparse data
+        if len(sparse_values) > 0:
+            data_structures["sparse_data"]["sparse_rows"].extend([pixel_idx] * len(sparse_values))
+            data_structures["sparse_data"]["sparse_cols"].extend(sparse_indices)
+            data_structures["sparse_data"]["sparse_data"].extend(sparse_values)

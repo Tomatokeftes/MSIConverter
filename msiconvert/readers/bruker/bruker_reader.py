@@ -7,6 +7,7 @@ data formats with lazy loading, intelligent caching, and comprehensive error han
 import logging
 import os
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Callable, Dict, Generator, Optional, Tuple, Union
 
@@ -38,7 +39,11 @@ logger = logging.getLogger(__name__)
 
 
 def build_raw_mass_axis(
-    spectra_iterator: Generator[Tuple[Tuple[int, int, int], NDArray[np.float64], NDArray[np.float64]], None, None],
+    spectra_iterator: Generator[
+        Tuple[Tuple[int, int, int], NDArray[np.float64], NDArray[np.float64]],
+        None,
+        None,
+    ],
     progress_callback: Optional[Callable[[int], None]] = None,
 ) -> NDArray[np.float64]:
     """Build raw mass axis from spectra iterator.
@@ -176,7 +181,7 @@ class BrukerReader(BaseMSIReader):
         # Initialize components
         self._setup_components(cache_coordinates, memory_limit_gb, batch_size)
 
-        # Initialize SDK and connections
+        # Initialize SDK and thread-local storage
         self._initialize_sdk()
         self._initialize_database()
 
@@ -260,27 +265,39 @@ class BrukerReader(BaseMSIReader):
             raise SDKError(f"Failed to initialize Bruker SDK: {e}") from e
 
     def _initialize_database(self) -> None:
-        """Initialize database connection with optimizations."""
+        """Initialize thread-local database storage."""
         try:
-            self.conn = sqlite3.connect(str(self.db_path))
+            # Initialize thread-local storage for SQLite connections
+            self._local = threading.local()
 
-            # Apply SQLite optimizations
-            self.conn.execute("PRAGMA journal_mode = WAL")
-            self.conn.execute("PRAGMA synchronous = NORMAL")
-            self.conn.execute("PRAGMA cache_size = 10000")
-            self.conn.execute("PRAGMA temp_store = MEMORY")
+            # Test that we can connect to the database
+            test_conn = sqlite3.connect(str(self.db_path))
+            test_conn.close()
 
-            logger.debug("Initialized database connection with optimizations")
+            logger.debug("Initialized thread-local database storage")
 
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
             raise DataError(f"Failed to open database: {e}") from e
 
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get a thread-local SQLite connection."""
+        if not hasattr(self._local, "connection") or self._local.connection is None:
+            self._local.connection = sqlite3.connect(str(self.db_path))
+
+            # Apply SQLite optimizations to this connection
+            self._local.connection.execute("PRAGMA journal_mode = WAL")
+            self._local.connection.execute("PRAGMA synchronous = NORMAL")
+            self._local.connection.execute("PRAGMA cache_size = 10000")
+            self._local.connection.execute("PRAGMA temp_store = MEMORY")
+
+        return self._local.connection
+
     def _create_metadata_extractor(self) -> MetadataExtractor:
         """Create Bruker metadata extractor."""
-        if not hasattr(self, "conn") or self.conn is None:
-            raise ValueError("Database connection not available")
-        return BrukerMetadataExtractor(self.conn, self.data_path)
+        # Create a fresh connection for metadata extraction
+        conn = sqlite3.connect(str(self.db_path))
+        return BrukerMetadataExtractor(conn, self.data_path)
 
     def get_common_mass_axis(self) -> NDArray[np.float64]:
         """Return the common mass axis composed of all unique m/z values.
@@ -312,9 +329,11 @@ class BrukerReader(BaseMSIReader):
         logger.info(f"Built raw mass axis with {len(mass_axis)} unique m/z values")
         return mass_axis
 
-    def iter_spectra(
-        self, batch_size: Optional[int] = None
-    ) -> Generator[Tuple[Tuple[int, int, int], NDArray[np.float64], NDArray[np.float64]], None, None]:
+    def iter_spectra(self, batch_size: Optional[int] = None) -> Generator[
+        Tuple[Tuple[int, int, int], NDArray[np.float64], NDArray[np.float64]],
+        None,
+        None,
+    ]:
         """Iterate through all spectra sequentially.
 
         Args:
@@ -328,7 +347,11 @@ class BrukerReader(BaseMSIReader):
 
     def _iter_spectra_raw(
         self,
-    ) -> Generator[Tuple[Tuple[int, int, int], NDArray[np.float64], NDArray[np.float64]], None, None]:
+    ) -> Generator[
+        Tuple[Tuple[int, int, int], NDArray[np.float64], NDArray[np.float64]],
+        None,
+        None,
+    ]:
         """Raw spectrum iteration without batching."""
         frame_count = self._get_frame_count()
         coordinate_offsets = self._get_coordinate_offsets()
@@ -407,7 +430,8 @@ class BrukerReader(BaseMSIReader):
             Tuple of normalized (x, y, z) coordinates (0-based), or None if not found
         """
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
 
             # Check if this is MALDI data
             try:
@@ -489,10 +513,11 @@ class BrukerReader(BaseMSIReader):
                 self.sdk.close_file(self.handle)
                 self.handle = None
 
-            # Close database connection
-            if hasattr(self, "conn") and self.conn:
-                self.conn.close()
-                self.conn = None
+            # Close thread-local database connections
+            if hasattr(self, "_local"):
+                if hasattr(self._local, "connection") and self._local.connection:
+                    self._local.connection.close()
+                    self._local.connection = None
 
             # No caches to clear anymore
 
@@ -549,4 +574,6 @@ class BrukerReader(BaseMSIReader):
         try:
             self.close()
         except Exception as e:
-            logger.debug(f"Error during cleanup in destructor: {e}")  # Log but don't raise during destruction
+            logger.debug(
+                f"Error during cleanup in destructor: {e}"
+            )  # Log but don't raise during destruction

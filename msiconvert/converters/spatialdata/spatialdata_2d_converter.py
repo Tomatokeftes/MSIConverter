@@ -35,6 +35,10 @@ class SpatialData2DConverter(BaseSpatialDataConverter):
         Returns:
             Dict containing tables, shapes, images, and data arrays for 2D slices
         """
+        # Check processing mode
+        self._use_dask_processing = self._should_use_dask_processing()
+        self._use_chunked_processing = self._should_use_chunked_processing()
+        
         # Return dictionaries to store tables, shapes, and sparse matrices
         tables: Dict[str, Any] = {}
         shapes: Dict[str, Any] = {}
@@ -49,11 +53,23 @@ class SpatialData2DConverter(BaseSpatialDataConverter):
         slices_data: Dict[str, Dict[str, Any]] = {}
         for z in range(n_z):
             slice_id = f"{self.dataset_id}_z{z}"
-            slices_data[slice_id] = {
-                "sparse_data": self._create_sparse_matrix_for_slice(z),
-                "coords_df": self._create_coordinates_dataframe_for_slice(z),
-                "tic_values": np.zeros((n_y, n_x), dtype=np.float64),
-            }
+            
+            if self._use_dask_processing or self._use_chunked_processing:
+                # For Dask/chunked processing, initialize with sparse storage lists
+                slices_data[slice_id] = {
+                    "sparse_rows": [],
+                    "sparse_cols": [], 
+                    "sparse_data": [],
+                    "coords_df": self._create_coordinates_dataframe_for_slice(z),
+                    "tic_values": np.zeros((n_y, n_x), dtype=np.float64),
+                }
+            else:
+                # Standard processing with upfront sparse matrix allocation
+                slices_data[slice_id] = {
+                    "sparse_data": self._create_sparse_matrix_for_slice(z),
+                    "coords_df": self._create_coordinates_dataframe_for_slice(z),
+                    "tic_values": np.zeros((n_y, n_x), dtype=np.float64),
+                }
 
         if self._common_mass_axis is None:
             raise ValueError("Common mass axis is not initialized")
@@ -81,13 +97,18 @@ class SpatialData2DConverter(BaseSpatialDataConverter):
             z_value: Z-index of the slice
 
         Returns:
-            Sparse matrix for storing intensity values
+            Sparse matrix for storing intensity values (or None for chunked processing)
         """
         if self._dimensions is None:
             raise ValueError("Dimensions are not initialized")
         if self._common_mass_axis is None:
             raise ValueError("Common mass axis is not initialized")
 
+        # Check if we should use Dask or chunked processing
+        if self._use_dask_processing or self._use_chunked_processing:
+            logging.info(f"Using Dask/chunked processing for slice z={z_value}")
+            return None
+        
         n_x, n_y, _ = self._dimensions
         n_pixels = n_x * n_y
         n_masses = len(self._common_mass_axis)
@@ -168,13 +189,19 @@ class SpatialData2DConverter(BaseSpatialDataConverter):
 
         x, y, z = coords
 
-        # Calculate TIC for this pixel
+        # Zero out negative intensities to prevent data corruption
+        intensities = np.maximum(intensities, 0.0)
+
+        # Calculate TIC for this pixel after zeroing negatives
         tic_value = float(np.sum(intensities))
 
         # Update total intensity for average spectrum calculation
         mz_indices = self._map_mass_to_indices(mzs)
-        data_structures["total_intensity"][mz_indices] += intensities
-        data_structures["pixel_count"] += 1
+        
+        # Only update if we have valid indices and matching array sizes
+        if len(mz_indices) > 0 and len(mz_indices) == len(intensities):
+            data_structures["total_intensity"][mz_indices] += intensities
+            data_structures["pixel_count"] += 1
 
         # Add data to the appropriate slice
         slice_id = f"{self.dataset_id}_z{z}"
@@ -186,9 +213,18 @@ class SpatialData2DConverter(BaseSpatialDataConverter):
             slice_data["tic_values"][y, x] = tic_value
 
             # Add to sparse matrix for this slice
-            self._add_to_sparse_matrix(
-                slice_data["sparse_data"], pixel_idx, mz_indices, intensities
-            )
+            if self._use_dask_processing or self._use_chunked_processing:
+                # For Dask/chunked processing, accumulate in lists
+                nonzero_mask = intensities > 0
+                if np.any(nonzero_mask):
+                    slice_data["sparse_rows"].extend([pixel_idx] * np.sum(nonzero_mask))
+                    slice_data["sparse_cols"].extend(mz_indices[nonzero_mask])
+                    slice_data["sparse_data"].extend(intensities[nonzero_mask])
+            else:
+                # Standard processing with direct sparse matrix addition
+                self._add_to_sparse_matrix(
+                    slice_data["sparse_data"], pixel_idx, mz_indices, intensities
+                )
 
     def _finalize_data(self, data_structures: Dict[str, Any]) -> None:
         """
@@ -215,8 +251,35 @@ class SpatialData2DConverter(BaseSpatialDataConverter):
         # Process each slice separately
         for slice_id, slice_data in data_structures["slices_data"].items():
             try:
-                # Convert to CSR format for efficiency
-                slice_data["sparse_data"] = slice_data["sparse_data"].tocsr()
+                # Handle sparse data creation based on processing mode
+                if self._use_dask_processing or self._use_chunked_processing:
+                    # Create sparse matrix from accumulated lists
+                    if slice_data["sparse_data"]:  # Check if we have data
+                        from scipy.sparse import coo_matrix
+                        n_x, n_y, _ = self._dimensions
+                        n_pixels = n_x * n_y
+                        n_masses = len(self._common_mass_axis)
+                        
+                        sparse_matrix = coo_matrix(
+                            (slice_data["sparse_data"], 
+                             (slice_data["sparse_rows"], slice_data["sparse_cols"])),
+                            shape=(n_pixels, n_masses),
+                            dtype=np.float64
+                        ).tocsr()
+                        logging.info(f"Slice {slice_id}: Created sparse matrix with {sparse_matrix.nnz} non-zero elements")
+                    else:
+                        # Empty slice
+                        n_x, n_y, _ = self._dimensions
+                        n_pixels = n_x * n_y
+                        n_masses = len(self._common_mass_axis)
+                        sparse_matrix = sparse.csr_matrix((n_pixels, n_masses), dtype=np.float64)
+                        logging.info(f"Slice {slice_id}: Created empty sparse matrix")
+                else:
+                    # Standard processing - convert existing sparse matrix to CSR
+                    sparse_matrix = slice_data["sparse_data"].tocsr()
+                    
+                # Store the final sparse matrix
+                slice_data["sparse_data"] = sparse_matrix
 
                 # Create AnnData for this slice
                 adata = AnnData(
@@ -285,3 +348,66 @@ class SpatialData2DConverter(BaseSpatialDataConverter):
 
                 logging.debug(f"Detailed traceback:\n{traceback.format_exc()}")
                 raise
+
+    def _process_dask_result_specific(self, data_structures: Dict[str, Any], result) -> None:
+        """Process Dask result for 2D slices format."""
+        if self._dimensions is None:
+            raise ValueError("Dimensions are not initialized")
+            
+        # Process each InterpolationResult from Dask result
+        for interpolation_result in result:
+            coords = interpolation_result.coords
+            sparse_indices = interpolation_result.sparse_indices
+            sparse_values = interpolation_result.sparse_values
+            tic_value = interpolation_result.tic_value
+            
+            x, y, z = coords
+            slice_id = f"{self.dataset_id}_z{z}"
+            
+            if slice_id in data_structures["slices_data"]:
+                slice_data = data_structures["slices_data"][slice_id]
+                
+                # Convert pixel coordinates to slice-relative index
+                n_x, n_y, _ = self._dimensions
+                slice_pixel_idx = y * n_x + x
+                
+                # Store TIC value
+                slice_data["tic_values"][y, x] = tic_value
+                
+                # Add sparse data
+                if len(sparse_values) > 0:
+                    slice_data["sparse_rows"].extend([slice_pixel_idx] * len(sparse_values))
+                    slice_data["sparse_cols"].extend(sparse_indices)
+                    slice_data["sparse_data"].extend(sparse_values)
+                    
+                # Update total intensity for average spectrum
+                data_structures["total_intensity"][sparse_indices] += sparse_values
+                data_structures["pixel_count"] += 1
+        
+        logging.info(f"Processed {len(result)} pixels from Dask result for 2D slices")
+        
+    def _add_interpolation_result_to_data_structures(self, data_structures: Dict[str, Any], result) -> None:
+        """Add interpolation result to 2D slices data structures."""
+        coords = result.coords
+        sparse_indices = result.sparse_indices
+        sparse_values = result.sparse_values
+        tic_value = result.tic_value
+        
+        x, y, z = coords
+        slice_id = f"{self.dataset_id}_z{z}"
+        
+        if slice_id in data_structures["slices_data"]:
+            slice_data = data_structures["slices_data"][slice_id]
+            
+            # Convert pixel coordinates to slice-relative index
+            n_x, n_y, _ = self._dimensions
+            slice_pixel_idx = y * n_x + x
+            
+            # Store TIC value
+            slice_data["tic_values"][y, x] = tic_value
+            
+            # Add sparse data
+            if len(sparse_values) > 0:
+                slice_data["sparse_rows"].extend([slice_pixel_idx] * len(sparse_values))
+                slice_data["sparse_cols"].extend(sparse_indices)
+                slice_data["sparse_data"].extend(sparse_values)
