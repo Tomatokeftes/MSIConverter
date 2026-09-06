@@ -29,6 +29,7 @@ from .models import (
     MSI_METADATA_SCHEMA_VERSION,
     MSI_VAR_MOBILITY_COLUMN,
     MSI_VAR_PRECURSOR_COLUMN,
+    MSI_VAR_PRECURSOR_INDEX_COLUMN,
     MSIMetadata,
     OntologyTerm,
 )
@@ -346,25 +347,56 @@ def _check_mobility_var(var_group: Any, mz: Any, issues: List[ValidationIssue]) 
 def _check_msms_var(var_group: Any, mz: Any, issues: List[ValidationIssue]) -> None:
     """The contract of a demultiplexed MS/MS table's ``var``.
 
-    Features are ``(precursor_mz, mz)`` pairs: ``precursor_mz`` is
-    non-decreasing (a precursor owns many fragments), ``mz`` increases
-    strictly inside each precursor's block, and the rows are in
-    lexicographic order so one precursor's fragment spectrum is one
-    contiguous column block.  ``mz`` is *not* sorted over the whole table
-    -- it restarts at every precursor -- which is exactly why the strict
-    single-column contract must not be applied here.
+    A precursor owns one contiguous block of columns, the blocks run in
+    ascending ``precursor_mz``, and ``mz`` increases strictly inside each
+    block.  ``mz`` is *not* sorted over the whole table -- it restarts at
+    every precursor -- which is exactly why the strict single-column
+    contract must not be applied here.
+
+    The block identity is ``precursor_index``, not ``precursor_mz``: two
+    precursors may share an m/z when a method isolates the same mass at
+    two mobility positions, which is how an isomer pair is targeted. Such
+    a table has a repeated ``(precursor_mz, mz)`` pair and is still
+    correct, so validating on that pair would reject exactly the case the
+    demultiplexer exists to preserve.
     """
     precursor = _pair_column(var_group, MSI_VAR_PRECURSOR_COLUMN, mz, issues)
     if precursor is None:
         return
-    _check_sorted_pairs(
-        precursor,
-        mz,
-        MSI_VAR_PRECURSOR_COLUMN,
-        "mz",
-        "demultiplexed MS/MS",
-        issues,
-    )
+    if precursor.size > 1 and not bool((_diff(precursor) >= 0).all()):
+        issues.append(
+            ValidationIssue(
+                "error",
+                f"var.{MSI_VAR_PRECURSOR_COLUMN}",
+                f"'{MSI_VAR_PRECURSOR_COLUMN}' is not non-decreasing on a "
+                "demultiplexed MS/MS table",
+            )
+        )
+        return
+    if MSI_VAR_PRECURSOR_INDEX_COLUMN not in var_group:
+        # Nothing Thyra writes lacks it; fall back to the pair, which is
+        # right for every schedule that isolates each m/z once.
+        _check_sorted_pairs(
+            precursor, mz, MSI_VAR_PRECURSOR_COLUMN, "mz", "demultiplexed MS/MS", issues
+        )
+        return
+    index = _pair_column(var_group, MSI_VAR_PRECURSOR_INDEX_COLUMN, mz, issues)
+    if index is not None:
+        _check_sorted_pairs(
+            index,
+            mz,
+            MSI_VAR_PRECURSOR_INDEX_COLUMN,
+            "mz",
+            "demultiplexed MS/MS",
+            issues,
+        )
+
+
+def _diff(values: Any) -> Any:
+    """``np.diff`` without importing numpy at module scope."""
+    import numpy as np
+
+    return np.diff(values)
 
 
 def _pair_column(

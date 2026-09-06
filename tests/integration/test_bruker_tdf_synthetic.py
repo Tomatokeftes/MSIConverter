@@ -435,6 +435,13 @@ class TestDemultiplexedStore:
 
         assert list(var["precursor_mz"].unique()) == [313.275, 353.320, 936.578]
         assert np.all(np.diff(var["precursor_index"].to_numpy()) >= 0)
+        # The 1/K0 each precursor was isolated at, from the vendor
+        # calibration: the coordinate that keeps two isomers apart.
+        mobility = var["precursor_mobility"].to_numpy()
+        assert np.all(np.isfinite(mobility))
+        assert 0.5 < mobility.min() <= mobility.max() < 2.5
+        assert var.index.is_unique
+        assert all(label.startswith("p313.275_") for label in var.index[:1])
         # Fragment m/z is the MSI table's own axis, pointed at by mz_index.
         np.testing.assert_array_equal(
             var["mz"].to_numpy(), axis[var["mz_index"].to_numpy()]
@@ -487,6 +494,57 @@ class TestDemultiplexedStore:
         issues = check_store_var_conventions(out)
         assert set(issues) == {"tims_z0", "tims_z0_msms"}
         assert all(not table_issues for table_issues in issues.values()), issues
+
+    def test_an_isomer_pair_stays_two_precursors(self, tmp_path):
+        """One m/z isolated at two mobility positions is two precursors.
+
+        Summing them back together would undo exactly the separation the
+        mobility ramp provided, which on a targeted method is the reason
+        the same mass is scheduled twice.
+        """
+        spatialdata = pytest.importorskip("spatialdata")
+        _open("scan_sum").close()
+        isomers = [
+            (700.0, 1.0, 40.0, 0, 120),
+            (700.0, 1.0, 45.0, 120, 240),
+        ]
+        out = _convert_path(
+            _pasef_copy(tmp_path, isomers),
+            tmp_path / "isomers.zarr",
+            msms_table=True,
+        )
+        sdata = spatialdata.read_zarr(out)
+        var = sdata.tables["tims_z0_msms"].var
+
+        np.testing.assert_array_equal(var["precursor_mz"].unique(), [700.0])
+        assert sorted(var["precursor_index"].unique()) == [0, 1]
+        assert var["precursor_mobility"].nunique() == 2
+        assert var.index.is_unique
+        # Still a partition: nothing was dropped by keeping them apart.
+        summed = _rows(sdata.tables["tims_z0"]).sum(axis=1)
+        split = _rows(sdata.tables["tims_z0_msms"]).sum(axis=1)
+        np.testing.assert_allclose(split, summed, rtol=1e-12)
+
+        from thyra.metadata.schema import check_store_var_conventions
+
+        assert all(not v for v in check_store_var_conventions(out).values())
+
+    def test_the_store_records_how_much_current_the_split_holds(self, tmp_path):
+        """Exact under scan_sum; the block is where a store says so."""
+        spatialdata = pytest.importorskip("spatialdata")
+        _open("scan_sum").close()
+        out = _convert_path(
+            _pasef_copy(tmp_path), tmp_path / "pasef.zarr", msms_table=True
+        )
+        block = (
+            spatialdata.read_zarr(out)
+            .tables["tims_z0_msms"]
+            .uns["demultiplexed_current"]
+        )
+
+        assert block["summed_table"] == "tims_z0"
+        assert block["current_ratio"] == pytest.approx(1.0, abs=1e-12)
+        assert block["current_ratio_pixel_max"] == pytest.approx(1.0, abs=1e-12)
 
     def test_off_by_default(self, tmp_path):
         """The extra pass is opt in; the schedule is recorded either way."""

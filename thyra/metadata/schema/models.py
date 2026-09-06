@@ -63,6 +63,7 @@ MSI_VAR_RESERVED_COLUMNS = (
     "mobility_index",
     "precursor_mz",
     "precursor_index",
+    "precursor_mobility",
     "formula",
     "adduct",
     "annotation_source",
@@ -85,6 +86,14 @@ MSI_VAR_MOBILITY_COLUMN = "mobility"
 # whose m/z was measured. mzPeak keeps the two apart for the same reason,
 # and a consumer must not read this column as a monoisotopic mass.
 MSI_VAR_PRECURSOR_COLUMN = "precursor_mz"
+
+# The block identity inside such a table. ``precursor_mz`` alone is not
+# one: a method may isolate the same mass at two mobility positions --
+# how an isomer pair is targeted -- and those are two precursors, told
+# apart by ``precursor_mobility``. The index is a position in this
+# store's precursor axis and means nothing outside it; two stores are
+# aligned on ``(precursor_mz, precursor_mobility)``.
+MSI_VAR_PRECURSOR_INDEX_COLUMN = "precursor_index"
 
 # Imaging concepts this schema needs that have no PSI CV term yet.
 # These are the candidate terms to raise in the mzPeak / PSI-MS imaging

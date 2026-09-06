@@ -50,7 +50,11 @@ OBS = pd.DataFrame(
 )
 
 
-def _reader(schedule=SCHEDULE, spectra=SPECTRA):
+#: A decreasing 1/K0 ramp, as a TIMS axis really is.
+RAMP = np.linspace(1.5, 0.6, 240)
+
+
+def _reader(schedule=SCHEDULE, spectra=SPECTRA, ramp=None):
     def iter_precursor_spectra(batch_size=None):
         for coords, window, mzs, intensities in spectra:
             yield (
@@ -63,6 +67,9 @@ def _reader(schedule=SCHEDULE, spectra=SPECTRA):
     return SimpleNamespace(
         get_fragmentation=lambda: schedule,
         iter_precursor_spectra=iter_precursor_spectra,
+        get_mobility_axis=lambda: (
+            None if ramp is None else SimpleNamespace(values=ramp)
+        ),
     )
 
 
@@ -94,7 +101,35 @@ class TestTheFeatureAxis:
         )
         np.testing.assert_array_equal(var["precursor_index"].to_numpy(), [0, 0, 1, 1])
         np.testing.assert_array_equal(var["mz_index"].to_numpy(), [0, 2, 1, 4])
-        assert list(var.index) == ["p0_mz0", "p0_mz2", "p1_mz1", "p1_mz4"]
+        assert list(var.index) == [
+            "p313.275_mz0",
+            "p313.275_mz2",
+            "p936.578_mz1",
+            "p936.578_mz4",
+        ]
+
+    def test_feature_labels_name_the_precursor_not_its_rank(self):
+        """A rank means nothing outside one store; a label must survive concat.
+
+        Two samples whose schedules differ in length would give the same
+        rank to different precursors, and ``anndata.concat`` aligns on
+        these labels -- so a positional label merges two unrelated
+        precursors into one column without an error.
+        """
+        short = FragmentationSchedule(
+            ms_level=2,
+            windows=(
+                IsolationWindow(500.0, scan_begin=100, scan_end=140),
+                IsolationWindow(936.578, scan_begin=20, scan_end=60),
+            ),
+        )
+        spectra = [((0, 0, 0), 1, [200.0], [5.0])]
+        other = _build(_reader(schedule=short, spectra=spectra))
+
+        # 936.578 is rank 1 here and rank 1 in SPECTRA's schedule too, but
+        # nothing in the label depends on that.
+        assert list(other.var.index) == ["p936.578_mz1"]
+        assert "p936.578_mz1" in list(_build().var.index)
 
     def test_each_precursor_is_one_contiguous_column_block(self):
         """What makes a per-precursor ion image a slice, not a gather."""
@@ -179,7 +214,11 @@ class TestTheRowMirror:
         uns = _build().uns
 
         assert uns["provenance"] == "unchanged"
-        assert json.loads(uns["feature_axis"]["dims"]) == ["precursor_mz", "mz"]
+        assert json.loads(uns["feature_axis"]["dims"]) == [
+            "precursor_mz",
+            "precursor_mobility",
+            "mz",
+        ]
         assert uns["feature_axis"]["summed_table"] == "msi_z0"
 
 
@@ -227,23 +266,57 @@ class TestRefusals:
         assert demultiplex_refusal(SCHEDULE) is None
 
 
-class TestMergedPrecursors:
-    def test_two_windows_on_one_precursor_are_one_column_block(self):
-        """Two mobility slices of the same m/z are one precursor, summed.
+class TestIsomerPrecursors:
+    """Two windows at one m/z, told apart by mobility -- an isomer pair.
 
-        Keeping them apart would put the same ``(precursor_mz, mz)`` pair
-        in ``var`` twice, which is exactly what the pair contract forbids.
-        """
-        windows = (
-            IsolationWindow(313.275, scan_begin=20, scan_end=60),
-            IsolationWindow(313.275, scan_begin=150, scan_end=200),
+    This is what the instrument's mobility dimension is *for* on a
+    targeted method, so merging them back together would undo the whole
+    point of the acquisition. They must stay two column blocks.
+    """
+
+    ISOMERS = (
+        IsolationWindow(313.275, scan_begin=150, scan_end=200),
+        IsolationWindow(313.275, scan_begin=20, scan_end=60),
+    )
+    SCHEDULE = FragmentationSchedule(ms_level=2, windows=ISOMERS)
+    SPECTRA = [
+        ((0, 0, 0), 0, [300.0], [10.0]),
+        ((0, 0, 0), 1, [300.0], [20.0]),
+    ]
+
+    def _table(self):
+        return _build(_reader(schedule=self.SCHEDULE, spectra=self.SPECTRA, ramp=RAMP))
+
+    def test_they_stay_two_precursors(self):
+        table = self._table()
+
+        np.testing.assert_array_equal(
+            table.var["precursor_mz"].to_numpy(), [313.275, 313.275]
         )
-        schedule = FragmentationSchedule(ms_level=2, windows=windows)
-        spectra = [
-            ((0, 0, 0), 0, [300.0], [10.0]),
-            ((0, 0, 0), 1, [300.0], [20.0]),
-        ]
-        table = _build(_reader(schedule=schedule, spectra=spectra))
+        np.testing.assert_array_equal(table.var["precursor_index"].to_numpy(), [0, 1])
+        # Their intensities are never summed together. The lower-mobility
+        # window sorts first, which on a decreasing ramp is the later scan
+        # range -- window 0 here, carrying 10.
+        np.testing.assert_allclose(_dense(table), [[10.0, 20.0], [0.0, 0.0]])
 
-        np.testing.assert_array_equal(table.var["precursor_mz"].to_numpy(), [313.275])
-        np.testing.assert_allclose(_dense(table), [[30.0], [0.0]])
+    def test_the_isolation_mobility_is_what_tells_them_apart(self):
+        table = self._table()
+        mobility = table.var["precursor_mobility"].to_numpy()
+
+        assert mobility[0] < mobility[1]
+        # 1/K0 at the middle scan of each window, on a decreasing ramp.
+        np.testing.assert_allclose(mobility, [RAMP[174], RAMP[39]])
+
+    def test_their_labels_do_not_collide(self):
+        table = self._table()
+
+        assert list(table.var.index) == ["p313.275_mz2", "p313.275_mz2_1"]
+        assert table.var.index.is_unique
+
+    def test_a_schedule_of_distinct_precursors_carries_no_repeat(self):
+        """The ordinary case is unchanged: one block per m/z."""
+        table = _build(_reader(ramp=RAMP))
+
+        assert list(table.var["precursor_mz"].unique()) == [313.275, 936.578]
+        assert table.var["precursor_mz"].is_monotonic_increasing
+        assert table.var.index.is_unique

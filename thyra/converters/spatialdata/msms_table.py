@@ -57,7 +57,7 @@ def msms_table_key(table_key: str) -> str:
 def feature_axis_block(summed_table_key: str) -> Dict[str, Any]:
     """The ``uns["feature_axis"]`` descriptor of a demultiplexed table."""
     return {
-        "dims": ["precursor_mz", "mz"],
+        "dims": ["precursor_mz", "precursor_mobility", "mz"],
         "sorted": True,
         "summed_table": summed_table_key,
     }
@@ -91,25 +91,82 @@ def demultiplex_refusal(schedule: Optional[FragmentationSchedule]) -> Optional[s
     return None
 
 
-def _precursor_ranks(
-    schedule: FragmentationSchedule,
-) -> Tuple[NDArray[np.float64], NDArray[np.int64]]:
-    """The distinct precursor m/z, ascending, and each window's rank in them.
+def _window_mobility(reader: BaseMSIReader) -> Callable[[Any], float]:
+    """A function from an isolation window to the mobility it was isolated at.
 
-    Two windows that isolate the same m/z in two mobility slices are one
-    precursor, not two: summing them is exact, and keeping them apart
-    would put the same ``(precursor_mz, mz)`` pair in ``var`` twice.
+    The 1/K0 at the middle of the window's scan range: a window spans a
+    slice of the ramp rather than a point, and a scheduled method reports
+    no apex, so the midpoint is the honest representative. ``NaN`` when
+    the source has no per-scan mobility axis to look it up in.
+    """
+    values: Optional[NDArray[np.float64]] = None
+    try:
+        axis = reader.get_mobility_axis()
+        if axis is not None:
+            values = axis.values
+    except Exception as e:  # pragma: no cover - reader-defined
+        logger.debug("No mobility axis for the precursor axis: %s", e)
+
+    def mobility_of(window: Any) -> float:
+        if values is None or not window.is_mobility_resolved:
+            return float("nan")
+        middle = (int(window.scan_begin) + int(window.scan_end) - 1) // 2
+        if middle < 0 or middle >= int(values.size):
+            return float("nan")
+        return float(values[middle])
+
+    return mobility_of
+
+
+def _precursor_axis(
+    schedule: FragmentationSchedule, mobility_of: Callable[[Any], float]
+) -> Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.int64]]:
+    """The precursor axis: one entry per isolation window, m/z then mobility.
+
+    **Windows are never merged.** Two that isolate the same m/z at
+    different mobility positions are two precursors, not one: that is how
+    an isomer pair is targeted on this instrument, and summing them would
+    undo exactly the separation the mobility ramp provided. They stay two
+    column blocks, told apart by ``precursor_mobility``.
+
+    Returns the per-precursor ``m/z`` and mobility in axis order, and the
+    position each of the reader's windows takes in that order.
     """
     targets = np.array([w.target for w in schedule.windows], dtype=np.float64)
-    unique_targets, ranks = np.unique(targets, return_inverse=True)
-    ranks = np.asarray(ranks).ravel().astype(np.int64)
-    if unique_targets.size != targets.size:
+    mobility = np.array([mobility_of(w) for w in schedule.windows], dtype=np.float64)
+    # Primary key m/z, secondary the mobility it was isolated at: the
+    # refusals guarantee disjoint scan ranges, so the pair is unique.
+    order = np.lexsort((mobility, targets))
+    rank = np.empty(order.size, dtype=np.int64)
+    rank[order] = np.arange(order.size, dtype=np.int64)
+    shared = int(targets.size - np.unique(targets).size)
+    if shared:
         logger.info(
             "%d isolation windows share a precursor m/z with another and are "
-            "merged into one precursor each",
-            int(targets.size - unique_targets.size),
+            "kept apart by the mobility they were isolated at",
+            shared,
         )
-    return unique_targets, ranks
+    return targets[order], mobility[order], rank
+
+
+def _var_labels(precursor_mz: NDArray[np.float64], mz_index: NDArray[np.int64]) -> list:
+    """``p{precursor}_mz{i}`` per feature, disambiguated where two collide.
+
+    Named after the precursor's m/z rather than its position in the
+    schedule: a rank is only meaningful inside one dataset, so labelling
+    by it would let two samples with different schedules concatenate the
+    wrong precursors onto each other without an error. Isomers share an
+    m/z and so share a stem; they are disambiguated in mobility order,
+    which is the same order in any dataset acquired the same way.
+    """
+    seen: Dict[str, int] = {}
+    out = []
+    for mz, index in zip(precursor_mz.tolist(), mz_index.tolist()):
+        label = f"p{mz:g}_mz{index}"
+        n = seen.get(label, 0)
+        seen[label] = n + 1
+        out.append(label if n == 0 else f"{label}_{n}")
+    return out
 
 
 def _bin_indices(
@@ -219,20 +276,27 @@ def _feature_var(
     unique_keys: NDArray[np.int64],
     axis: NDArray[np.float64],
     precursor_mz: NDArray[np.float64],
+    precursor_mobility: NDArray[np.float64],
 ) -> pd.DataFrame:
-    """The ``var`` of the demultiplexed table, one row per feature."""
+    """The ``var`` of the demultiplexed table, one row per feature.
+
+    ``precursor_index`` is a position in *this* store's precursor axis and
+    means nothing outside it. Two datasets are aligned on
+    ``(precursor_mz, precursor_mobility)``, which name the same precursor
+    wherever it was acquired.
+    """
     precursor_index = (unique_keys // axis.size).astype(np.int64)
     mz_index = (unique_keys % axis.size).astype(np.int64)
+    columns = {
+        "precursor_mz": precursor_mz[precursor_index],
+        "mz": axis[mz_index],
+        "precursor_index": precursor_index,
+        "mz_index": mz_index,
+    }
+    if np.isfinite(precursor_mobility).any():
+        columns["precursor_mobility"] = precursor_mobility[precursor_index]
     return pd.DataFrame(
-        {
-            "precursor_mz": precursor_mz[precursor_index],
-            "mz": axis[mz_index],
-            "precursor_index": precursor_index,
-            "mz_index": mz_index,
-        },
-        index=[
-            f"p{p}_mz{i}" for p, i in zip(precursor_index.tolist(), mz_index.tolist())
-        ],
+        columns, index=_var_labels(precursor_mz[precursor_index], mz_index)
     )
 
 
@@ -281,7 +345,9 @@ def build_msms_table(
 
     from .base_spatialdata_converter import _jsonify_string_lists
 
-    precursor_mz, window_rank = _precursor_ranks(schedule)
+    precursor_mz, precursor_mobility, window_rank = _precursor_axis(
+        schedule, _window_mobility(reader)
+    )
     accumulator = _Accumulator(axis, row_lookup(obs, z_value, pixel_key), window_rank)
     for coords, window_index, mzs, intensities in reader.iter_precursor_spectra():
         accumulator.add(coords, window_index, mzs, intensities)
@@ -290,7 +356,7 @@ def build_msms_table(
         return None
     matrix, unique_keys = accumulated
 
-    var = _feature_var(unique_keys, axis, precursor_mz)
+    var = _feature_var(unique_keys, axis, precursor_mz, precursor_mobility)
     table_obs = obs.copy()
     n_obs = int(len(obs))
     table_obs["region"] = pd.Categorical([region_key] * n_obs)

@@ -105,11 +105,15 @@ class TestMobilityTableVar:
         assert "non-finite" in _messages(check_store_var_conventions(store)["t"])
 
 
-def _store_with_precursors(tmp_path, precursor_mz, mz):
+def _store_with_precursors(tmp_path, precursor_mz, mz, precursor_index=None):
     root = zarr.open_group(str(tmp_path / "store.zarr"), mode="a")
     var = root.create_group("tables").create_group("t").create_group("var")
     var.create_array("mz", data=np.asarray(mz, dtype=np.float64))
     var.create_array("precursor_mz", data=np.asarray(precursor_mz, dtype=np.float64))
+    if precursor_index is not None:
+        var.create_array(
+            "precursor_index", data=np.asarray(precursor_index, dtype=np.int64)
+        )
     return tmp_path / "store.zarr"
 
 
@@ -157,6 +161,39 @@ class TestMsMsTableVar:
         store = _store_with_precursors(tmp_path, [313.275, np.nan], [80.1, 80.1])
         assert "non-finite" in _messages(check_store_var_conventions(store)["t"])
 
+    def test_an_isomer_pair_repeats_a_pair_and_is_still_valid(self, tmp_path):
+        """Two precursors at one m/z, separated by mobility, are legal.
+
+        Validating on ``(precursor_mz, mz)`` would reject exactly the case
+        the demultiplexer exists to preserve, so the block identity is
+        ``precursor_index``.
+        """
+        store = _store_with_precursors(
+            tmp_path,
+            [313.275, 313.275, 313.275, 313.275],
+            [80.1, 200.4, 80.1, 200.4],
+            precursor_index=[0, 0, 1, 1],
+        )
+        assert check_store_var_conventions(store) == {"t": []}
+
+    def test_an_unsorted_block_is_still_an_error(self, tmp_path):
+        store = _store_with_precursors(
+            tmp_path, [313.275, 313.275], [200.4, 80.1], precursor_index=[0, 0]
+        )
+        assert "not unique and sorted" in _messages(
+            check_store_var_conventions(store)["t"]
+        )
+
+    def test_interleaved_blocks_are_an_error(self, tmp_path):
+        """A precursor must own one contiguous stretch, not two."""
+        store = _store_with_precursors(
+            tmp_path,
+            [313.275, 313.275, 313.275],
+            [80.1, 90.0, 100.0],
+            precursor_index=[0, 1, 0],
+        )
+        assert "non-decreasing" in _messages(check_store_var_conventions(store)["t"])
+
 
 class TestReservedColumnNames:
     def test_spec_reserves_the_annotation_columns(self):
@@ -173,6 +210,7 @@ class TestReservedColumnNames:
             "mobility_index",
             "precursor_mz",
             "precursor_index",
+            "precursor_mobility",
             "formula",
             "adduct",
             "annotation_source",

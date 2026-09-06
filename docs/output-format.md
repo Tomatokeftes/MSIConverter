@@ -398,8 +398,8 @@ ion image**, and each column inside the block is one fragment's image:
 | a column | one m/z bin, all precursors summed | one m/z bin **of one precursor** |
 | `var["mz"]` | strictly increasing, unique | the fragment m/z, **restarting at every precursor** |
 | `var["precursor_mz"]` | absent | the isolated m/z the fragments came from |
-| sort | by `mz` | lexicographic `(precursor_mz, mz)` |
-| also | | `precursor_index` (rank of the precursor in the schedule), `mz_index` (column on the MSI axis), `uns["feature_axis"]`, `uns["msms_schedule"]` |
+| sort | by `mz` | lexicographic `(precursor_mz, precursor_mobility, mz)` |
+| also | | `precursor_mobility` (the 1/K0 it was isolated at), `precursor_index` (its position in this store's precursor axis), `mz_index` (column on the MSI axis), `uns["feature_axis"]`, `uns["msms_schedule"]`, `uns["demultiplexed_current"]` |
 
 The fragment axis is the MSI table's own mass axis: `var["mz"]` is
 `msi.var["mz"][var["mz_index"]]`, so a column of this table and the
@@ -414,15 +414,41 @@ of the raw ion current, while the split is built from the raw scans.)
 
 ```python
 msms = sdata.tables["msi_z0_msms"]
-block = msms.var["precursor_mz"] == 936.578          # one contiguous block
-image = np.asarray(msms.X[:, block.to_numpy()].sum(axis=1)).ravel()
+# Look the precursor up once, then slice on its block index: never
+# compare precursor_mz with == , and never assume an m/z is unique.
+var = msms.var
+index = var["precursor_index"][np.argmin(np.abs(var["precursor_mz"] - 936.578))]
+block = (var["precursor_index"] == index).to_numpy()
+image = np.asarray(msms.X[:, block].sum(axis=1)).ravel()
 ```
 
 **Consumers must discriminate on `"precursor_mz" in var.columns`**, never
-on the element name. `thyra validate` applies the pair contract
-(non-decreasing `precursor_mz`, `mz` strictly increasing inside each
-precursor's block, unique sorted pairs) to tables carrying `precursor_mz`
-and the strict contract to all others. The table carries no `mobility`
+on the element name. `thyra validate` checks that `precursor_mz` is
+non-decreasing, that each `precursor_index` owns one contiguous block, and
+that `mz` increases strictly inside it; the strict single-column contract
+applies to every other table.
+
+!!! warning "Two precursors can share an m/z"
+    A method may isolate the same mass at two mobility positions -- that is
+    how an **isomer pair** is targeted, and separating them is what the
+    mobility dimension is for. Thyra keeps them as two column blocks and
+    never sums them back together. So:
+
+    - the block identity is **`precursor_index`**, not `precursor_mz`;
+    - `(precursor_mz, mz)` may legitimately repeat, which is why
+      validation does not use that pair;
+    - `precursor_mobility` is what tells the two apart (the 1/K0 at the
+      middle of the window's scan range -- a window spans a slice of the
+      ramp, and a scheduled method reports no apex).
+
+!!! danger "Aligning two datasets"
+    `precursor_index` is a position in **one store's** precursor axis and
+    means nothing outside it: two samples whose schedules differ in length
+    give the same index to different precursors. Align on
+    `(precursor_mz, precursor_mobility)`. The `var` index labels are named
+    after the precursor's m/z for the same reason -- `p936.578_mz1732`,
+    never `p14_mz1732` -- so `anndata.concat` cannot silently merge two
+    unrelated precursors. The table carries no `mobility`
 column: the scan range is how the precursors are *separated*, not what
 they are *indexed by*, and a table matching both discriminators would tell
 a consumer nothing about which kind it holds.
@@ -440,6 +466,33 @@ failed:
 A refusal writes no sibling table, is never an exception and never touches
 the summed table. Bruker TDF is the only source that reports what the
 split needs today.
+
+**`uns["demultiplexed_current"]`** records how much of the summed table's
+ion current the split holds: `current_ratio` over the whole image, and
+`current_ratio_pixel_min` / `_max` across pixels. Under
+`--tdf-spectrum scan_sum` it is exactly `1.0`. Under the default
+`vendor_centroid` it is **above** 1 -- the vendor peak picker discards
+single counts while the split reads raw scans, which on a real acquisition
+is about 1.5% overall and up to 1.14x on a single pixel. The two tables
+genuinely do not add up in that mode, and this block is where the store
+says so.
+
+!!! note "Deliberate limits"
+    - **The feature axis depends on the data.** Only `(precursor, bin)`
+      pairs that carry signal become columns, so two datasets converted
+      with identical settings get different `var`. The alternative is
+      precursors x the whole mass axis -- millions of empty columns -- and
+      is not worth it. Align on the intrinsic columns, as above.
+    - **The fragment axis is borrowed from MS1.** It is the summed table's
+      mass axis, so a resampling grid chosen for intact ions also sets
+      fragment resolution. That coupling is what makes `mz_index`
+      meaningful and the conservation check exact; it is a choice, not a
+      necessity.
+    - **Do not select precursors by float equality.** Look the precursor up
+      once and slice on `precursor_index` within that store.
+    - **Untested at scale.** The largest acquisition this has run on is 713
+      pixels with 15 precursors. A 100,000-pixel run with 25 has not been
+      measured; `var` grows with the occupied pairs.
 
 !!! note "Relation to other MS/MS imaging representations"
     The open formats solve this at the raw layer by never merging: an

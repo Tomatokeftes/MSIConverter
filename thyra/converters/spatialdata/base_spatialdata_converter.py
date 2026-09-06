@@ -1048,8 +1048,52 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         except Exception as e:
             logger.error("Could not build the demultiplexed MS/MS table: %s", e)
             return
-        if table is not None:
-            data_structures["tables"][key] = table
+        if table is None:
+            return
+        self._record_demultiplexed_current(
+            table, data_structures["tables"].get(table_key), table_key
+        )
+        data_structures["tables"][key] = table
+
+    @staticmethod
+    def _record_demultiplexed_current(table: Any, summed: Any, summed_key: str) -> None:
+        """Say how much of the summed table's ion current the split holds.
+
+        The two tables agree exactly under ``--tdf-spectrum scan_sum``, and
+        do not under the default ``vendor_centroid``: the vendor peak
+        picker drops single counts while the split reads raw scans, so the
+        demultiplexed table holds *more*. That is not a defect, but a store
+        whose two tables disagree must say so rather than leave a reader to
+        find it by subtraction.
+        """
+        if summed is None:
+            return
+        try:
+            split = np.asarray(table.X.sum(axis=1)).ravel().astype(np.float64)
+            whole = np.asarray(summed.X.sum(axis=1)).ravel().astype(np.float64)
+            if split.size != whole.size or not whole.any():
+                return
+            per_pixel = split / np.where(whole == 0, np.nan, whole)
+            block: Dict[str, Any] = {
+                "summed_table": summed_key,
+                "current_ratio": float(split.sum() / whole.sum()),
+                "current_ratio_pixel_min": float(np.nanmin(per_pixel)),
+                "current_ratio_pixel_max": float(np.nanmax(per_pixel)),
+            }
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("Could not compare the demultiplexed current: %s", e)
+            return
+        table.uns["demultiplexed_current"] = block
+        if abs(float(block["current_ratio"]) - 1.0) > 1e-9:
+            logger.info(
+                "The demultiplexed table holds %.4fx the summed table's ion "
+                "current (per pixel %.4f to %.4f). They agree exactly only "
+                "under --tdf-spectrum scan_sum; the vendor centroid discards "
+                "counts the raw scans keep.",
+                block["current_ratio"],
+                block["current_ratio_pixel_min"],
+                block["current_ratio_pixel_max"],
+            )
 
     def _resolved_pixel_size_xy(self) -> Tuple[float, float]:
         """The in-plane pixel pitch as ``(x_um, y_um)``.
