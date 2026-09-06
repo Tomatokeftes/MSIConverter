@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pydantic import ValidationError
 
+from ...utils.windows_paths import prepare_zarr_read_path
 from ..ontology.cache import ONTOLOGY
 from .models import (
     MSI_METADATA_SCHEMA_VERSION,
@@ -252,7 +253,9 @@ def check_store_var_conventions(
     import numpy as np
     import zarr
 
-    root = zarr.open_group(str(store_path), mode="r")
+    # Same routing as read_msi_metadata_blocks: past the Windows path limit
+    # zarr returns fill values instead of failing.
+    root = zarr.open_group(str(prepare_zarr_read_path(Path(store_path))), mode="r")
     if "tables" not in root:
         raise ValueError(
             f"{store_path} does not look like a SpatialData store: "

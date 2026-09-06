@@ -286,6 +286,12 @@ the [var column contract](#var-column-conventions) and that every table
 carries a metadata block. Exit status is `0` when every document
 conforms (warnings allowed) and `1` otherwise, so it can gate CI.
 
+On Windows, a store whose files sit past the 260-character path limit is
+read through an extended-length path automatically; without that, Zarr
+would return empty terms for the keys it cannot open and the document
+would fail validation for the wrong reason (see
+[long output paths](getting-started.md#windows-long-output-paths)).
+
 Errors mean the document does not conform: structural violations, unknown
 PSI-MS/IMS/UO accessions, version incompatibility. Warnings mean it
 conforms but says something suspicious: a term label that does not match
