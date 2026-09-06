@@ -214,9 +214,12 @@ class SpatialData3DConverter(BaseSpatialDataConverter):
             # Drop bbox positions that have no spectrum (#88)
             adata = self._drop_empty_pixels(adata)
 
-            # Add average spectrum to .uns (use total_intensity to match
-            # original behavior)
-            adata.uns["average_spectrum"] = data_structures["total_intensity"]
+            # Add average spectrum to .uns. Divided by the pixel count,
+            # as the slice paths do: this key is the per-pixel mean
+            # everywhere else, including the per-region block below.
+            adata.uns["average_spectrum"] = data_structures["total_intensity"] / max(
+                data_structures["pixel_count"], 1
+            )
 
             # Add per-region mean spectra for multi-region datasets
             if "region_total_intensity" in data_structures:
