@@ -31,6 +31,8 @@ _MODEL_CLASSES = {
     "MSAnalysis": models.MSAnalysis,
     "IonMobility": models.IonMobility,
     "MobilityGrid": models.MobilityGrid,
+    "Fragmentation": models.Fragmentation,
+    "IsolationWindow": models.IsolationWindow,
     "SoftwareRef": models.SoftwareRef,
     "ProcessingStep": models.ProcessingStep,
     "Provenance": models.Provenance,

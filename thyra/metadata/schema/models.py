@@ -35,7 +35,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 # The schema version this code implements and writes.
 # 0.2.0: added the optional ``ms_analysis.ion_mobility`` block (additive).
 # 0.3.0: ``ion_mobility`` gained ``resolved_table`` and ``grid`` (additive).
-MSI_METADATA_SCHEMA_VERSION = "0.3.0"
+# 0.4.0: added the optional ``ms_analysis.fragmentation`` block (additive).
+MSI_METADATA_SCHEMA_VERSION = "0.4.0"
 
 # Where the block lives inside a converted store:
 # ``table.uns["msi_metadata"]``.  This location is a stable contract
@@ -44,7 +45,7 @@ MSI_METADATA_SCHEMA_VERSION = "0.3.0"
 MSI_METADATA_UNS_KEY = "msi_metadata"
 
 # The committed JSON Schema artifact for this schema version.
-SCHEMA_JSON_FILENAME = "msi_metadata_schema_v0_3.json"
+SCHEMA_JSON_FILENAME = "msi_metadata_schema_v0_4.json"
 
 # Fixed var column conventions for the MSI table.  ``mz`` is required
 # and written by every converter; the remaining names are reserved for
@@ -334,6 +335,123 @@ class IonMobility(_SchemaModel):
         return self
 
 
+class IsolationWindow(_SchemaModel):
+    """One precursor isolation, named the way mzPeak names it.
+
+    The window spans ``[target - lower_offset, target + upper_offset]``.
+    Offsets rather than a single width is mzPeak's shape (and mzML's);
+    a source reporting one full width has it halved into two equal
+    offsets, which is the reading every mzML writer for those
+    instruments takes.
+    """
+
+    target: float = Field(
+        gt=0,
+        description="Isolation window target m/z.",
+        json_schema_extra=_cv("MS:1000827", "isolation window target m/z"),
+    )
+    lower_offset: Optional[float] = Field(
+        default=None,
+        ge=0,
+        description="How far below the target the window reaches, in m/z.",
+        json_schema_extra=_cv("MS:1000828", "isolation window lower offset"),
+    )
+    upper_offset: Optional[float] = Field(
+        default=None,
+        ge=0,
+        description="How far above the target the window reaches, in m/z.",
+        json_schema_extra=_cv("MS:1000829", "isolation window upper offset"),
+    )
+    collision_energy: Optional[float] = Field(
+        default=None,
+        description="Collision energy in electronvolts (UO:0000266).",
+        json_schema_extra=_cv("MS:1000045", "collision energy"),
+    )
+    scan_begin: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=(
+            "First mobility scan this window occupies, when the source "
+            "separates its windows along the mobility ramp (Bruker PASEF)."
+        ),
+    )
+    scan_end: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="One past the last mobility scan this window occupies.",
+    )
+
+    @model_validator(mode="after")
+    def _scan_range_is_ordered(self) -> "IsolationWindow":
+        if self.scan_begin is not None and self.scan_end is not None:
+            if self.scan_end <= self.scan_begin:
+                raise ValueError("scan_end must exceed scan_begin")
+        return self
+
+
+class Fragmentation(_SchemaModel):
+    """Whether, and how, the acquisition fragmented its ions.
+
+    An MS/MS imaging run measures fragments, so the m/z axis of the table
+    means fragment m/z. Nothing about the axis says so, which is why this
+    block exists: without it an MS/MS store is indistinguishable from an
+    MS1 one.
+
+    Thyra does not split a frame that isolated several precursors -- the
+    stored spectrum still sums them. ``merges_precursors`` says when that
+    has happened, so a consumer knows the spectrum is a chimera rather
+    than discovering it from the peaks.
+    """
+
+    present: bool = Field(
+        description="True when the stored spectra are fragment spectra.",
+    )
+    ms_level: int = Field(
+        ge=1,
+        description="MS level of the stored spectra: 1 for a survey scan.",
+        json_schema_extra=_cv("MS:1000511", "ms level"),
+    )
+    constant_across_pixels: bool = Field(
+        default=True,
+        description=(
+            "Whether every pixel was fragmented on the same schedule. A "
+            "scheduled method makes it so; a data-dependent one does not, "
+            "and then the windows below are not a global precursor axis."
+        ),
+    )
+    merges_precursors: bool = Field(
+        default=False,
+        description=(
+            "Whether one stored spectrum sums fragments of more than one "
+            "precursor, so its peaks cannot be attributed to a single one."
+        ),
+    )
+    dissociation_term: Optional[OntologyTerm] = Field(
+        default=None,
+        description="PSI-MS dissociation method, e.g. MS:1000133 (CID).",
+    )
+    windows: List[IsolationWindow] = Field(
+        default_factory=list,
+        description="The precursor schedule, empty when none was reported.",
+    )
+
+    @model_validator(mode="after")
+    def _absent_means_ms1(self) -> "Fragmentation":
+        """A run that fragmented nothing cannot describe a precursor."""
+        if not self.present:
+            if self.ms_level != 1:
+                raise ValueError("fragmentation.present is False but ms_level > 1")
+            if self.windows or self.dissociation_term is not None:
+                raise ValueError(
+                    "fragmentation.present is False but precursor fields are set"
+                )
+        elif self.ms_level < 2:
+            raise ValueError("fragmentation.present is True but ms_level < 2")
+        if self.merges_precursors and len(self.windows) < 2:
+            raise ValueError("merges_precursors needs more than one isolation window")
+        return self
+
+
 class MSAnalysis(_SchemaModel):
     """How the data was acquired (METASPACE ``MS_Analysis``).
 
@@ -385,6 +503,13 @@ class MSAnalysis(_SchemaModel):
         description=(
             "Whether the source separated ions by mobility and, if so, over "
             "what range; the MSI table is summed over that dimension."
+        ),
+    )
+    fragmentation: Optional[Fragmentation] = Field(
+        default=None,
+        description=(
+            "Whether the stored spectra are fragment spectra and, if so, of "
+            "which precursors; unset when the source does not say."
         ),
     )
 
@@ -512,6 +637,10 @@ class MSIMetadata(_SchemaModel):
         objects, which AnnData/zarr cannot round-trip (the same reason
         ``uns["regions"]`` is JSON).  ``read_msi_metadata_blocks`` and
         ``validate_document`` both decode it transparently.
+        ``ms_analysis.fragmentation.windows`` is a list of objects too and
+        gets the same treatment: stored raw it comes back as a numpy array
+        of Python ``repr`` strings, which is neither parseable nor safe to
+        deepcopy on numpy 2.1-2.2.
         """
         data: Dict[str, Any] = self.model_dump(mode="json", exclude_none=True)
         for section in ("sample", "preparation", "processing"):
@@ -519,6 +648,9 @@ class MSIMetadata(_SchemaModel):
                 data.pop(section, None)
         if "processing" in data:
             data["processing"] = json.dumps(data["processing"])
+        fragmentation = data.get("ms_analysis", {}).get("fragmentation")
+        if isinstance(fragmentation, dict) and "windows" in fragmentation:
+            fragmentation["windows"] = json.dumps(fragmentation["windows"])
         return data
 
 

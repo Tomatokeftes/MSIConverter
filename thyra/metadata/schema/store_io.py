@@ -78,9 +78,34 @@ def read_msi_metadata_blocks(store_path: Union[str, Path]) -> Dict[str, Dict[str
                     logger.warning(
                         "Table %s has an unparseable processing section", name
                     )
+        _decode_isolation_windows(block, name)
         blocks[name] = block
 
     return blocks
+
+
+def _decode_isolation_windows(block: Dict[str, Any], name: str) -> None:
+    """Parse ``ms_analysis.fragmentation.windows`` back from its JSON string.
+
+    Stored as JSON for the same reason ``processing`` is -- a list of
+    objects does not round-trip through AnnData/zarr. Decoded in place so
+    callers see the parsed form either way.
+    """
+    fragmentation = block.get("ms_analysis")
+    if not isinstance(fragmentation, dict):
+        return
+    fragmentation = fragmentation.get("fragmentation")
+    if not isinstance(fragmentation, dict):
+        return
+    windows = fragmentation.get("windows")
+    if not isinstance(windows, str):
+        return
+    try:
+        fragmentation["windows"] = json.loads(windows)
+    except json.JSONDecodeError:
+        logger.warning(
+            "Table %s has an unparseable fragmentation.windows section", name
+        )
 
 
 def deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:

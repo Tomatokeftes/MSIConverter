@@ -168,7 +168,7 @@ class TestBuilder:
             source_format="bruker",
         )
         as_uns = block.to_uns_dict()
-        assert as_uns["schema_version"] == MSI_METADATA_SCHEMA_VERSION == "0.3.0"
+        assert as_uns["schema_version"] == MSI_METADATA_SCHEMA_VERSION == "0.4.0"
         assert as_uns["ms_analysis"]["ion_mobility"]["num_scans"] == 240
         restored = MSIMetadata.model_validate(as_uns)
         assert restored.ms_analysis.ion_mobility == block.ms_analysis.ion_mobility

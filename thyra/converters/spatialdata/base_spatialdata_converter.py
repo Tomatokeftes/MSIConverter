@@ -519,6 +519,8 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         self._mobility_heatmap_enabled = bool(mobility_heatmap)
         self._mobility_heatmap_block: Optional[Dict[str, Any]] = None
         self._mobility_heatmap_built = False
+        self._fragmentation_schedule: Any = None
+        self._fragmentation_read = False
         if self._sparse_format not in ("csc", "csr"):
             raise ValueError(
                 f"sparse_format must be 'csc' or 'csr', got '{sparse_format}'"
@@ -765,8 +767,76 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         self._collect_msi_metadata_block(uns, comp_meta)
         self._collect_mobility_axis(uns)
         self._collect_mobility_heatmap(uns)
+        self._collect_msms_schedule(uns)
 
         return uns
+
+    def _fragmentation(self) -> Any:
+        """The reader's fragmentation schedule, read once and cached.
+
+        ``None`` when the reader cannot say. Asked for through the base
+        reader contract, so a format that learns to report it later needs
+        no change here.
+        """
+        if not self._fragmentation_read:
+            self._fragmentation_read = True
+            # getattr, not a direct call: a reader predating this part of
+            # the contract simply has nothing to say, which is the same
+            # answer as ``None`` and not worth a warning.
+            describe = getattr(self.reader, "get_fragmentation", None)
+            if callable(describe):
+                try:
+                    self._fragmentation_schedule = describe()
+                except Exception as e:  # pragma: no cover - reader-defined
+                    logger.warning("Could not describe the fragmentation: %s", e)
+                    self._fragmentation_schedule = None
+            self._warn_if_precursors_merge()
+        return self._fragmentation_schedule
+
+    def _fragmentation_report(self) -> Any:
+        """The schedule in the shape the schema builder reads, or ``None``."""
+        schedule = self._fragmentation()
+        return None if schedule is None else schedule.to_extractor_report()
+
+    def _warn_if_precursors_merge(self) -> None:
+        """Say out loud when a stored spectrum sums several precursors.
+
+        The stored spectrum of such a pixel holds fragments of every
+        precursor the frame isolated, with nothing marking which came
+        from which. That is not visible in the output -- it looks like an
+        ordinary spectrum -- so it is said once, at WARNING, rather than
+        left for a reader of the peaks to work out.
+        """
+        schedule = self._fragmentation_schedule
+        if schedule is None or not schedule.merges_precursors:
+            return
+        targets = ", ".join(f"{w.target:g}" for w in schedule.windows[:6])
+        if len(schedule.windows) > 6:
+            targets += ", ..."
+        logger.warning(
+            "This acquisition isolates %d precursors per pixel (%s). Thyra "
+            "sums them into one spectrum per pixel, so the stored spectrum "
+            "holds fragments of all of them and cannot be attributed to a "
+            "single precursor. The schedule is recorded in "
+            "uns['msms_schedule'].",
+            len(schedule.windows),
+            targets,
+        )
+
+    def _collect_msms_schedule(self, uns: Dict[str, Any]) -> None:
+        """Add ``msms_schedule`` when the source fragmented anything.
+
+        Written on the summed MSI table so a consumer can tell fragment
+        m/z from intact m/z, and see which precursors a chimeric spectrum
+        merges. Kept out of the versioned ``msi_metadata`` block for the
+        same reason ``mobility_axis`` is: that block is versioned, this
+        one carries arrays.
+        """
+        schedule = self._fragmentation()
+        if schedule is None or not schedule.is_msms:
+            return
+        block = schedule.to_uns()
+        uns["msms_schedule"] = _jsonify_string_lists(self._serialize_for_zarr(block))
 
     def _collect_mobility_axis(self, uns: Dict[str, Any]) -> None:
         """Add ``mobility_axis`` when the source has a mobility dimension.
@@ -933,6 +1003,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 source_format=info.get("source_format"),
                 processing=self._processing_provenance(),
                 mobility_resolved_table=self._mobility_table_key,
+                fragmentation=self._fragmentation_report(),
             )
             uns[MSI_METADATA_UNS_KEY] = meta.to_uns_dict()
         except Exception as e:

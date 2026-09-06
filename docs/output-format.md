@@ -333,6 +333,56 @@ only, with coincident m/z within a pixel summed into one bin. A
 mobility-resolved table for that case needs a common mobility grid, which
 is a later feature.
 
+### Fragmentation (MS/MS)
+
+An MS/MS imaging run measures fragments, so `var["mz"]` is fragment m/z.
+Nothing about the axis says so -- a converted MS/MS store is otherwise shaped
+exactly like an MS1 one -- so when the source reports fragmentation the table
+carries **`uns["msms_schedule"]`**:
+
+| key | value |
+|---|---|
+| `ms_level` | `2` for a fragment spectrum; the block is absent for MS1 |
+| `n_windows` | number of precursors isolated per pixel |
+| `merges_precursors` | `True` when more than one, so the stored spectrum sums them |
+| `constant_across_pixels` | whether every pixel was fragmented on the same schedule |
+| `isolation_window_target` | `float64[n]`: the isolated m/z of each window |
+| `isolation_window_lower_offset` / `_upper_offset` | `float64[n]`: the window spans `target - lower` to `target + upper` |
+| `collision_energy` | `float64[n]`: in electronvolts |
+| `scan_begin` / `scan_end` | `int64[n]`: the mobility scans each window occupies, when the source separates them that way (Bruker PASEF) |
+
+Field names and CV terms follow
+[mzPeak](https://github.com/HUPO-PSI/mzPeak)'s `spectra_metadata_precursors`:
+`ms_level` is `MS:1000511`, the isolation terms are `MS:1000827` / `828` /
+`829`, and activation is `MS:1000133` with `MS:1000045` collision energy in
+`UO:0000266`. The accessions travel as *values* (`..._accession` keys), never
+as dict keys -- a colon is not a legal Windows path character and zarr writes
+a key as a directory name. A source reporting a single full isolation width
+has it halved into two equal offsets.
+
+The same facts appear in the versioned schema block as
+`uns["msi_metadata"]["ms_analysis"]["fragmentation"]`, where the precursor
+list is a JSON string (a list of objects does not round-trip through
+AnnData/zarr); `read_msi_metadata_blocks` and `thyra validate` decode it.
+
+!!! warning "A multi-precursor pixel is a chimera"
+    Thyra sums a frame into one spectrum per pixel and does **not** split it
+    per precursor. When `merges_precursors` is `True`, that spectrum holds
+    fragments of every precursor the frame isolated, with nothing marking
+    which came from which -- so it must not be read as the fragment spectrum
+    of any one of them. Conversion says so at `WARNING`. Splitting such a
+    frame needs a feature axis of `(precursor, fragment)` pairs, which is a
+    later feature; on Bruker PASEF the windows occupy disjoint mobility scan
+    ranges, which is what makes the split exact when it comes.
+
+```python
+if "msms_schedule" in table.uns:
+    sched = table.uns["msms_schedule"]
+    print("MS level:", sched["ms_level"])
+    for mz, ce in zip(sched["isolation_window_target"], sched["collision_energy"]):
+        print(f"  precursor {mz:.3f} at {ce:.1f} eV")
+```
+
 ---
 
 ## Pixel Coordinates

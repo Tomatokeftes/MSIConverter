@@ -12,6 +12,7 @@ from ..metadata.types import ComprehensiveMetadata, EssentialMetadata
 if TYPE_CHECKING:
     from .base_extractor import MetadataExtractor
     from .mobility import MobilityAxis
+    from .msms import FragmentationSchedule
 
 logger = logging.getLogger(__name__)
 
@@ -305,6 +306,25 @@ class BaseMSIReader(ABC):
         raise NotImplementedError(
             f"{type(self).__name__} does not expose an ion mobility dimension"
         )
+
+    # ------------------------------------------------------------------
+    # Fragmentation
+    #
+    # Whether the spectra are fragment spectra, and of what. Like mobility,
+    # this changes nothing about what ``iter_spectra`` yields -- an MS/MS
+    # acquisition still comes through as one spectrum per pixel. It is
+    # recorded so a store can say that its m/z axis is fragment m/z, which
+    # the axis itself cannot.
+    # ------------------------------------------------------------------
+
+    def get_fragmentation(self) -> Optional["FragmentationSchedule"]:
+        """Describe the fragmentation, or ``None`` when the reader cannot.
+
+        ``None`` means "not reported", which is not the same as "MS1": a
+        reader that has no way to tell says nothing rather than claiming
+        the acquisition was unfragmented.
+        """
+        return None
 
     def get_region_map(self) -> Optional[dict]:
         """Get per-pixel region mapping for multi-region datasets.

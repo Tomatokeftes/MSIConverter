@@ -86,6 +86,11 @@ class TestCvBindings:
             "MS:1000031",  # instrument model
             "MS:1000800",  # mass resolving power
             "MS:1002892",  # ion mobility attribute
+            "MS:1000511",  # ms level
+            "MS:1000827",  # isolation window target m/z
+            "MS:1000828",  # isolation window lower offset
+            "MS:1000829",  # isolation window upper offset
+            "MS:1000045",  # collision energy
         }
 
     def test_every_binding_resolves_in_the_local_tables(self):

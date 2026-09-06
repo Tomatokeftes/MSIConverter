@@ -136,6 +136,22 @@ stored mean spectrum; under `vendor_centroid` the two differ by what the
 centroid discards. See [Output Format](output-format.md#ion-mobility). A TSF
 file has no mobility dimension and gets none of this.
 
+**MS/MS acquisitions convert, and say so.** `Frames.MsMsType` tells a survey
+frame from a fragment one; the precursor detail comes from `PasefFrameMsMsInfo`
+(PASEF frames) or `FrameMsMsInfo` (single-precursor frames). What is read lands
+in `uns["msms_schedule"]` and in
+`msi_metadata.ms_analysis.fragmentation`: the MS level, each isolation window's
+target m/z and offsets, the collision energy, and -- for PASEF -- the mobility
+scan range each window occupies.
+
+Thyra does not split a frame per precursor: the stored spectrum is still the
+whole frame summed. On a scheduled PASEF method that isolates several
+precursors at every pixel, that spectrum therefore holds fragments of all of
+them at once, and conversion says so at `WARNING`. The schedule is recorded so
+the merge is visible rather than silent; a `(precursor, fragment)` feature
+table is a later feature. See
+[Output Format](output-format.md#fragmentation-msms).
+
 ## Bruker solariX
 
 `.d` directories from solariX / MRMS (FT-ICR) instruments running ftmsControl,
