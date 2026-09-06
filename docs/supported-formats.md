@@ -152,7 +152,9 @@ apart** into a `{table}_msms` sibling of `(precursor, fragment)` features: each
 window owns a disjoint slice of the mobility ramp, so every recorded point
 belongs to exactly one precursor and the split is a filter on the scan number,
 not a deconvolution -- the per-precursor columns of a pixel add back up to what
-the summed table holds there. Thyra refuses, by name and without writing a
+the summed table holds there. This is the shape a targeted MALDI MS/MS imaging
+run has, the one Bruker acquires as `iprm-PASEF`: a scheduled precursor list,
+serially fragmented at every pixel. Thyra refuses, by name and without writing a
 table, when the schedule varies per pixel, when the windows overlap or carry no
 scan range, or when there is only one precursor to begin with. TDF is the only
 source that reports what the split needs; an imzML export of the same

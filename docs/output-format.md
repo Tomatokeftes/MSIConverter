@@ -386,8 +386,11 @@ if "msms_schedule" in table.uns:
 #### Demultiplexed MS/MS table
 
 When the source isolates several precursors per pixel in **disjoint
-mobility scan ranges** (Bruker PASEF), `--msms-table` also writes them
-split apart as a sibling table, `{table}_msms`:
+mobility scan ranges** (Bruker PASEF -- the targeted MALDI variant is
+Bruker's `iprm-PASEF`, which serially fragments a scheduled list of
+precursors at every pixel), `--msms-table` also writes them split apart as
+a sibling table, `{table}_msms`. Each precursor's block is its **precursor
+ion image**, and each column inside the block is one fragment's image:
 
 | | MSI table `{id}_z0` | MS/MS table `{id}_z0_msms` |
 |---|---|---|
@@ -437,6 +440,26 @@ failed:
 A refusal writes no sibling table, is never an exception and never touches
 the summed table. Bruker TDF is the only source that reports what the
 split needs today.
+
+!!! note "Relation to other MS/MS imaging representations"
+    The open formats solve this at the raw layer by never merging: an
+    imzML or mzML spectrum carries its own precursor, and mzPeak links a
+    spectrum row to a precursor table by index. The chimera is created by
+    the analysis layer's one-spectrum-per-pixel model, so this table is
+    that per-spectrum precursor reference translated onto a feature axis.
+
+    Feature-based workflows (MZmine's SIMSEF, for instance) instead attach
+    one representative MS2 spectrum to each MS1 feature, which identifies
+    the feature but keeps no spatial information about the fragments. This
+    table is the stronger form of the same data: summing a precursor's
+    block collapses it to that per-precursor ion image, while keeping the
+    block gives every fragment its own image -- which is what a spatial
+    co-localisation check between a fragment and its precursor needs.
+
+    The `(precursor_mz, mz)` feature-pair layout is Thyra's own; no open
+    analysis-layer convention for per-precursor ion images exists to
+    follow. The vocabulary is not: `ms_level`, the isolation window terms
+    and the activation terms are PSI-MS, spelled as mzPeak spells them.
 
 ---
 
