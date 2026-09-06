@@ -259,7 +259,7 @@ class TestSyntheticFixture:
         assert conversion["name"] == "conversion"
         assert conversion["parameters"]["tdf_spectrum"] == "scan_sum"
         assert "resolved_table" not in mobility and "grid" not in mobility
-        assert block["schema_version"] == "0.4.0"
+        assert block["schema_version"] == "0.5.0"
 
     def test_a_survey_acquisition_is_recorded_as_unfragmented(self, tmp_path, expected):
         """The fixture is MS1, and the store says so rather than staying silent.
@@ -462,7 +462,10 @@ class TestDemultiplexedStore:
 
     def test_the_summed_table_names_the_sibling_and_still_validates(self, tmp_path):
         spatialdata = pytest.importorskip("spatialdata")
-        from thyra.metadata.schema import check_store_var_conventions
+        from thyra.metadata.schema import (
+            check_store_var_conventions,
+            read_msi_metadata_blocks,
+        )
 
         _open("scan_sum").close()
         out = _convert_path(
@@ -473,6 +476,13 @@ class TestDemultiplexedStore:
 
         assert schedule["resolved_table"] == "tims_z0_msms"
         assert schedule["n_windows"] == 3
+        # The versioned block must name it too: a consumer reading only
+        # msi_metadata finds the mobility sibling, so it must find this one.
+        blocks = read_msi_metadata_blocks(out)
+        for name, block in blocks.items():
+            fragmentation = block["ms_analysis"]["fragmentation"]
+            assert fragmentation["present"] is True, name
+            assert fragmentation["resolved_table"] == "tims_z0_msms", name
         assert _no_colon_keys(sdata.tables["tims_z0_msms"].uns)
         issues = check_store_var_conventions(out)
         assert set(issues) == {"tims_z0", "tims_z0_msms"}

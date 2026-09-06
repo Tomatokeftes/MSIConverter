@@ -2,7 +2,7 @@
 """Regenerate the committed JSON Schema artifact.
 
 The JSON Schema rendering of the pydantic models is committed next to
-the models (``msi_metadata_schema_v0_4.json``) so that non-Python
+the models (``msi_metadata_schema_v0_5.json``) so that non-Python
 consumers can validate documents without importing Thyra.  A unit test
 asserts the committed file matches the models; when it fails, rerun::
 

@@ -36,7 +36,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 # 0.2.0: added the optional ``ms_analysis.ion_mobility`` block (additive).
 # 0.3.0: ``ion_mobility`` gained ``resolved_table`` and ``grid`` (additive).
 # 0.4.0: added the optional ``ms_analysis.fragmentation`` block (additive).
-MSI_METADATA_SCHEMA_VERSION = "0.4.0"
+# 0.5.0: ``fragmentation`` gained ``resolved_table`` (additive), so the
+#        demultiplexed MS/MS sibling is discoverable from this block the
+#        same way ``ion_mobility.resolved_table`` names the mobility one.
+MSI_METADATA_SCHEMA_VERSION = "0.5.0"
 
 # Where the block lives inside a converted store:
 # ``table.uns["msi_metadata"]``.  This location is a stable contract
@@ -45,7 +48,7 @@ MSI_METADATA_SCHEMA_VERSION = "0.4.0"
 MSI_METADATA_UNS_KEY = "msi_metadata"
 
 # The committed JSON Schema artifact for this schema version.
-SCHEMA_JSON_FILENAME = "msi_metadata_schema_v0_4.json"
+SCHEMA_JSON_FILENAME = "msi_metadata_schema_v0_5.json"
 
 # Fixed var column conventions for the MSI table.  ``mz`` is required
 # and written by every converter; the remaining names are reserved for
@@ -76,6 +79,11 @@ MSI_VAR_MOBILITY_COLUMN = "mobility"
 # has one contiguous column block per precursor, each block a spectrum,
 # validated by the pair instead.  A table carries this or ``mobility``,
 # never both: the two say different things about what a column is.
+#
+# Its value is the **isolation window target** (PSI-MS ``MS:1000827``),
+# the m/z the quadrupole was set to -- not ``MS:1000744``, a selected ion
+# whose m/z was measured. mzPeak keeps the two apart for the same reason,
+# and a consumer must not read this column as a monoisotopic mass.
 MSI_VAR_PRECURSOR_COLUMN = "precursor_mz"
 
 # Imaging concepts this schema needs that have no PSI CV term yet.
@@ -406,10 +414,11 @@ class Fragmentation(_SchemaModel):
     block exists: without it an MS/MS store is indistinguishable from an
     MS1 one.
 
-    Thyra does not split a frame that isolated several precursors -- the
-    stored spectrum still sums them. ``merges_precursors`` says when that
-    has happened, so a consumer knows the spectrum is a chimera rather
-    than discovering it from the peaks.
+    The MSI table sums a frame that isolated several precursors into one
+    spectrum. ``merges_precursors`` says when that has happened, so a
+    consumer knows the spectrum is a chimera rather than discovering it
+    from the peaks, and ``resolved_table`` names the sibling table that
+    holds those precursors split apart when one was written.
     """
 
     present: bool = Field(
@@ -442,6 +451,15 @@ class Fragmentation(_SchemaModel):
     windows: List[IsolationWindow] = Field(
         default_factory=list,
         description="The precursor schedule, empty when none was reported.",
+    )
+    resolved_table: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Element key of the demultiplexed sibling table (pixels x "
+            "(precursor, fragment)) written beside this summed table, when "
+            "one was."
+        ),
     )
 
     @model_validator(mode="after")

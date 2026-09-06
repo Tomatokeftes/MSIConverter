@@ -1085,6 +1085,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 processing=self._processing_provenance(),
                 mobility_resolved_table=self._mobility_table_key,
                 fragmentation=self._fragmentation_report(),
+                msms_resolved_table=self._msms_table_key,
             )
             uns[MSI_METADATA_UNS_KEY] = meta.to_uns_dict()
         except Exception as e:
