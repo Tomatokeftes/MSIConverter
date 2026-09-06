@@ -350,6 +350,7 @@ carries **`uns["msms_schedule"]`**:
 | `isolation_window_lower_offset` / `_upper_offset` | `float64[n]`: the window spans `target - lower` to `target + upper` |
 | `collision_energy` | `float64[n]`: in electronvolts |
 | `scan_begin` / `scan_end` | `int64[n]`: the mobility scans each window occupies, when the source separates them that way (Bruker PASEF) |
+| `resolved_table` | element key of the demultiplexed sibling table, when one was written |
 
 Field names and CV terms follow
 [mzPeak](https://github.com/HUPO-PSI/mzPeak)'s `spectra_metadata_precursors`:
@@ -366,14 +367,13 @@ list is a JSON string (a list of objects does not round-trip through
 AnnData/zarr); `read_msi_metadata_blocks` and `thyra validate` decode it.
 
 !!! warning "A multi-precursor pixel is a chimera"
-    Thyra sums a frame into one spectrum per pixel and does **not** split it
-    per precursor. When `merges_precursors` is `True`, that spectrum holds
-    fragments of every precursor the frame isolated, with nothing marking
-    which came from which -- so it must not be read as the fragment spectrum
-    of any one of them. Conversion says so at `WARNING`. Splitting such a
-    frame needs a feature axis of `(precursor, fragment)` pairs, which is a
-    later feature; on Bruker PASEF the windows occupy disjoint mobility scan
-    ranges, which is what makes the split exact when it comes.
+    The MSI table sums a frame into one spectrum per pixel. When
+    `merges_precursors` is `True`, that spectrum holds fragments of every
+    precursor the frame isolated, with nothing marking which came from
+    which -- so it must not be read as the fragment spectrum of any one of
+    them. Conversion says so at `WARNING`. `--msms-table` writes the split
+    apart as a second table, below; the MSI table itself is unchanged
+    either way.
 
 ```python
 if "msms_schedule" in table.uns:
@@ -382,6 +382,61 @@ if "msms_schedule" in table.uns:
     for mz, ce in zip(sched["isolation_window_target"], sched["collision_energy"]):
         print(f"  precursor {mz:.3f} at {ce:.1f} eV")
 ```
+
+#### Demultiplexed MS/MS table
+
+When the source isolates several precursors per pixel in **disjoint
+mobility scan ranges** (Bruker PASEF), `--msms-table` also writes them
+split apart as a sibling table, `{table}_msms`:
+
+| | MSI table `{id}_z0` | MS/MS table `{id}_z0_msms` |
+|---|---|---|
+| rows | pixels | the same pixels, same `obs`, same `region` |
+| a column | one m/z bin, all precursors summed | one m/z bin **of one precursor** |
+| `var["mz"]` | strictly increasing, unique | the fragment m/z, **restarting at every precursor** |
+| `var["precursor_mz"]` | absent | the isolated m/z the fragments came from |
+| sort | by `mz` | lexicographic `(precursor_mz, mz)` |
+| also | | `precursor_index` (rank of the precursor in the schedule), `mz_index` (column on the MSI axis), `uns["feature_axis"]`, `uns["msms_schedule"]` |
+
+The fragment axis is the MSI table's own mass axis: `var["mz"]` is
+`msi.var["mz"][var["mz_index"]]`, so a column of this table and the
+corresponding column of the summed table are the same m/z bin. One
+precursor's fragments are therefore a contiguous column block whose row
+sums are its ion image, and **the blocks add back up**: summing all
+fragment columns of every precursor reproduces the summed table's TIC per
+pixel, because each recorded point falls in exactly one isolation window.
+(Exactly, under `--tdf-spectrum scan_sum`; the default `vendor_centroid`
+summed spectrum is the vendor peak picker's, which keeps 80 to 90 percent
+of the raw ion current, while the split is built from the raw scans.)
+
+```python
+msms = sdata.tables["msi_z0_msms"]
+block = msms.var["precursor_mz"] == 936.578          # one contiguous block
+image = np.asarray(msms.X[:, block.to_numpy()].sum(axis=1)).ravel()
+```
+
+**Consumers must discriminate on `"precursor_mz" in var.columns`**, never
+on the element name. `thyra validate` applies the pair contract
+(non-decreasing `precursor_mz`, `mz` strictly increasing inside each
+precursor's block, unique sorted pairs) to tables carrying `precursor_mz`
+and the strict contract to all others. The table carries no `mobility`
+column: the scan range is how the precursors are *separated*, not what
+they are *indexed by*, and a table matching both discriminators would tell
+a consumer nothing about which kind it holds.
+
+The split is a filter on the scan number, never an estimate, so Thyra
+refuses rather than approximates and says at `INFO` which condition
+failed:
+
+| refused when | because |
+|---|---|
+| the schedule varies from pixel to pixel | the precursors are not a global feature axis |
+| the isolation windows overlap, or carry no scan range | they cannot be separated by mobility alone |
+| there is one precursor | the summed table already *is* its fragment spectrum |
+
+A refusal writes no sibling table, is never an exception and never touches
+the summed table. Bruker TDF is the only source that reports what the
+split needs today.
 
 ---
 

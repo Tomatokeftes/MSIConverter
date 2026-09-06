@@ -100,12 +100,17 @@ def _feature_axis(
     return unique_pairs, np.asarray(inverse).ravel().astype(np.int64)
 
 
-def _row_lookup(
+def row_lookup(
     obs: pd.DataFrame,
     z_value: Optional[int],
     pixel_key: Optional[Callable[[Coords], Optional[str]]],
 ) -> RowLookup:
-    """A function from reader coordinates to the MSI table's row position."""
+    """A function from reader coordinates to the MSI table's row position.
+
+    Shared with the demultiplexed MS/MS sibling (``msms_table.py``): both
+    tables mirror the MSI table's rows, so both resolve a reader's
+    coordinates the same way.
+    """
     if pixel_key is not None:
         label_to_row = {label: row for row, label in enumerate(obs.index.astype(str))}
 
@@ -292,7 +297,7 @@ def build_mobility_table(
     n_obs = int(len(obs))
     matrix = _accumulate(
         reader,
-        _row_lookup(obs, z_value, pixel_key),
+        row_lookup(obs, z_value, pixel_key),
         unique_pairs,
         source_to_feature,
         n_obs,

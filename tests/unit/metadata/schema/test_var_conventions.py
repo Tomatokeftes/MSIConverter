@@ -105,6 +105,59 @@ class TestMobilityTableVar:
         assert "non-finite" in _messages(check_store_var_conventions(store)["t"])
 
 
+def _store_with_precursors(tmp_path, precursor_mz, mz):
+    root = zarr.open_group(str(tmp_path / "store.zarr"), mode="a")
+    var = root.create_group("tables").create_group("t").create_group("var")
+    var.create_array("mz", data=np.asarray(mz, dtype=np.float64))
+    var.create_array("precursor_mz", data=np.asarray(precursor_mz, dtype=np.float64))
+    return tmp_path / "store.zarr"
+
+
+class TestMsMsTableVar:
+    """A table carrying ``precursor_mz`` is validated on the pair.
+
+    ``mz`` restarts at every precursor, so the strict single-column
+    contract would reject a perfectly correct demultiplexed table; the
+    pair contract is what says the blocks are in order.
+    """
+
+    def test_sorted_unique_pairs_pass(self, tmp_path):
+        store = _store_with_precursors(
+            tmp_path, [313.275, 313.275, 936.578], [80.1, 200.4, 91.2]
+        )
+        assert check_store_var_conventions(store) == {"t": []}
+
+    def test_mz_restarting_at_the_next_precursor_is_legal(self, tmp_path):
+        store = _store_with_precursors(tmp_path, [313.275, 936.578], [500.0, 80.0])
+        assert check_store_var_conventions(store)["t"] == []
+
+    def test_duplicate_pair_is_an_error(self, tmp_path):
+        store = _store_with_precursors(tmp_path, [313.275, 313.275], [80.1, 80.1])
+        assert "not unique and sorted" in _messages(
+            check_store_var_conventions(store)["t"]
+        )
+
+    def test_unsorted_mz_within_a_precursor_is_an_error(self, tmp_path):
+        store = _store_with_precursors(tmp_path, [313.275, 313.275], [200.4, 80.1])
+        assert "not unique and sorted" in _messages(
+            check_store_var_conventions(store)["t"]
+        )
+
+    def test_decreasing_precursor_mz_is_an_error(self, tmp_path):
+        store = _store_with_precursors(tmp_path, [936.578, 313.275], [80.0, 80.0])
+        assert "non-decreasing" in _messages(check_store_var_conventions(store)["t"])
+
+    def test_length_mismatch_is_an_error(self, tmp_path):
+        store = _store_with_precursors(tmp_path, [313.275], [80.1, 200.4])
+        assert "has 1 values for 2" in _messages(
+            check_store_var_conventions(store)["t"]
+        )
+
+    def test_non_finite_precursor_mz_is_an_error(self, tmp_path):
+        store = _store_with_precursors(tmp_path, [313.275, np.nan], [80.1, 80.1])
+        assert "non-finite" in _messages(check_store_var_conventions(store)["t"])
+
+
 class TestReservedColumnNames:
     def test_spec_reserves_the_annotation_columns(self):
         from thyra.metadata.schema import (
@@ -118,6 +171,8 @@ class TestReservedColumnNames:
             "mobility",
             "mz_index",
             "mobility_index",
+            "precursor_mz",
+            "precursor_index",
             "formula",
             "adduct",
             "annotation_source",

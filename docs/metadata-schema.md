@@ -221,10 +221,12 @@ consumer can rely on one spelling:
 
 | Column | Written by | Meaning |
 |--------|-----------|---------|
-| `mz` | every converter, **required** | The common mass axis. Numeric, finite, strictly increasing -- except on a mobility-resolved table, where it is non-decreasing and the `(mz, mobility)` pair is unique and sorted. |
+| `mz` | every converter, **required** | The common mass axis. Numeric, finite, strictly increasing -- except on a sibling table, where the pair is what is unique and sorted: `(mz, mobility)` on a mobility-resolved one, `(precursor_mz, mz)` on a demultiplexed MS/MS one. |
 | `mobility` | the converter, on mobility-resolved tables only | The feature's ion mobility (1/K0 or drift time; see `uns["mobility_axis"]`). Its presence is what marks the table as mobility-resolved. |
-| `mz_index` | the converter, on mobility-resolved tables only | Column of the feature's m/z on the summed MSI table's axis |
+| `precursor_mz` | the converter, on demultiplexed MS/MS tables only | The isolated m/z the feature's fragments came from (see `uns["msms_schedule"]`). Its presence is what marks the table as demultiplexed; such a table never carries `mobility` as well. |
+| `mz_index` | the converter, on sibling tables only | Column of the feature's m/z on the summed MSI table's axis |
 | `mobility_index` | the converter, on mobility-resolved tables only | Rank of the feature's mobility among the table's distinct mobility values |
+| `precursor_index` | the converter, on demultiplexed MS/MS tables only | Rank of the feature's precursor among the table's distinct precursors |
 | `formula` | annotation tools | Molecular formula of the annotation |
 | `adduct` | annotation tools | Adduct, e.g. `+H`, `-H`, `+Na` |
 | `annotation_source` | annotation tools | Tool/database that produced the annotation |

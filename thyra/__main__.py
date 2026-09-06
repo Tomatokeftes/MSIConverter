@@ -387,6 +387,8 @@ class GroupedCommand(click.Command):
             "--no-mobility-table",
             "--mobility-heatmap",
             "--no-mobility-heatmap",
+            "--msms-table",
+            "--no-msms-table",
         ],
         "Logging": ["--log-level", "-v", "--log-file"],
         "Resampling (advanced)": [
@@ -513,6 +515,16 @@ class GroupedCommand(click.Command):
         "engaged, an imzML export with a mobility array), store the mean "
         "mass-mobility frame on the summed table as uns['mobility_heatmap'] "
         "(default: enabled; one extra pass over the source)"
+    ),
+)
+@click.option(
+    "--msms-table/--no-msms-table",
+    default=False,
+    help=(
+        "When the source isolates several precursors per pixel in disjoint "
+        "mobility slices (Bruker PASEF), also write them split apart as a "
+        "demultiplexed sibling table next to the summed MSI table "
+        "(default: disabled; one extra pass over the source)"
     ),
 )
 @click.option(
@@ -696,6 +708,7 @@ def main(
     include_optical: bool,
     mobility_table: bool,
     mobility_heatmap: bool,
+    msms_table: bool,
     intensity_threshold: Optional[float],
     tdf_spectrum: Optional[str],
     streaming: str,
@@ -788,6 +801,7 @@ def main(
         region=region,
         write_mobility_table=mobility_table,
         mobility_heatmap=mobility_heatmap,
+        msms_table=msms_table,
     )
 
     ok = _handle_post_conversion(success, output)

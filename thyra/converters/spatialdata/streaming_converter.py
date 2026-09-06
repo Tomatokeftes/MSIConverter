@@ -989,8 +989,9 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 if avg_per_region is not None:
                     adata.uns["average_spectrum_per_region"] = avg_per_region
 
-                # Decide on the mobility sibling first so uns can name it.
+                # Decide on the sibling tables first so uns can name them.
                 self._mobility_table_key = self._plan_mobility_table(slice_id)
+                self._msms_table_key = self._plan_msms_table(slice_id)
 
                 # Add MSI metadata to .uns
                 self._add_metadata_to_uns(adata)
@@ -1017,6 +1018,9 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 data_structures["tables"][slice_id] = table
                 data_structures["shapes"][region_key] = self._create_pixel_shapes(adata)
                 self._attach_mobility_table(
+                    data_structures, slice_id, region_key, adata.obs, z_value=0
+                )
+                self._attach_msms_table(
                     data_structures, slice_id, region_key, adata.obs, z_value=0
                 )
 
@@ -1545,9 +1549,10 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             raise ValueError("Dimensions not initialized")
         n_x, n_y, _ = self._dimensions
         n_rows = int(kept_grid.size)
-        # Decide on the mobility sibling before uns is written, so the
-        # table's uns can name it (see _collect_mobility_axis).
+        # Decide on the sibling tables before uns is written, so the
+        # table's uns can name them (see _collect_mobility_axis).
         self._mobility_table_key = self._plan_mobility_table(slice_id)
+        self._msms_table_key = self._plan_msms_table(slice_id)
 
         # Clean output directory
         if self.output_path.exists():
@@ -1908,10 +1913,10 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             "tables": {},
         }
 
-        # The mobility-resolved sibling, when the source shares a feature
-        # axis. Its obs mirrors the hand-written table's rows: one per
-        # kept grid position, indexed by the grid index as a string.
-        if self._mobility_table_key is not None:
+        # The sibling tables, when the source supports one. Their obs
+        # mirrors the hand-written table's rows: one per kept grid
+        # position, indexed by the grid index as a string.
+        if self._mobility_table_key is not None or self._msms_table_key is not None:
             kept = np.asarray(kept_grid, dtype=np.int64)
             obs = pd.DataFrame(
                 {
@@ -1923,6 +1928,9 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             )
             obs.index.name = "instance_id"
             self._attach_mobility_table(
+                data_structures, slice_id, region_key, obs, z_value=0
+            )
+            self._attach_msms_table(
                 data_structures, slice_id, region_key, obs, z_value=0
             )
 

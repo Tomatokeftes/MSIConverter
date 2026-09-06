@@ -58,6 +58,8 @@ MSI_VAR_RESERVED_COLUMNS = (
     "mobility",
     "mz_index",
     "mobility_index",
+    "precursor_mz",
+    "precursor_index",
     "formula",
     "adduct",
     "annotation_source",
@@ -68,6 +70,13 @@ MSI_VAR_RESERVED_COLUMNS = (
 # features). The MSI table never carries it; a table that does has a
 # non-decreasing ``mz`` with duplicates, validated by the pair instead.
 MSI_VAR_MOBILITY_COLUMN = "mobility"
+
+# The column that marks a demultiplexed MS/MS table (pixels x (precursor,
+# fragment) features). The MSI table never carries it; a table that does
+# has one contiguous column block per precursor, each block a spectrum,
+# validated by the pair instead.  A table carries this or ``mobility``,
+# never both: the two say different things about what a column is.
+MSI_VAR_PRECURSOR_COLUMN = "precursor_mz"
 
 # Imaging concepts this schema needs that have no PSI CV term yet.
 # These are the candidate terms to raise in the mzPeak / PSI-MS imaging

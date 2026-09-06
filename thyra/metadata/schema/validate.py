@@ -28,6 +28,7 @@ from ..ontology.cache import ONTOLOGY
 from .models import (
     MSI_METADATA_SCHEMA_VERSION,
     MSI_VAR_MOBILITY_COLUMN,
+    MSI_VAR_PRECURSOR_COLUMN,
     MSIMetadata,
     OntologyTerm,
 )
@@ -319,6 +320,8 @@ def check_store_var_conventions(
 
         if MSI_VAR_MOBILITY_COLUMN in var_group:
             _check_mobility_var(var_group, mz, issues)
+        elif MSI_VAR_PRECURSOR_COLUMN in var_group:
+            _check_msms_var(var_group, mz, issues)
         elif mz.size > 1 and not bool((np.diff(mz) > 0).all()):
             issues.append(
                 ValidationIssue("error", "var.mz", "'mz' is not strictly increasing")
@@ -334,49 +337,104 @@ def _check_mobility_var(var_group: Any, mz: Any, issues: List[ValidationIssue]) 
     lexicographic ``(mz, mobility)`` order so an m/z window is one
     contiguous column block.
     """
+    mobility = _pair_column(var_group, MSI_VAR_MOBILITY_COLUMN, mz, issues)
+    if mobility is None:
+        return
+    _check_sorted_pairs(mz, mobility, "mz", MSI_VAR_MOBILITY_COLUMN, "mobility", issues)
+
+
+def _check_msms_var(var_group: Any, mz: Any, issues: List[ValidationIssue]) -> None:
+    """The contract of a demultiplexed MS/MS table's ``var``.
+
+    Features are ``(precursor_mz, mz)`` pairs: ``precursor_mz`` is
+    non-decreasing (a precursor owns many fragments), ``mz`` increases
+    strictly inside each precursor's block, and the rows are in
+    lexicographic order so one precursor's fragment spectrum is one
+    contiguous column block.  ``mz`` is *not* sorted over the whole table
+    -- it restarts at every precursor -- which is exactly why the strict
+    single-column contract must not be applied here.
+    """
+    precursor = _pair_column(var_group, MSI_VAR_PRECURSOR_COLUMN, mz, issues)
+    if precursor is None:
+        return
+    _check_sorted_pairs(
+        precursor,
+        mz,
+        MSI_VAR_PRECURSOR_COLUMN,
+        "mz",
+        "demultiplexed MS/MS",
+        issues,
+    )
+
+
+def _pair_column(
+    var_group: Any, name: str, mz: Any, issues: List[ValidationIssue]
+) -> Optional[Any]:
+    """The companion column of a paired feature axis, or ``None`` if unusable.
+
+    Shared by both paired contracts: whatever the pair means, the second
+    column has to be numeric, finite and as long as ``mz`` before the
+    ordering of the pairs can be read at all.
+    """
     import numpy as np
 
-    mobility = np.asarray(var_group[MSI_VAR_MOBILITY_COLUMN])
-    if not np.issubdtype(mobility.dtype, np.number):
+    values = np.asarray(var_group[name])
+    location = f"var.{name}"
+    if not np.issubdtype(values.dtype, np.number):
         issues.append(
             ValidationIssue(
                 "error",
-                "var.mobility",
-                f"'mobility' must be numeric, found dtype {mobility.dtype}",
+                location,
+                f"'{name}' must be numeric, found dtype {values.dtype}",
             )
         )
-        return
-    if mobility.size != mz.size:
+        return None
+    if values.size != mz.size:
         issues.append(
             ValidationIssue(
                 "error",
-                "var.mobility",
-                f"'mobility' has {mobility.size} values for {mz.size} m/z values",
+                location,
+                f"'{name}' has {values.size} values for {mz.size} m/z values",
             )
         )
-        return
-    if mobility.size and not bool(np.isfinite(mobility).all()):
+        return None
+    if values.size and not bool(np.isfinite(values).all()):
         issues.append(
-            ValidationIssue(
-                "error", "var.mobility", "'mobility' contains non-finite values"
-            )
+            ValidationIssue("error", location, f"'{name}' contains non-finite values")
         )
+        return None
+    return values
+
+
+def _check_sorted_pairs(
+    first: Any,
+    second: Any,
+    first_name: str,
+    second_name: str,
+    table_kind: str,
+    issues: List[ValidationIssue],
+) -> None:
+    """``(first, second)`` is lexicographically sorted and its pairs unique."""
+    import numpy as np
+
+    if first.size < 2:
         return
-    if mz.size < 2:
-        return
-    if not bool((np.diff(mz) >= 0).all()):
-        issues.append(
-            ValidationIssue(
-                "error", "var.mz", "'mz' is not non-decreasing on a mobility table"
-            )
-        )
-        return
-    same_mz = np.diff(mz) == 0
-    if bool((np.diff(mobility)[same_mz] <= 0).any()):
+    if not bool((np.diff(first) >= 0).all()):
         issues.append(
             ValidationIssue(
                 "error",
-                "var.mobility",
-                "(mz, mobility) pairs are not unique and sorted lexicographically",
+                f"var.{first_name}",
+                f"'{first_name}' is not non-decreasing on a {table_kind} table",
+            )
+        )
+        return
+    tied = np.diff(first) == 0
+    if bool((np.diff(second)[tied] <= 0).any()):
+        issues.append(
+            ValidationIssue(
+                "error",
+                f"var.{second_name}",
+                f"({first_name}, {second_name}) pairs are not unique and "
+                "sorted lexicographically",
             )
         )

@@ -1237,6 +1237,135 @@ class BrukerReader(BrukerBaseMSIReader):
             if mzs.size > 0:
                 yield coords, mzs, mobility, intensities
 
+    def _precursor_scan_map(
+        self, windows: Tuple[IsolationWindow, ...]
+    ) -> NDArray[np.int64]:
+        """``scan -> window index``, ``-1`` where no window isolated anything.
+
+        The whole demultiplexer, precomputed once: the windows own
+        disjoint scan ranges, so which precursor a point belongs to is a
+        lookup on its scan number rather than a search. Sized to cover
+        the longest ramp in the file as well as the last window, so
+        ``np.take(..., mode="clip")`` cannot fold a real scan onto a
+        window it does not belong to.
+        """
+        n_scans = max(
+            self._mobility_ramp()[0],
+            max(int(w.scan_end or 0) for w in windows),
+        )
+        scan_map = np.full(n_scans, -1, dtype=np.int64)
+        for index, window in enumerate(windows):
+            scan_map[int(window.scan_begin) : int(window.scan_end)] = index
+        return scan_map
+
+    def iter_precursor_spectra(self, batch_size: Optional[int] = None) -> Generator[
+        Tuple[
+            Tuple[int, int, int],
+            int,
+            NDArray[np.float64],
+            NDArray[np.float64],
+        ],
+        None,
+        None,
+    ]:
+        """One fragment spectrum per (pixel, precursor), not per pixel.
+
+        A PASEF frame isolates several precursors, each in its own slice
+        of the mobility ramp, and :meth:`iter_spectra` sums the whole
+        frame into one spectrum -- so that spectrum holds fragments of
+        every precursor at once. This yields them apart: for each frame,
+        one ``tims_read_scans_v2`` over the full ramp (the frame id
+        passed as-is), then the points of each isolation window picked
+        out by ``ScanNumBegin <= scan < ScanNumEnd`` and summed per
+        digitizer index, exactly as the summed spectrum sums the whole
+        ramp.
+
+        The split is a filter, not an estimate: the windows are disjoint,
+        so every point belongs to exactly one precursor or to none, and
+        nothing is shared out or apportioned. A window with no points in
+        a frame is not yielded.
+
+        Yields ``((x, y, z), window_index, mzs, intensities)``, where
+        ``window_index`` is the position of the precursor in
+        ``get_fragmentation().windows`` and ``mzs`` is ascending.
+
+        Args:
+            batch_size: Ignored, maintained for interface compatibility.
+
+        Raises:
+            NotImplementedError: On a TSF file, or when the acquisition
+                has no mobility-resolved precursor schedule to split on.
+            SDKError: When the Bruker library is not loaded.
+        """
+        if self.file_type != "tdf":
+            raise NotImplementedError(
+                "Only a TDF (TIMS engaged) acquisition separates its "
+                "precursors by mobility; this is a TSF file"
+            )
+        schedule = self.get_fragmentation()
+        if schedule is None or not schedule.windows:
+            raise NotImplementedError(
+                "This acquisition reports no isolation windows; there is "
+                "nothing to demultiplex"
+            )
+        if not all(w.is_mobility_resolved for w in schedule.windows):
+            raise NotImplementedError(
+                "The isolation windows carry no mobility scan range, so the "
+                "precursors cannot be separated by scan number"
+            )
+        if getattr(self, "sdk", None) is None or not self.handle:
+            raise SDKError(
+                "Splitting a frame by precursor needs the Bruker library; "
+                "the reader was opened in metadata-only mode"
+            )
+
+        scan_map = self._precursor_scan_map(schedule.windows)
+        n_windows = len(schedule.windows)
+        for frame_id, coords in self._iter_frames():
+            try:
+                indices, raw_intensities, scans = self.sdk.read_tdf_scans(
+                    self.handle,
+                    frame_id,
+                    0,
+                    self._frame_num_scans(frame_id),
+                    self._num_peaks_cache.get(frame_id),
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Error reading scans for frame {frame_id}: {e}",
+                )
+                continue
+            if indices.size == 0:
+                continue
+            unique_indices, inverse = np.unique(indices, return_inverse=True)
+            unique_mz = self.sdk.index_to_mz(
+                self.handle, frame_id, unique_indices.astype(np.float64)
+            )
+            inverse = np.asarray(inverse).ravel()
+            intensities = raw_intensities.astype(np.float64)
+            window_of_point = np.take(scan_map, scans, mode="clip")
+            for window_index in range(n_windows):
+                selected = window_of_point == window_index
+                if not selected.any():
+                    continue
+                # Sum over the window's scans per digitizer index: the
+                # mobility dimension is collapsed inside the window, the
+                # way iter_spectra collapses it over the whole ramp.
+                sums = np.bincount(
+                    inverse[selected],
+                    weights=intensities[selected],
+                    minlength=unique_indices.size,
+                )
+                mzs, window_intensities = self._apply_intensity_filter(unique_mz, sums)
+                nonzero = np.flatnonzero(window_intensities)
+                if nonzero.size:
+                    yield (
+                        coords,
+                        window_index,
+                        mzs[nonzero],
+                        window_intensities[nonzero],
+                    )
+
     def _get_maldi_frame_ids(self) -> Optional[List[int]]:
         """Get sorted frame IDs from MaldiFrameInfo table.
 

@@ -11,6 +11,7 @@ from .metaspace import to_metaspace
 from .models import (
     MSI_METADATA_SCHEMA_VERSION,
     MSI_METADATA_UNS_KEY,
+    MSI_VAR_PRECURSOR_COLUMN,
     MSI_VAR_REQUIRED_COLUMNS,
     MSI_VAR_RESERVED_COLUMNS,
     Fragmentation,
@@ -34,6 +35,7 @@ from .validate import ValidationIssue, check_store_var_conventions, validate_doc
 __all__ = [
     "MSI_METADATA_SCHEMA_VERSION",
     "MSI_METADATA_UNS_KEY",
+    "MSI_VAR_PRECURSOR_COLUMN",
     "MSI_VAR_REQUIRED_COLUMNS",
     "MSI_VAR_RESERVED_COLUMNS",
     "Fragmentation",
