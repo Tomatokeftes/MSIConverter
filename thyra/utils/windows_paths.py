@@ -27,9 +27,14 @@ otherwise, so ordinary paths are handled exactly as before. It is not
 applied to the *source data* path: readers reach vendor SDKs that may not
 accept extended-length syntax.
 
-Reading a converted store back is subject to the same limit, and a store
-whose keys sit past it looks structurally invalid rather than merely
-unreachable -- see :func:`prepare_zarr_read_path`.
+Reading a converted store back is subject to the same limit, and a read
+past it does not fail. Windows reports an over-long key as missing, and
+Zarr treats a missing key as one that was never written: a whole-store
+``spatialdata.read_zarr`` finds the deep groups absent and calls the store
+structurally invalid, while ``zarr.open_group`` on the metadata alone
+quietly returns fill values, so every ontology term reads back as
+``{"accession": "", "name": ""}``. See :func:`prepare_zarr_read_path`,
+which Thyra's own read paths go through.
 """
 
 import logging
@@ -54,6 +59,18 @@ WINDOWS_MAX_PATH = 259
 #: ``raw_metadata\\max count of pixels x``). Metadata key names come from
 #: the source file and can be longer, so this carries headroom above the
 #: observed worst case.
+#:
+#: The hazard on the read side is that a key past the limit is not an
+#: error. Windows reports it as missing, and Zarr treats a missing chunk as
+#: the array's fill value by design (``""`` for strings, ``0`` for
+#: numbers), so a metadata block read from a plain path comes back with
+#: empty ontology terms and a blank processing history instead of an
+#: exception, and validation then blames the document. Zarr has no strict
+#: mode that could tell "never written" from "cannot open", and its own
+#: key listing cannot enter an over-long directory either, so nothing
+#: inside Zarr can detect it. The only detection is an independent,
+#: extended-length walk of the store, which :func:`prepare_zarr_read_path`
+#: performs; every read entry point must go through it.
 DEEPEST_KEY_RESERVE = 160
 
 _EXTENDED_PREFIX = "\\\\?\\"
@@ -112,17 +129,28 @@ def prepare_zarr_read_path(store_path: Path) -> Path:
     r"""Return a path that can actually open a store written to a long path.
 
     The write side is protected by :func:`prepare_zarr_output_path`, but the
-    limit applies just as much to reading it back. A store whose keys sit past
-    260 characters is written correctly and then cannot be opened by
-    ``spatialdata.read_zarr(path)``: the deep keys are invisible, so the store
-    looks structurally invalid rather than merely unreachable. Plain
-    ``os.path.exists`` on those keys returns ``False`` too, which makes the
-    store look corrupt when it is intact.
+    limit applies just as much to reading it back, and a read past it does
+    not fail. Windows reports an over-long key as missing and Zarr treats a
+    missing key as never written: ``spatialdata.read_zarr(path)`` finds the
+    deep groups absent and calls the store structurally invalid, while
+    ``zarr.open_group(path)`` on an intact metadata block returns the fill
+    value for every chunk it cannot open, so ontology terms read back as
+    ``{"accession": "", "name": ""}`` and validation blames the document
+    rather than the path. Plain ``os.path.exists`` on those keys returns
+    ``False`` too, which makes the store look corrupt when it is intact.
 
     Unlike the output helper this cannot project the deepest key, because the
     keys already exist and their length depends on what was written. It walks
     the store to find the longest key instead, which is cheap next to the
-    read that follows.
+    read that follows, and stops at the first key past the limit. The walk
+    itself goes through an extended-length path: a plain ``os.walk`` cannot
+    list a directory past the limit and skips it silently, so it would miss
+    exactly the keys this is looking for and could pass a store whose deepest
+    keys do not fit.
+
+    A relative path is resolved first, since the length that matters is the
+    absolute one and the prefix needs an absolute path anyway. A path that
+    already carries the prefix is returned as it is.
 
     Args:
         store_path: Path to an existing Zarr store.
@@ -133,14 +161,20 @@ def prepare_zarr_read_path(store_path: Path) -> Path:
     if sys.platform != "win32":
         return store_path
 
-    longest = len(str(store_path))
-    try:
-        for root, _dirs, files in os.walk(store_path):
-            for name in files:
-                longest = max(longest, len(root) + 1 + len(name))
-    except OSError:
-        # Walking already failed, which is itself a sign the prefix is needed.
-        return to_extended_length_path(store_path)
+    if str(store_path).startswith(_EXTENDED_PREFIX):
+        return store_path
+
+    absolute = store_path if store_path.is_absolute() else store_path.resolve()
+    extended = to_extended_length_path(absolute)
+    # Keys are measured as the plain path would spell them.
+    prefix_length = len(str(extended)) - len(str(absolute))
+
+    longest = len(str(absolute))
+    for root, _dirs, files in os.walk(extended):
+        for name in files:
+            longest = max(longest, len(root) + 1 + len(name) - prefix_length)
+        if longest > WINDOWS_MAX_PATH:
+            break
 
     if longest <= WINDOWS_MAX_PATH:
         return store_path
@@ -149,12 +183,12 @@ def prepare_zarr_read_path(store_path: Path) -> Path:
         return store_path
 
     logger.info(
-        "Store contains keys up to %d characters, past the %d character "
+        "Store contains a key %d characters long, past the %d character "
         "Windows limit. Reading through an extended-length path.",
         longest,
         WINDOWS_MAX_PATH,
     )
-    return to_extended_length_path(store_path)
+    return extended
 
 
 def prepare_zarr_output_path(output_path: Path, dataset_id: str) -> Path:

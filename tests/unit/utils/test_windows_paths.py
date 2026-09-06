@@ -42,18 +42,25 @@ class TestPrepareZarrReadPath:
         monkeypatch.setattr(windows_paths, "_long_paths_enabled", lambda: False)
 
     @staticmethod
-    def _store_with_key_length(monkeypatch, total: int) -> Path:
+    def _store_with_key_length(monkeypatch, total: int, walked=None) -> Path:
         """A store whose longest key is ``total`` characters.
 
         The walk is faked rather than written to disk: creating a key past
         the limit is exactly the thing that needs the prefix, so a real file
-        cannot be used to test the code that decides to apply it.
+        cannot be used to test the code that decides to apply it. The fake
+        is handed the extended path and sizes its one key so that the plain
+        spelling measures ``total``; ``walked`` collects the paths it saw.
         """
         store = Path("C:\\stores\\store.zarr")
-        name = "k" * max(1, total - len(str(store)) - 1)
-        monkeypatch.setattr(
-            windows_paths.os, "walk", lambda p: [(str(store), [], [name])]
-        )
+
+        def walk(path):
+            root = str(path)
+            if walked is not None:
+                walked.append(root)
+            plain_root_length = len(root) - len(EXTENDED_PREFIX)
+            return [(root, [], ["k" * max(1, total - plain_root_length - 1)])]
+
+        monkeypatch.setattr(windows_paths.os, "walk", walk)
         return store
 
     def test_shallow_store_is_untouched(self, on_windows, monkeypatch):
@@ -68,6 +75,49 @@ class TestPrepareZarrReadPath:
 
         assert str(result).startswith(EXTENDED_PREFIX)
         assert str(result).endswith(str(store))
+
+    def test_key_at_the_limit_is_untouched(self, on_windows, monkeypatch):
+        store = self._store_with_key_length(monkeypatch, WINDOWS_MAX_PATH)
+
+        assert prepare_zarr_read_path(store) == store
+
+    def test_key_one_past_the_limit_is_extended(self, on_windows, monkeypatch):
+        """The prefix on the walked path must not be counted as key length."""
+        store = self._store_with_key_length(monkeypatch, WINDOWS_MAX_PATH + 1)
+
+        assert str(prepare_zarr_read_path(store)).startswith(EXTENDED_PREFIX)
+
+    def test_the_walk_goes_through_the_extended_path(self, on_windows, monkeypatch):
+        """A plain walk cannot list a directory past the limit and skips it
+        silently, so it would miss exactly the keys being measured."""
+        walked: list[str] = []
+        store = self._store_with_key_length(monkeypatch, 120, walked)
+
+        prepare_zarr_read_path(store)
+
+        assert walked and all(p.startswith(EXTENDED_PREFIX) for p in walked)
+
+    def test_relative_path_is_resolved_before_extending(self, on_windows, monkeypatch):
+        """The length that matters is the absolute one, and the prefix is
+        only valid on an absolute path."""
+        self._store_with_key_length(monkeypatch, WINDOWS_MAX_PATH + 20)
+
+        result = prepare_zarr_read_path(Path("store.zarr"))
+
+        text = str(result)
+        assert text.startswith(EXTENDED_PREFIX)
+        assert Path(text[len(EXTENDED_PREFIX) :]).is_absolute()
+
+    def test_already_extended_path_is_returned_without_walking(
+        self, on_windows, monkeypatch
+    ):
+        def refuse(path):
+            raise AssertionError(f"walked {path}")
+
+        monkeypatch.setattr(windows_paths.os, "walk", refuse)
+        store = Path(EXTENDED_PREFIX + "C:\\stores\\store.zarr")
+
+        assert prepare_zarr_read_path(store) == store
 
     def test_no_op_off_windows(self, monkeypatch):
         store = self._store_with_key_length(monkeypatch, WINDOWS_MAX_PATH + 20)

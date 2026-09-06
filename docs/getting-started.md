@@ -231,10 +231,21 @@ extended-length (`\\?\`) path, which is exempt from the 260-character limit, so
 long output paths convert normally. A log line records when this happens.
 
 !!! note "Reading a store at a long path"
-    The store is written correctly, but *other* tools still face the same limit
-    when reading it. Either enable long path support system-wide
+    The store is written correctly, but reading it is subject to the same
+    limit, and a read past it does not fail: Windows reports the deep files as
+    missing and Zarr returns its fill value for a missing chunk by design.
+    `spatialdata.read_zarr` then reports a structurally invalid store, and a
+    bare `zarr.open_group` hands back empty metadata (every ontology term as
+    `{"accession": "", "name": ""}`) without any error.
+
+    `thyra validate`, `thyra export-metaspace` and
+    `thyra.metadata.schema.read_msi_metadata_blocks` detect this and read
+    through an extended-length path on their own. For *other* tools either
+    enable long path support system-wide
     (`HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`, `LongPathsEnabled` = 1;
-    needs administrator rights and a reboot), pass the `\\?\` prefix yourself:
+    needs administrator rights and a reboot), pass the store through
+    `thyra.utils.windows_paths.prepare_zarr_read_path` or add the `\\?\`
+    prefix yourself:
     ```python
     import spatialdata as sd
     sdata = sd.read_zarr(r"\\?\C:\very\long\path\output.zarr")

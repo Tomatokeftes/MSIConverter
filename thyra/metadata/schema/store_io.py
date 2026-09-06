@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Union
 
+from ...utils.windows_paths import prepare_zarr_read_path
 from .models import MSI_METADATA_UNS_KEY
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,10 @@ def read_msi_metadata_blocks(store_path: Union[str, Path]) -> Dict[str, Dict[str
     import anndata as ad
     import zarr
 
-    root = zarr.open_group(str(store_path), mode="r")
+    # A store under a long Windows path reads back wrong rather than
+    # failing: zarr hands out fill values for the keys it cannot open, so
+    # every ontology term would come back as {"accession": "", "name": ""}.
+    root = zarr.open_group(str(prepare_zarr_read_path(Path(store_path))), mode="r")
     if "tables" not in root:
         raise ValueError(
             f"{store_path} does not look like a SpatialData store: "
@@ -59,7 +63,21 @@ def read_msi_metadata_blocks(store_path: Union[str, Path]) -> Dict[str, Dict[str
             try:
                 block["processing"] = json.loads(block["processing"])
             except json.JSONDecodeError:
-                logger.warning("Table %s has an unparseable processing section", name)
+                if block["processing"] == "":
+                    # Converters write at least "[]". An empty string is the
+                    # fill value of a string array: the chunk exists but
+                    # could not be read, which on Windows means a key past
+                    # the path limit (see thyra.utils.windows_paths).
+                    logger.warning(
+                        "Table %s has an empty processing section, which no "
+                        "converter writes; the store's deep keys may be "
+                        "unreadable at this path",
+                        name,
+                    )
+                else:
+                    logger.warning(
+                        "Table %s has an unparseable processing section", name
+                    )
         blocks[name] = block
 
     return blocks
