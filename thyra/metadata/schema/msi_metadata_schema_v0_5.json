@@ -2,7 +2,7 @@
   "$defs": {
     "Fragmentation": {
       "additionalProperties": false,
-      "description": "Whether, and how, the acquisition fragmented its ions.\n\nAn MS/MS imaging run measures fragments, so the m/z axis of the table\nmeans fragment m/z. Nothing about the axis says so, which is why this\nblock exists: without it an MS/MS store is indistinguishable from an\nMS1 one.\n\nThyra does not split a frame that isolated several precursors -- the\nstored spectrum still sums them. ``merges_precursors`` says when that\nhas happened, so a consumer knows the spectrum is a chimera rather\nthan discovering it from the peaks.",
+      "description": "Whether, and how, the acquisition fragmented its ions.\n\nAn MS/MS imaging run measures fragments, so the m/z axis of the table\nmeans fragment m/z. Nothing about the axis says so, which is why this\nblock exists: without it an MS/MS store is indistinguishable from an\nMS1 one.\n\nThe MSI table sums a frame that isolated several precursors into one\nspectrum. ``merges_precursors`` says when that has happened, so a\nconsumer knows the spectrum is a chimera rather than discovering it\nfrom the peaks, and ``resolved_table`` names the sibling table that\nholds those precursors split apart when one was written.",
       "properties": {
         "constant_across_pixels": {
           "default": true,
@@ -42,6 +42,20 @@
           "description": "True when the stored spectra are fragment spectra.",
           "title": "Present",
           "type": "boolean"
+        },
+        "resolved_table": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Element key of the demultiplexed sibling table (pixels x (precursor, fragment)) written beside this summed table, when one was.",
+          "title": "Resolved Table"
         },
         "windows": {
           "description": "The precursor schedule, empty when none was reported.",
@@ -901,7 +915,7 @@
       "description": "What the sample is; user-supplied."
     },
     "schema_version": {
-      "default": "0.4.0",
+      "default": "0.5.0",
       "description": "Semantic version of the schema this document conforms to.",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
       "title": "Schema Version",

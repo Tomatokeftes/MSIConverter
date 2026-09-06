@@ -15,7 +15,7 @@ description: >-
   datasets converted to SpatialData.  Stored in
   table.uns["msi_metadata"]; base fields mirror the METASPACE
   submission form.
-version: 0.4.0
+version: 0.5.0
 prefixes:
   linkml: https://w3id.org/linkml/
   MS: http://purl.obolibrary.org/obo/MS_
@@ -139,6 +139,7 @@ classes:
       windows:
         range: IsolationWindow
         multivalued: true
+      resolved_table: {}
   IsolationWindow:
     description: >-
       One precursor isolation, spanning target minus lower_offset to

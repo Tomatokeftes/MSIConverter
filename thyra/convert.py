@@ -336,6 +336,9 @@ def convert_msi(
             mass-mobility frame on the summed table as
             ``uns["mobility_heatmap"]`` whenever the source has an ion
             mobility dimension (Bruker TDF, imzML with a mobility array).
+            ``msms_table`` (default False) writes the demultiplexed MS/MS
+            sibling table when the source isolates several precursors per
+            pixel in disjoint mobility slices (Bruker PASEF).
             - max_mass_axis_length: int - For processed-mode imzML
               converted with --no-resample, give up once the raw
               mass axis exceeds this many unique m/z values. This

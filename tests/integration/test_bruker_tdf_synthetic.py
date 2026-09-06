@@ -14,7 +14,9 @@ the stored mean spectrum.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import shutil
 import sqlite3
 from pathlib import Path
 from typing import Dict
@@ -257,7 +259,7 @@ class TestSyntheticFixture:
         assert conversion["name"] == "conversion"
         assert conversion["parameters"]["tdf_spectrum"] == "scan_sum"
         assert "resolved_table" not in mobility and "grid" not in mobility
-        assert block["schema_version"] == "0.4.0"
+        assert block["schema_version"] == "0.5.0"
 
     def test_a_survey_acquisition_is_recorded_as_unfragmented(self, tmp_path, expected):
         """The fixture is MS1, and the store says so rather than staying silent.
@@ -330,6 +332,269 @@ class TestSyntheticFixture:
         table = _read_table(_convert(tmp_path, "scan_sum", mobility_heatmap=False))
         assert "mobility_heatmap" not in table.uns
         assert table.uns["mobility_axis"]["type_accession"] == "MS:1002815"
+
+
+# Three isolation windows partitioning the fixture's 240-scan ramp:
+# disjoint, gapless, and listed here in scan order while the schedule
+# orders them by precursor m/z. A gapless partition is what lets the
+# conservation test below be an equality rather than an inequality.
+_PASEF_PARTITION = [
+    (936.578, 1.0, 49.638, 0, 80),
+    (353.320, 1.0, 35.172, 80, 160),
+    (313.275, 1.0, 34.307, 160, 240),
+]
+
+_PASEF_DDL = """
+CREATE TABLE PasefFrameMsMsInfo (
+    Frame INTEGER NOT NULL, ScanNumBegin INTEGER NOT NULL,
+    ScanNumEnd INTEGER NOT NULL, IsolationMz REAL NOT NULL,
+    IsolationWidth REAL NOT NULL, CollisionEnergy REAL NOT NULL,
+    Precursor INTEGER)
+"""
+
+
+def _pasef_copy(tmp_path: Path, rows=_PASEF_PARTITION) -> Path:
+    """A copy of the fixture turned into a PASEF MS/MS acquisition.
+
+    The committed fixture has ``FrameMsMsInfo`` but no
+    ``PasefFrameMsMsInfo``; writing the schedule here rather than
+    committing a second acquisition keeps the demultiplexer covered
+    without new binary data.
+    """
+    target = tmp_path / "pasef.d"
+    shutil.copytree(FIXTURE, target)
+    with sqlite3.connect(target / "analysis.tdf") as conn:
+        conn.execute("UPDATE Frames SET MsMsType = 8")
+        conn.execute(_PASEF_DDL)
+        frames = [row[0] for row in conn.execute("SELECT Id FROM Frames")]
+        conn.executemany(
+            "INSERT INTO PasefFrameMsMsInfo (Frame, ScanNumBegin, ScanNumEnd, "
+            "IsolationMz, IsolationWidth, CollisionEnergy, Precursor) "
+            "VALUES (?, ?, ?, ?, ?, ?, NULL)",
+            [
+                (frame, lo, hi, mz, width, ce)
+                for frame in frames
+                for mz, width, ce, lo, hi in rows
+            ],
+        )
+    return target
+
+
+def _convert_path(source: Path, out: Path, **kwargs) -> Path:
+    from thyra.convert import convert_msi
+
+    ok = convert_msi(
+        str(source),
+        str(out),
+        dataset_id="tims",
+        pixel_size_um=20.0,
+        reader_options={"tdf_spectrum": "scan_sum"},
+        **kwargs,
+    )
+    assert ok
+    return out
+
+
+def _rows(table) -> np.ndarray:
+    X = table.X
+    return np.asarray(X.toarray() if hasattr(X, "toarray") else X)
+
+
+class TestDemultiplexedStore:
+    """A PASEF acquisition converted with ``--msms-table``.
+
+    ``scan_sum`` and no resampling, so the summed table and the
+    demultiplexed one are built from the very same ion current on the very
+    same axis and the conservation check below is an exact equality rather
+    than a tolerance.
+    """
+
+    def test_both_tables_are_written_and_agree_on_rows(self, tmp_path):
+        spatialdata = pytest.importorskip("spatialdata")
+        _open("scan_sum").close()
+        out = _convert_path(
+            _pasef_copy(tmp_path), tmp_path / "pasef.zarr", msms_table=True
+        )
+        sdata = spatialdata.read_zarr(out)
+
+        assert set(sdata.tables) == {"tims_z0", "tims_z0_msms"}
+        summed, msms = sdata.tables["tims_z0"], sdata.tables["tims_z0_msms"]
+        assert summed.n_obs == msms.n_obs == 6
+        assert list(summed.obs.index) == list(msms.obs.index)
+        assert set(msms.obs["region"].astype(str)) == {"tims_z0_pixels"}
+
+    def test_the_precursors_are_contiguous_blocks_on_the_msi_axis(self, tmp_path):
+        spatialdata = pytest.importorskip("spatialdata")
+        _open("scan_sum").close()
+        out = _convert_path(
+            _pasef_copy(tmp_path), tmp_path / "pasef.zarr", msms_table=True
+        )
+        sdata = spatialdata.read_zarr(out)
+        var = sdata.tables["tims_z0_msms"].var
+        axis = sdata.tables["tims_z0"].var["mz"].to_numpy()
+
+        assert list(var["precursor_mz"].unique()) == [313.275, 353.320, 936.578]
+        assert np.all(np.diff(var["precursor_index"].to_numpy()) >= 0)
+        # The 1/K0 each precursor was isolated at, from the vendor
+        # calibration: the coordinate that keeps two isomers apart.
+        mobility = var["precursor_mobility"].to_numpy()
+        assert np.all(np.isfinite(mobility))
+        assert 0.5 < mobility.min() <= mobility.max() < 2.5
+        assert var.index.is_unique
+        assert all(label.startswith("p313.275_") for label in var.index[:1])
+        # Fragment m/z is the MSI table's own axis, pointed at by mz_index.
+        np.testing.assert_array_equal(
+            var["mz"].to_numpy(), axis[var["mz_index"].to_numpy()]
+        )
+        assert "mobility" not in var.columns
+
+    def test_the_precursors_add_back_up_to_the_summed_table(self, tmp_path):
+        """The assertion that proves a demultiplexing rather than an output.
+
+        Every point of the frame is inside exactly one window, so summing
+        all fragment columns of every precursor must reproduce the summed
+        table's TIC pixel by pixel: nothing dropped, nothing counted twice.
+        """
+        spatialdata = pytest.importorskip("spatialdata")
+        _open("scan_sum").close()
+        out = _convert_path(
+            _pasef_copy(tmp_path), tmp_path / "pasef.zarr", msms_table=True
+        )
+        sdata = spatialdata.read_zarr(out)
+
+        summed = _rows(sdata.tables["tims_z0"]).sum(axis=1)
+        demultiplexed = _rows(sdata.tables["tims_z0_msms"]).sum(axis=1)
+        assert summed.sum() > 0
+        np.testing.assert_allclose(demultiplexed, summed, rtol=1e-12)
+
+    def test_the_summed_table_names_the_sibling_and_still_validates(self, tmp_path):
+        spatialdata = pytest.importorskip("spatialdata")
+        from thyra.metadata.schema import (
+            check_store_var_conventions,
+            read_msi_metadata_blocks,
+        )
+
+        _open("scan_sum").close()
+        out = _convert_path(
+            _pasef_copy(tmp_path), tmp_path / "pasef.zarr", msms_table=True
+        )
+        sdata = spatialdata.read_zarr(out)
+        schedule = sdata.tables["tims_z0"].uns["msms_schedule"]
+
+        assert schedule["resolved_table"] == "tims_z0_msms"
+        assert schedule["n_windows"] == 3
+        # The versioned block must name it too: a consumer reading only
+        # msi_metadata finds the mobility sibling, so it must find this one.
+        blocks = read_msi_metadata_blocks(out)
+        for name, block in blocks.items():
+            fragmentation = block["ms_analysis"]["fragmentation"]
+            assert fragmentation["present"] is True, name
+            assert fragmentation["resolved_table"] == "tims_z0_msms", name
+        assert _no_colon_keys(sdata.tables["tims_z0_msms"].uns)
+        issues = check_store_var_conventions(out)
+        assert set(issues) == {"tims_z0", "tims_z0_msms"}
+        assert all(not table_issues for table_issues in issues.values()), issues
+
+    def test_an_isomer_pair_stays_two_precursors(self, tmp_path):
+        """One m/z isolated at two mobility positions is two precursors.
+
+        Summing them back together would undo exactly the separation the
+        mobility ramp provided, which on a targeted method is the reason
+        the same mass is scheduled twice.
+        """
+        spatialdata = pytest.importorskip("spatialdata")
+        _open("scan_sum").close()
+        isomers = [
+            (700.0, 1.0, 40.0, 0, 120),
+            (700.0, 1.0, 45.0, 120, 240),
+        ]
+        out = _convert_path(
+            _pasef_copy(tmp_path, isomers),
+            tmp_path / "isomers.zarr",
+            msms_table=True,
+        )
+        sdata = spatialdata.read_zarr(out)
+        var = sdata.tables["tims_z0_msms"].var
+
+        np.testing.assert_array_equal(var["precursor_mz"].unique(), [700.0])
+        assert sorted(var["precursor_index"].unique()) == [0, 1]
+        assert var["precursor_mobility"].nunique() == 2
+        assert var.index.is_unique
+        # Still a partition: nothing was dropped by keeping them apart.
+        summed = _rows(sdata.tables["tims_z0"]).sum(axis=1)
+        split = _rows(sdata.tables["tims_z0_msms"]).sum(axis=1)
+        np.testing.assert_allclose(split, summed, rtol=1e-12)
+
+        from thyra.metadata.schema import check_store_var_conventions
+
+        assert all(not v for v in check_store_var_conventions(out).values())
+
+    def test_the_store_records_how_much_current_the_split_holds(self, tmp_path):
+        """Exact under scan_sum; the block is where a store says so."""
+        spatialdata = pytest.importorskip("spatialdata")
+        _open("scan_sum").close()
+        out = _convert_path(
+            _pasef_copy(tmp_path), tmp_path / "pasef.zarr", msms_table=True
+        )
+        block = (
+            spatialdata.read_zarr(out)
+            .tables["tims_z0_msms"]
+            .uns["demultiplexed_current"]
+        )
+
+        assert block["summed_table"] == "tims_z0"
+        assert block["current_ratio"] == pytest.approx(1.0, abs=1e-12)
+        assert block["current_ratio_pixel_max"] == pytest.approx(1.0, abs=1e-12)
+
+    def test_off_by_default(self, tmp_path):
+        """The extra pass is opt in; the schedule is recorded either way."""
+        spatialdata = pytest.importorskip("spatialdata")
+        _open("scan_sum").close()
+        out = _convert_path(_pasef_copy(tmp_path), tmp_path / "pasef.zarr")
+        sdata = spatialdata.read_zarr(out)
+
+        assert set(sdata.tables) == {"tims_z0"}
+        assert "resolved_table" not in sdata.tables["tims_z0"].uns["msms_schedule"]
+
+    def test_a_single_precursor_acquisition_is_refused(self, tmp_path, caplog):
+        """Its summed table already is the fragment spectrum of 1046.54."""
+        spatialdata = pytest.importorskip("spatialdata")
+        _open("scan_sum").close()
+        source = tmp_path / "single.d"
+        shutil.copytree(FIXTURE, source)
+        with sqlite3.connect(source / "analysis.tdf") as conn:
+            conn.execute("UPDATE Frames SET MsMsType = 2")
+            conn.executemany(
+                "INSERT INTO FrameMsMsInfo (Frame, Parent, TriggerMass, "
+                "IsolationWidth, PrecursorCharge, CollisionEnergy) "
+                "VALUES (?, NULL, 1046.54, 1.5, NULL, 57.327)",
+                [(row[0],) for row in conn.execute("SELECT Id FROM Frames")],
+            )
+        with caplog.at_level(logging.INFO):
+            out = _convert_path(source, tmp_path / "single.zarr", msms_table=True)
+        sdata = spatialdata.read_zarr(out)
+
+        assert set(sdata.tables) == {"tims_z0"}
+        assert "single precursor" in caplog.text
+
+    def test_an_ms1_acquisition_is_untouched(self, tmp_path):
+        """Asking for the table on a survey run changes nothing at all."""
+        spatialdata = pytest.importorskip("spatialdata")
+        _open("scan_sum").close()
+        plain = spatialdata.read_zarr(_convert(tmp_path, "scan_sum"))
+        asked = spatialdata.read_zarr(
+            _convert_path(FIXTURE, tmp_path / "asked.zarr", msms_table=True)
+        )
+
+        assert set(asked.tables) == set(plain.tables) == {"tims_z0"}
+        np.testing.assert_array_equal(
+            _rows(asked.tables["tims_z0"]), _rows(plain.tables["tims_z0"])
+        )
+        np.testing.assert_array_equal(
+            asked.tables["tims_z0"].var["mz"].to_numpy(),
+            plain.tables["tims_z0"].var["mz"].to_numpy(),
+        )
+        assert "msms_schedule" not in asked.tables["tims_z0"].uns
 
 
 REAL_DATASET = os.environ.get("THYRA_BRUKER_TDF_DATASET")

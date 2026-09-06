@@ -229,7 +229,35 @@ class TestBuilder:
         )
 
         assert meta.ms_analysis.fragmentation is not None
-        assert meta.schema_version == MSI_METADATA_SCHEMA_VERSION == "0.4.0"
+        assert meta.schema_version == MSI_METADATA_SCHEMA_VERSION == "0.5.0"
+
+    def test_the_demultiplexed_sibling_is_named_here_too(self):
+        """Both sibling kinds must be discoverable from the versioned block.
+
+        ``ion_mobility.resolved_table`` has named the mobility sibling since
+        0.3.0. A consumer reading only this block would otherwise find one
+        kind of sibling and not the other, and have to fall back to Thyra's
+        own unversioned ``uns`` arrays to learn the MS/MS one exists.
+        """
+        meta = build_msi_metadata(
+            None,
+            pixel_size_um=(20.0, 20.0),
+            fragmentation=_pasef_schedule().to_extractor_report(),
+            msms_resolved_table="msi_z0_msms",
+        )
+
+        assert meta.ms_analysis.fragmentation.resolved_table == "msi_z0_msms"
+
+    def test_it_stays_unset_when_no_sibling_was_written(self):
+        block = _build_fragmentation(_pasef_schedule().to_extractor_report())
+
+        assert block.resolved_table is None
+
+    def test_a_survey_acquisition_never_names_one(self):
+        """An MS1 run has no precursors, so it cannot have them split apart."""
+        block = _build_fragmentation({"present": False, "ms_level": 1}, "msi_z0_msms")
+
+        assert block.present is False and block.resolved_table is None
 
 
 class TestModelValidators:

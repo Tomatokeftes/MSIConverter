@@ -397,6 +397,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         apply_optical_alignment: bool = True,
         write_mobility_table: bool = True,
         mobility_heatmap: bool = True,
+        msms_table: bool = False,
         **kwargs: Any,
     ) -> None:
         """Initialize the base SpatialData converter.
@@ -431,6 +432,14 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 the raw scan read and store it on the summed table as
                 ``uns["mobility_heatmap"]`` (default: True). Costs one
                 extra pass over the source; see ``mobility_heatmap.py``.
+            msms_table: When the source isolates several precursors per
+                pixel in disjoint mobility slices (Bruker PASEF), also
+                write them split apart as a demultiplexed sibling table
+                (``{table}_msms``) beside the summed MSI table
+                (default: False -- opt in, it costs an extra pass over
+                the source). Refused with a reason rather than
+                approximated when the schedule is not separable; see
+                ``msms_table.py``. Never changes the MSI table itself.
             apply_optical_alignment: If True (default) and the MSI source
                 has FlexImaging Area metadata, compute an alignment that
                 places MSI raster coordinates in optical-image pixel
@@ -519,6 +528,11 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         self._mobility_heatmap_enabled = bool(mobility_heatmap)
         self._mobility_heatmap_block: Optional[Dict[str, Any]] = None
         self._mobility_heatmap_built = False
+        # The demultiplexed MS/MS sibling (see msms_table.py): opt-in, and
+        # -- once a finalize step has decided for its slice -- the element
+        # key it gets, so the MSI table's uns can name it.
+        self._write_msms_table = bool(msms_table)
+        self._msms_table_key: Optional[str] = None
         self._fragmentation_schedule: Any = None
         self._fragmentation_read = False
         if self._sparse_format not in ("csc", "csr"):
@@ -836,6 +850,8 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         if schedule is None or not schedule.is_msms:
             return
         block = schedule.to_uns()
+        if self._msms_table_key is not None:
+            block["resolved_table"] = self._msms_table_key
         uns["msms_schedule"] = _jsonify_string_lists(self._serialize_for_zarr(block))
 
     def _collect_mobility_axis(self, uns: Dict[str, Any]) -> None:
@@ -970,6 +986,115 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         if table is not None:
             data_structures["tables"][key] = table
 
+    def _plan_msms_table(self, table_key: str) -> Optional[str]:
+        """The key of the demultiplexed MS/MS table this slice gets, or ``None``.
+
+        Decided before the MSI table's ``uns`` is built so the two agree.
+        Every refusal is said by name: writing no table is the right
+        answer for an acquisition whose precursors cannot be told apart,
+        but silently writing none is not.
+        """
+        if not self._write_msms_table:
+            return None
+        from .msms_table import demultiplex_refusal, msms_table_key
+
+        if not callable(getattr(self.reader, "iter_precursor_spectra", None)):
+            logger.info(
+                "No demultiplexed MS/MS table: %s cannot separate the "
+                "precursors of a pixel",
+                type(self.reader).__name__,
+            )
+            return None
+        refusal = demultiplex_refusal(self._fragmentation())
+        if refusal is not None:
+            logger.info("No demultiplexed MS/MS table: %s", refusal)
+            return None
+        return msms_table_key(table_key)
+
+    def _attach_msms_table(
+        self,
+        data_structures: Dict[str, Any],
+        table_key: str,
+        region_key: str,
+        obs: pd.DataFrame,
+        z_value: Optional[int] = None,
+    ) -> None:
+        """Build the demultiplexed MS/MS sibling of ``table_key`` and add it.
+
+        No-op unless :meth:`_plan_msms_table` named one for this slice.
+        A failure here is logged and leaves the summed table untouched: the
+        sibling is additive, and a store without it is still complete.
+        """
+        key = self._msms_table_key
+        if key is None or self._common_mass_axis is None:
+            return
+        from .msms_table import build_msms_table
+
+        # The sibling carries the same provenance as the summed table,
+        # minus the heatmap: that block is the summed table's navigator
+        # over the mobility ramp this one has already been split along.
+        sibling_uns = self.build_uns_metadata()
+        sibling_uns.pop("mobility_heatmap", None)
+        try:
+            table = build_msms_table(
+                self.reader,
+                obs,
+                self._common_mass_axis,
+                table_key,
+                region_key,
+                sibling_uns,
+                z_value=z_value,
+            )
+        except Exception as e:
+            logger.error("Could not build the demultiplexed MS/MS table: %s", e)
+            return
+        if table is None:
+            return
+        self._record_demultiplexed_current(
+            table, data_structures["tables"].get(table_key), table_key
+        )
+        data_structures["tables"][key] = table
+
+    @staticmethod
+    def _record_demultiplexed_current(table: Any, summed: Any, summed_key: str) -> None:
+        """Say how much of the summed table's ion current the split holds.
+
+        The two tables agree exactly under ``--tdf-spectrum scan_sum``, and
+        do not under the default ``vendor_centroid``: the vendor peak
+        picker drops single counts while the split reads raw scans, so the
+        demultiplexed table holds *more*. That is not a defect, but a store
+        whose two tables disagree must say so rather than leave a reader to
+        find it by subtraction.
+        """
+        if summed is None:
+            return
+        try:
+            split = np.asarray(table.X.sum(axis=1)).ravel().astype(np.float64)
+            whole = np.asarray(summed.X.sum(axis=1)).ravel().astype(np.float64)
+            if split.size != whole.size or not whole.any():
+                return
+            per_pixel = split / np.where(whole == 0, np.nan, whole)
+            block: Dict[str, Any] = {
+                "summed_table": summed_key,
+                "current_ratio": float(split.sum() / whole.sum()),
+                "current_ratio_pixel_min": float(np.nanmin(per_pixel)),
+                "current_ratio_pixel_max": float(np.nanmax(per_pixel)),
+            }
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("Could not compare the demultiplexed current: %s", e)
+            return
+        table.uns["demultiplexed_current"] = block
+        if abs(float(block["current_ratio"]) - 1.0) > 1e-9:
+            logger.info(
+                "The demultiplexed table holds %.4fx the summed table's ion "
+                "current (per pixel %.4f to %.4f). They agree exactly only "
+                "under --tdf-spectrum scan_sum; the vendor centroid discards "
+                "counts the raw scans keep.",
+                block["current_ratio"],
+                block["current_ratio_pixel_min"],
+                block["current_ratio_pixel_max"],
+            )
+
     def _resolved_pixel_size_xy(self) -> Tuple[float, float]:
         """The in-plane pixel pitch as ``(x_um, y_um)``.
 
@@ -1004,6 +1129,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 processing=self._processing_provenance(),
                 mobility_resolved_table=self._mobility_table_key,
                 fragmentation=self._fragmentation_report(),
+                msms_resolved_table=self._msms_table_key,
             )
             uns[MSI_METADATA_UNS_KEY] = meta.to_uns_dict()
         except Exception as e:

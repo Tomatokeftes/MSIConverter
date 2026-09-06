@@ -28,7 +28,7 @@ import spatialdata as sd
 sdata = sd.read_zarr("output.zarr")
 block = sdata.tables["msi_dataset_z0"].uns["msi_metadata"]
 
-print(block["schema_version"])                       # "0.4.0"
+print(block["schema_version"])                       # "0.5.0"
 print(block["ms_analysis"]["pixel_size_um"])         # {"x": 20.0, "y": 20.0}
 print(block["ms_analysis"]["ionisation_source"])     # "MALDI"
 print(block["ms_analysis"]["ionisation_source_term"])
@@ -64,7 +64,7 @@ you -- see [Completing the metadata](#completing-the-metadata).
 | | `detector_resolving_power` | `{value, at_mz}` | -- |
 | | `pixel_size_um` | `{x, y}`, **required** | -- |
 | | `ion_mobility` | `{present, separation, separation_term, unit_term, range_lower, range_upper, num_scans, resolved_table, grid}` | PSI-MS (`MS:1002815` / `MS:1002476`, unit `MS:1002814`) |
-| | `fragmentation` | `{present, ms_level, constant_across_pixels, merges_precursors, dissociation_term, windows}` | PSI-MS (`MS:1000511`; windows `MS:1000827` / `828` / `829`, `MS:1000045`, `MS:1000133`) |
+| | `fragmentation` | `{present, ms_level, constant_across_pixels, merges_precursors, dissociation_term, windows, resolved_table}` | PSI-MS (`MS:1000511`; windows `MS:1000827` / `828` / `829`, `MS:1000045`, `MS:1000133`) |
 | `processing` | list of `{name, software {name, version, uri}, parameters}` | ordered steps, oldest first | -- |
 | `provenance` | `thyra_version` | text, required | -- |
 | | `source_format` | `"imzml"`, `"bruker"`, ... | -- |
@@ -125,6 +125,14 @@ which means "not reported", not "MS1". `windows` is stored as a JSON string
 mzPeak's, so an archive and a store describe a precursor the same way; see
 [Output Format](output-format.md#fragmentation-msms) for the array block
 beside it and for what `merges_precursors` means for the stored spectrum.
+`resolved_table` names the demultiplexed sibling table when one was written,
+mirroring `ion_mobility.resolved_table`, so both kinds of sibling are
+discoverable from this block alone.
+
+A precursor's m/z here and in `var["precursor_mz"]` is the **isolation window
+target** (`MS:1000827`) -- the m/z the quadrupole was set to -- and not
+`MS:1000744`, a selected ion whose m/z was measured. mzPeak keeps the two in
+separate files for the same reason; do not read either as a monoisotopic mass.
 
 Everything else -- organism, tissue, condition, matrix, resolving power --
 cannot come from a raw file and stays empty until you provide it.
@@ -221,10 +229,13 @@ consumer can rely on one spelling:
 
 | Column | Written by | Meaning |
 |--------|-----------|---------|
-| `mz` | every converter, **required** | The common mass axis. Numeric, finite, strictly increasing -- except on a mobility-resolved table, where it is non-decreasing and the `(mz, mobility)` pair is unique and sorted. |
+| `mz` | every converter, **required** | The common mass axis. Numeric, finite, strictly increasing -- except on a sibling table, where the pair is what is unique and sorted: `(mz, mobility)` on a mobility-resolved one, `(precursor_mz, precursor_mobility, mz)` on a demultiplexed MS/MS one, where `precursor_index` identifies the block. |
 | `mobility` | the converter, on mobility-resolved tables only | The feature's ion mobility (1/K0 or drift time; see `uns["mobility_axis"]`). Its presence is what marks the table as mobility-resolved. |
-| `mz_index` | the converter, on mobility-resolved tables only | Column of the feature's m/z on the summed MSI table's axis |
+| `precursor_mz` | the converter, on demultiplexed MS/MS tables only | The isolated m/z the feature's fragments came from (see `uns["msms_schedule"]`). Its presence is what marks the table as demultiplexed; such a table never carries `mobility` as well. |
+| `mz_index` | the converter, on sibling tables only | Column of the feature's m/z on the summed MSI table's axis |
 | `mobility_index` | the converter, on mobility-resolved tables only | Rank of the feature's mobility among the table's distinct mobility values |
+| `precursor_mobility` | the converter, on demultiplexed MS/MS tables only | The 1/K0 the precursor was isolated at (the middle of its mobility window). What tells two precursors sharing an m/z apart -- an isomer pair -- so they are never merged |
+| `precursor_index` | the converter, on demultiplexed MS/MS tables only | The precursor's position in **this store's** precursor axis, and the identity of its column block. Means nothing outside the store: align two stores on `(precursor_mz, precursor_mobility)` |
 | `formula` | annotation tools | Molecular formula of the annotation |
 | `adduct` | annotation tools | Adduct, e.g. `+H`, `-H`, `+Na` |
 | `annotation_source` | annotation tools | Tool/database that produced the annotation |
@@ -263,10 +274,11 @@ table of a store.
 
 Versions so far: 0.1.0 (initial), 0.2.0 (`ms_analysis.ion_mobility`
 added), 0.3.0 (`ion_mobility.resolved_table` and `ion_mobility.grid` added),
-0.4.0 (`ms_analysis.fragmentation` added).
+0.4.0 (`ms_analysis.fragmentation` added), 0.5.0
+(`fragmentation.resolved_table` added).
 
 The JSON Schema rendering is committed at
-`thyra/metadata/schema/msi_metadata_schema_v0_4.json` and ships in the
+`thyra/metadata/schema/msi_metadata_schema_v0_5.json` and ships in the
 wheel, so non-Python consumers can validate documents without importing
 Thyra:
 
@@ -276,7 +288,7 @@ import json
 
 schema = json.loads(
     resources.files("thyra.metadata.schema")
-    .joinpath("msi_metadata_schema_v0_4.json")
+    .joinpath("msi_metadata_schema_v0_5.json")
     .read_text()
 )
 ```

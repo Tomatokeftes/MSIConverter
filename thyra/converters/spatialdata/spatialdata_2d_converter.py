@@ -315,8 +315,9 @@ class SpatialData2DConverter(BaseSpatialDataConverter):
                 # Add per-region mean spectra for multi-region datasets
                 self._store_per_region_avg(adata, data_structures)
 
-                # Decide on the mobility sibling first so uns can name it.
+                # Decide on the sibling tables first so uns can name them.
                 self._mobility_table_key = self._plan_mobility_table(slice_id)
+                self._msms_table_key = self._plan_msms_table(slice_id)
 
                 # Add MSI metadata to .uns
                 self._add_metadata_to_uns(adata)
@@ -343,6 +344,13 @@ class SpatialData2DConverter(BaseSpatialDataConverter):
                 data_structures["tables"][slice_id] = table
                 data_structures["shapes"][region_key] = self._create_pixel_shapes(adata)
                 self._attach_mobility_table(
+                    data_structures,
+                    slice_id,
+                    region_key,
+                    adata.obs,
+                    z_value=slice_data.get("z_value"),
+                )
+                self._attach_msms_table(
                     data_structures,
                     slice_id,
                     region_key,

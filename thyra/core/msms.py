@@ -21,8 +21,9 @@ What it deliberately does **not** do is change the data. A frame that
 isolated several precursors is still summed into one spectrum per pixel;
 the schedule recorded here is what makes that visible rather than silent.
 Splitting such a frame into one spectrum per precursor is a separate,
-larger piece of work -- it needs a feature axis of (precursor, fragment)
-pairs, which is a data-model change, not a metadata one.
+opt-in table with a feature axis of (precursor, fragment) pairs -- see
+``thyra.converters.spatialdata.msms_table``, which reads the schedule
+recorded here to decide whether the split is exact.
 """
 
 from dataclasses import dataclass
@@ -66,8 +67,8 @@ class IsolationWindow:
 
     The mobility scan range is Bruker PASEF-specific and optional
     everywhere else: it is what makes several windows fit inside one frame
-    without overlapping, and therefore what a future demultiplexer would
-    slice on.
+    without overlapping, and therefore what the demultiplexer slices on
+    (``BrukerReader.iter_precursor_spectra``).
     """
 
     target: float

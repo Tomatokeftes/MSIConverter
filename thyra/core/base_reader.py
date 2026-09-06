@@ -326,6 +326,41 @@ class BaseMSIReader(ABC):
         """
         return None
 
+    def iter_precursor_spectra(self, batch_size: Optional[int] = None) -> Generator[
+        Tuple[
+            Tuple[int, int, int],
+            int,
+            NDArray[np.float64],
+            NDArray[np.float64],
+        ],
+        None,
+        None,
+    ]:
+        """Iterate the fragment spectra of each precursor separately.
+
+        Yields ``((x, y, z), window_index, mzs, intensities)``: one
+        spectrum per pixel *per precursor*, where ``window_index`` is the
+        position of that precursor in
+        :meth:`get_fragmentation`'s ``windows``. Only a source that
+        separates its precursors within a pixel implements this -- Bruker
+        PASEF gives each isolation window its own slice of the mobility
+        ramp, so the split is a filter on the scan number rather than a
+        deconvolution.
+
+        A pixel-precursor pair with no ion current is not yielded.
+        :meth:`iter_spectra` is unaffected and keeps yielding the summed
+        spectrum.
+
+        Args:
+            batch_size: Optional batch size hint, as for :meth:`iter_spectra`.
+
+        Raises:
+            NotImplementedError: If the reader cannot separate precursors.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} cannot separate the precursors of a pixel"
+        )
+
     def get_region_map(self) -> Optional[dict]:
         """Get per-pixel region mapping for multi-region datasets.
 

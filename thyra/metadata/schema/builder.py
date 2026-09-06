@@ -136,6 +136,7 @@ def _build_ms_analysis(
     source_format: Optional[str],
     mobility_resolved_table: Optional[str] = None,
     fragmentation: Any = None,
+    msms_resolved_table: Optional[str] = None,
 ) -> MSAnalysis:
     """Assemble the acquisition section from what the extractors report."""
     fields: Dict[str, Any] = {}
@@ -158,7 +159,7 @@ def _build_ms_analysis(
     if ion_mobility is not None:
         fields["ion_mobility"] = ion_mobility
 
-    fragmentation_block = _build_fragmentation(fragmentation)
+    fragmentation_block = _build_fragmentation(fragmentation, msms_resolved_table)
     if fragmentation_block is not None:
         fields["fragmentation"] = fragmentation_block
 
@@ -237,7 +238,9 @@ def _mobility_axis_fields(reported: Dict[str, Any]) -> Dict[str, Any]:
     return fields
 
 
-def _build_fragmentation(reported: Any) -> Optional[Fragmentation]:
+def _build_fragmentation(
+    reported: Any, resolved_table: Optional[str] = None
+) -> Optional[Fragmentation]:
     """The fragmentation block from what a reader reported.
 
     ``None`` in, ``None`` out: a reader that cannot tell says nothing,
@@ -245,6 +248,10 @@ def _build_fragmentation(reported: Any) -> Optional[Fragmentation]:
     claim. Everything is checked for shape rather than trusted -- a
     window without a usable target m/z is dropped rather than invented,
     since a precursor list is exactly the thing a consumer would act on.
+
+    A demultiplexed table written beside the summed one is named here,
+    the way :func:`_build_ion_mobility` names the mobility sibling, so
+    both kinds are discoverable from this versioned block alone.
     """
     if not isinstance(reported, dict) or "ms_level" not in reported:
         return None
@@ -274,6 +281,7 @@ def _build_fragmentation(reported: Any) -> Optional[Fragmentation]:
         merges_precursors=len(windows) > 1,
         dissociation_term=term if windows else None,
         windows=windows,
+        resolved_table=resolved_table,
     )
 
 
@@ -313,6 +321,7 @@ def build_msi_metadata(
     processing: Optional[List[ProcessingStep]] = None,
     mobility_resolved_table: Optional[str] = None,
     fragmentation: Any = None,
+    msms_resolved_table: Optional[str] = None,
 ) -> MSIMetadata:
     """Build an :class:`MSIMetadata` document from extracted metadata.
 
@@ -335,6 +344,8 @@ def build_msi_metadata(
             :meth:`thyra.core.msms.FragmentationSchedule.to_extractor_report`
             renders it. ``None`` means the reader did not say, which is
             not the same as "MS1" and leaves the block unset.
+        msms_resolved_table: Element key of the demultiplexed MS/MS
+            sibling table written beside the summed table, when one was.
 
     Returns:
         The populated document.  Fields the source does not report are
@@ -366,6 +377,7 @@ def build_msi_metadata(
             source_format,
             mobility_resolved_table,
             fragmentation,
+            msms_resolved_table,
         ),
         processing=list(processing or []),
         provenance=Provenance(
