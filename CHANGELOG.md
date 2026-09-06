@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v3.13.2 (2026-09-06)
+
+### Bug Fixes
+
+- **converters**: Store the mean, not the sum, as the 3D average spectrum
+  ([`15dedf4`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/15dedf4edd7b818ff778898aa01f962c8969a104))
+
+
 ## v3.13.1 (2026-09-06)
 
 ### Bug Fixes
