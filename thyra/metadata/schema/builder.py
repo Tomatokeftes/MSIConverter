@@ -84,6 +84,49 @@ def _polarity_from_cv_params(raw_metadata: Dict[str, Any]) -> Optional[str]:
     return "positive" if positive else "negative"
 
 
+def _build_instrument_fields(
+    acquisition: Dict[str, Any],
+    instrument: Dict[str, Any],
+    format_specific: Dict[str, Any],
+    source_format: Optional[str],
+) -> Dict[str, Any]:
+    """What instrument produced the data: source, analyzer and model.
+
+    Grouped because all three resolve the same way -- what the extractor
+    reported, then what the format itself implies (a PHI raw file is a
+    TOF-SIMS acquisition), and nothing when neither says. The per-format
+    defaults are consulted by all of them, which is what makes this one
+    step rather than three.
+    """
+    fields: Dict[str, Any] = {}
+    fmt_defaults = _FORMAT_DEFAULTS.get((source_format or "").lower(), {})
+
+    source = normalize_ionisation_source(
+        _first_string(acquisition, ("ionisation_source", "ion_source", "technique"))
+    )
+    if source is None and format_specific.get("is_maldi"):
+        source = normalize_ionisation_source("maldi")
+    if source is None and "ionisation_source" in fmt_defaults:
+        source = normalize_ionisation_source(fmt_defaults["ionisation_source"])
+    if source is not None:
+        fields["ionisation_source"], fields["ionisation_source_term"] = source
+
+    analyzer = normalize_analyzer(
+        _first_string(instrument, ("analyzer", "mass_analyzer"))
+        or _first_string(acquisition, ("analyzer", "mass_analyzer"))
+    )
+    if analyzer is None and "analyzer" in fmt_defaults:
+        analyzer = normalize_analyzer(fmt_defaults["analyzer"])
+    if analyzer is not None:
+        fields["analyzer"], fields["analyzer_term"] = analyzer
+
+    instrument_model = _first_string(instrument, _INSTRUMENT_MODEL_KEYS)
+    if instrument_model is not None:
+        fields["instrument_model"] = instrument_model
+
+    return fields
+
+
 def _build_ms_analysis(
     acquisition: Dict[str, Any],
     instrument: Dict[str, Any],
@@ -103,29 +146,11 @@ def _build_ms_analysis(
     if polarity is not None:
         fields["polarity"], fields["polarity_term"] = polarity
 
-    source = normalize_ionisation_source(
-        _first_string(acquisition, ("ionisation_source", "ion_source", "technique"))
+    fields.update(
+        _build_instrument_fields(
+            acquisition, instrument, format_specific, source_format
+        )
     )
-    if source is None and format_specific.get("is_maldi"):
-        source = normalize_ionisation_source("maldi")
-    fmt_defaults = _FORMAT_DEFAULTS.get((source_format or "").lower(), {})
-    if source is None and "ionisation_source" in fmt_defaults:
-        source = normalize_ionisation_source(fmt_defaults["ionisation_source"])
-    if source is not None:
-        fields["ionisation_source"], fields["ionisation_source_term"] = source
-
-    analyzer = normalize_analyzer(
-        _first_string(instrument, ("analyzer", "mass_analyzer"))
-        or _first_string(acquisition, ("analyzer", "mass_analyzer"))
-    )
-    if analyzer is None and "analyzer" in fmt_defaults:
-        analyzer = normalize_analyzer(fmt_defaults["analyzer"])
-    if analyzer is not None:
-        fields["analyzer"], fields["analyzer_term"] = analyzer
-
-    instrument_model = _first_string(instrument, _INSTRUMENT_MODEL_KEYS)
-    if instrument_model is not None:
-        fields["instrument_model"] = instrument_model
 
     ion_mobility = _build_ion_mobility(
         format_specific.get("ion_mobility"), mobility_resolved_table
