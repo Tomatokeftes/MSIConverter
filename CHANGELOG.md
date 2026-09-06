@@ -2,6 +2,27 @@
 
 <!-- version list -->
 
+## v3.15.0 (2026-09-06)
+
+### Bug Fixes
+
+- **msms**: Keep isomer precursors apart, and label features intrinsically
+  ([`a7d61f5`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/a7d61f500789146d0a4752c36a307f44c57e3b09))
+
+### Documentation
+
+- **msms**: Place the demultiplexed table against the prior art
+  ([`9f86963`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/9f869631893f5869253f20d938aff2e563f6d787))
+
+### Features
+
+- **msms**: Split a PASEF frame into per-precursor spectra
+  ([`3afca1b`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/3afca1bd0a42c2947aeda467fcd91e94db2e0e8b))
+
+- **schema**: Name the demultiplexed table in the metadata block
+  ([`fce3fc8`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/fce3fc8e0c477f3a5e39c3b65f4034268182adcf))
+
+
 ## v3.14.0 (2026-09-06)
 
 ### Features
