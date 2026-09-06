@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v3.14.0 (2026-09-06)
+
+### Features
+
+- **msms**: Record the fragmentation of an MS/MS acquisition
+  ([`dc01af9`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/dc01af998c638835364cfc81bf748ceaaa81cea7))
+
+### Refactoring
+
+- **schema**: Group the instrument fields out of _build_ms_analysis
+  ([`f831e1d`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/f831e1d918a2b52a2fc01616a31db2f7e4255b1f))
+
+
 ## v3.13.2 (2026-09-06)
 
 ### Bug Fixes
