@@ -19,6 +19,12 @@ from .instrument_detectors import (
     RapiflexDetector,
     TimsTOFDetector,
 )
+from .mobility_grid import (
+    MOBILITY_CHANNELS,
+    MobilityGrid,
+    build_mobility_grid,
+    linear_channel,
+)
 from .strategies import NearestNeighborStrategy, TICPreservingStrategy
 from .types import AxisType, MassAxis, ResamplingConfig, ResamplingMethod
 
@@ -49,4 +55,9 @@ __all__ = [
     "FTICRDetector",
     "OrbitrapDetector",
     "DefaultDetector",
+    # Ion mobility grid
+    "MOBILITY_CHANNELS",
+    "MobilityGrid",
+    "build_mobility_grid",
+    "linear_channel",
 ]

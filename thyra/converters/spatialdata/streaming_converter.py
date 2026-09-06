@@ -1928,7 +1928,17 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             )
             obs.index.name = "instance_id"
             self._attach_mobility_table(
-                data_structures, slice_id, region_key, obs, z_value=0
+                data_structures,
+                slice_id,
+                region_key,
+                obs,
+                z_value=0,
+                # The summed table went straight to disk on this route and
+                # is not in hand; its per-pixel ion current is, because the
+                # TIC image is exactly that.
+                summed_row_totals=np.asarray(tic_values, dtype=np.float64).ravel()[
+                    kept
+                ],
             )
             self._attach_msms_table(
                 data_structures, slice_id, region_key, obs, z_value=0

@@ -91,7 +91,8 @@ m/z block that repeats a value where mobility splits a feature collapses to
 one column -- and, for a continuous export (one shared feature list), the
 `(m/z, mobility)` pairs are also written as a mobility-resolved sibling
 table; see [Output Format](output-format.md#ion-mobility). A processed export
-(per-pixel point cloud) gets the summed table only. A mobility array declared
+(per-pixel point cloud) gets the summed table only -- `--mobility-grid`
+covers per-pixel mobility for Bruker TDF, not yet for imzML. A mobility array declared
 with zlib compression is refused like the other two.
 
 See [imzML Parser Notes](imzml-parser-notes.md) for the hazards Thyra works
@@ -107,9 +108,9 @@ registration, and per-pixel region annotations for multi-region slides.
 
 A TDF frame is one pixel whose scans are the ion mobility dimension. Thyra
 reads **every scan of the ramp** and collapses them into the one spectrum per
-pixel the MSI table holds; a mobility-resolved table is a separate, later
-feature, and `--msms-table` slices the ramp by precursor instead (below). Two
-collapses are available through `--tdf-spectrum`:
+pixel the MSI table holds; `--mobility-grid` writes what was collapsed as a
+separate table (below), and `--msms-table` slices the ramp by precursor
+instead (below). Two collapses are available through `--tdf-spectrum`:
 
 - `vendor_centroid` (default): Bruker's frame-level peak picker over the full
   ramp, the same one behind the TSF line spectrum and SCiLS Lab's import. It
@@ -136,6 +137,19 @@ skips it. Under `scan_sum` the heatmap summed over mobility is exactly the
 stored mean spectrum; under `vendor_centroid` the two differ by what the
 centroid discards. See [Output Format](output-format.md#ion-mobility). A TSF
 file has no mobility dimension and gets none of this.
+
+**`--mobility-grid` writes the mobility-resolved table.** A TDF pixel is its
+own point cloud, so there is no feature list shared across pixels to write
+directly the way an imzML mobility export has; the flag bins every pixel's
+`(m/z, 1/K0, intensity)` points onto one set of mobility channels shared
+across the conversion and writes the result as `{table}_mobility` -- the same
+element, columns and sort a shared-axis source produces. The default 256
+channels over the axis' own value range are the heatmap's, so a box on the
+heatmap indexes the table's channels. It costs a second pass over the source,
+a table with 1.3 to 4 times the summed table's non-zeros, and a switch to
+`--tdf-spectrum scan_sum` (said at `WARNING`) so the table's marginal over
+channels reproduces the summed table exactly. See
+[Output Format](output-format.md#the-same-table-from-a-common-mobility-grid).
 
 **MS/MS acquisitions convert, and say so.** `Frames.MsMsType` tells a survey
 frame from a fragment one; the precursor detail comes from `PasefFrameMsMsInfo`

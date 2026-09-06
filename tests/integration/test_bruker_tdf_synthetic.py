@@ -597,6 +597,178 @@ class TestDemultiplexedStore:
         assert "msms_schedule" not in asked.tables["tims_z0"].uns
 
 
+# ----------------------------------------------------------------------
+# The mobility grid table on a TDF, which has no shared feature axis
+# ----------------------------------------------------------------------
+
+
+def _marginal(grid, summed) -> np.ndarray:
+    """The grid table collapsed over mobility channels, per (pixel, m/z bin)."""
+    mz_index = grid.var["mz_index"].to_numpy()
+    out = np.zeros((grid.n_obs, summed.n_vars), dtype=np.float64)
+    rows = _rows(grid)
+    for column, bin_index in enumerate(mz_index):
+        out[:, bin_index] += rows[:, column]
+    return out
+
+
+class TestMobilityGridStore:
+    """The opt-in grid table, built by binning each frame's point cloud.
+
+    A TDF pixel is its own point cloud, so this is the second mechanism
+    that fills ``{table}_mobility`` -- and the first one a Bruker source
+    can use at all. Everything here runs on the committed synthetic
+    fixture through the real library; no new binary data.
+    """
+
+    def test_a_default_conversion_is_untouched(self, tmp_path):
+        out = _convert(tmp_path, "vendor_centroid")
+        spatialdata = pytest.importorskip("spatialdata")
+        from thyra.utils.windows_paths import prepare_zarr_read_path
+
+        sdata = spatialdata.read_zarr(prepare_zarr_read_path(out))
+        assert "tims_z0_mobility" not in sdata.tables
+
+    def test_the_flag_writes_the_sibling_and_forces_the_lossless_sum(self, tmp_path):
+        from thyra.convert import convert_msi
+
+        out = tmp_path / "grid.zarr"
+        # No reader_options: the grid must pick scan_sum itself.
+        assert convert_msi(
+            str(FIXTURE),
+            str(out),
+            dataset_id="tims",
+            pixel_size_um=20.0,
+            mobility_grid=True,
+        )
+        from thyra.metadata.schema import read_msi_metadata_blocks
+        from thyra.utils.windows_paths import prepare_zarr_read_path
+
+        summed = _read_table(out, "tims_z0")
+        grid = _read_table(out, "tims_z0_mobility")
+        blocks = read_msi_metadata_blocks(prepare_zarr_read_path(out))
+        step = blocks["tims_z0"]["processing"][0]
+        assert step["parameters"]["tdf_spectrum"] == "scan_sum"
+        assert summed.n_obs == grid.n_obs
+        assert list(summed.obs.index) == list(grid.obs.index)
+        assert "mobility" in grid.var.columns
+        assert "mobility" not in summed.var.columns
+
+    def test_the_marginal_reproduces_the_summed_table_per_pixel(self, tmp_path):
+        from thyra.convert import convert_msi
+
+        out = tmp_path / "grid.zarr"
+        assert convert_msi(
+            str(FIXTURE),
+            str(out),
+            dataset_id="tims",
+            pixel_size_um=20.0,
+            mobility_grid=True,
+        )
+        summed = _read_table(out, "tims_z0")
+        grid = _read_table(out, "tims_z0_mobility")
+        np.testing.assert_allclose(
+            _marginal(grid, summed), _rows(summed), rtol=0, atol=1e-9
+        )
+        block = grid.uns["mobility_marginal"]
+        assert float(block["current_ratio"]) == pytest.approx(1.0, abs=1e-12)
+        assert float(block["max_absolute_deviation"]) == pytest.approx(0.0, abs=1e-9)
+
+    def test_the_grid_indexes_the_heatmap_by_integer_channel(self, tmp_path):
+        from thyra.convert import convert_msi
+
+        out = tmp_path / "grid.zarr"
+        assert convert_msi(
+            str(FIXTURE),
+            str(out),
+            dataset_id="tims",
+            pixel_size_um=20.0,
+            mobility_grid=True,
+        )
+        summed = _read_table(out, "tims_z0")
+        grid = _read_table(out, "tims_z0_mobility")
+        block = grid.uns["mobility_grid"]
+        assert int(block["n_channels"]) == 256
+        # Equal arrays, not merely close.
+        np.testing.assert_array_equal(
+            np.asarray(block["edges"]),
+            np.asarray(summed.uns["mobility_heatmap"]["mobility_edges"]),
+        )
+        channels = grid.var["mobility_index"].to_numpy()
+        assert channels.min() >= 0 and channels.max() <= 255
+        assert _no_colon_keys(block)
+        # And the schema block names the same grid.
+        schema_grid = summed.uns["msi_metadata"]["ms_analysis"]["ion_mobility"]["grid"]
+        assert int(schema_grid["n_channels"]) == 256
+        assert float(schema_grid["lower"]) == pytest.approx(float(block["lower"]))
+
+    def test_a_tsf_file_is_refused_by_name(self, tmp_path, caplog):
+        """No mobility dimension, so no grid -- and no exception either."""
+        from thyra.converters.spatialdata.mobility_table import grid_refusal
+        from thyra.resampling.mobility_grid import build_mobility_grid
+
+        with _open("vendor_centroid") as reader:
+            assert reader.has_ion_mobility
+            assert not reader.has_shared_mobility_axis
+        grid = build_mobility_grid(1.0, 1.3)
+
+        class _Tsf:
+            has_ion_mobility = False
+
+        assert "no ion mobility" in str(grid_refusal(_Tsf(), np.arange(10.0), grid))
+
+    def test_the_var_ceiling_refuses_the_table_and_keeps_the_store(
+        self, tmp_path, caplog, monkeypatch
+    ):
+        """The ceiling is on occupied pairs, so it is checked on the count."""
+        import thyra.converters.spatialdata.mobility_table as module
+        from thyra.convert import convert_msi
+
+        monkeypatch.setattr(module, "MAX_GRID_VAR_ENTRIES", 8)
+        out = tmp_path / "ceiling.zarr"
+        with caplog.at_level(logging.WARNING):
+            assert convert_msi(
+                str(FIXTURE),
+                str(out),
+                dataset_id="tims",
+                pixel_size_um=20.0,
+                mobility_grid=True,
+            )
+        assert "above the var ceiling" in caplog.text
+        spatialdata = pytest.importorskip("spatialdata")
+        from thyra.utils.windows_paths import prepare_zarr_read_path
+
+        sdata = spatialdata.read_zarr(prepare_zarr_read_path(out))
+        assert "tims_z0_mobility" not in sdata.tables
+        # The summed table is untouched by the refusal.
+        assert sdata.tables["tims_z0"].n_obs == 6
+
+
+def _capped_copy(source: Path, tmp_path: Path, n_frames: int) -> Path:
+    """A copy of a ``.d`` limited to its first ``n_frames`` MALDI frames.
+
+    Everything but ``analysis.tdf`` is hard-linked, so a 27 GB acquisition
+    costs nothing to cap; the database itself is copied because the frame
+    list is trimmed in it. Falls back to a plain copy where hard links are
+    not available.
+    """
+    target = tmp_path / "capped.d"
+    try:
+        shutil.copytree(source, target, copy_function=os.link)
+        (target / "analysis.tdf").unlink()
+        shutil.copy2(source / "analysis.tdf", target / "analysis.tdf")
+    except OSError:
+        shutil.rmtree(target, ignore_errors=True)
+        shutil.copytree(source, target)
+    with sqlite3.connect(target / "analysis.tdf") as conn:
+        conn.execute(
+            "DELETE FROM MaldiFrameInfo WHERE Frame NOT IN "
+            "(SELECT Frame FROM MaldiFrameInfo ORDER BY Frame LIMIT ?)",
+            (int(n_frames),),
+        )
+    return target
+
+
 REAL_DATASET = os.environ.get("THYRA_BRUKER_TDF_DATASET")
 
 
@@ -688,3 +860,72 @@ class TestRealAcquisition:
         mean_k0 = (counts[strong] @ k0_centres) / marginal[strong]
         rho = spearmanr(mz_centres[strong], mean_k0).statistic
         assert rho > 0.3, f"no mass-mobility trend: Spearman {rho:.2f}"
+
+    def test_the_grid_table_holds_the_summed_table_resolved(self, tmp_path):
+        """Acceptance for the grid on real data: both tables, and they agree.
+
+        Frame-capped so the conversion stays short: the ``.tdf_bin`` is
+        hard-linked rather than copied and the frame list is trimmed, so
+        the cap costs no disk and no read of the frames it drops.
+        """
+        from thyra.convert import convert_msi
+
+        source = _capped_copy(Path(REAL_DATASET), tmp_path, n_frames=60)  # type: ignore[arg-type]
+        out = tmp_path / "real_grid.zarr"
+        assert convert_msi(
+            str(source),
+            str(out),
+            dataset_id="real",
+            # As the CLI converts: without resampling a TDF's raw axis is
+            # millions of bins and the grid is refused by the var ceiling,
+            # which is the ceiling doing its job rather than a bad default.
+            resampling_config={
+                "method": "auto",
+                "axis_type": "auto",
+                "reference_mz": 1000.0,
+            },
+            mobility_grid=True,
+        )
+        summed = _read_table(out, "real_z0")
+        grid = _read_table(out, "real_z0_mobility")
+
+        assert summed.n_obs == grid.n_obs
+        assert list(summed.obs.index) == list(grid.obs.index)
+
+        # var: the frozen contract, and channels on the 256-channel grid.
+        mz = grid.var["mz"].to_numpy()
+        mobility = grid.var["mobility"].to_numpy()
+        assert np.all(np.diff(mz) >= 0)
+        order = np.lexsort((mobility, mz))
+        np.testing.assert_array_equal(order, np.arange(order.size))
+        channels = grid.var["mobility_index"].to_numpy()
+        assert channels.min() >= 0 and channels.max() <= 255
+
+        # The heatmap's edges are the grid's, as arrays.
+        np.testing.assert_array_equal(
+            np.asarray(grid.uns["mobility_grid"]["edges"]),
+            np.asarray(summed.uns["mobility_heatmap"]["mobility_edges"]),
+        )
+
+        # The marginal invariant, per pixel and per m/z bin. Row by row:
+        # this table is millions of columns wide and densifying it whole
+        # would need tens of gigabytes.
+        mz_index = grid.var["mz_index"].to_numpy()
+        summed_csr = summed.X.tocsr()
+        grid_csr = grid.X.tocsr()
+        scale = float(np.abs(summed_csr.data).max())
+        for row in range(summed.n_obs):
+            marginal = np.zeros(summed.n_vars, dtype=np.float64)
+            block_row = grid_csr[row]
+            np.add.at(marginal, mz_index[block_row.indices], block_row.data)
+            np.testing.assert_allclose(
+                marginal,
+                np.asarray(summed_csr[row].todense()).ravel(),
+                rtol=0,
+                atol=scale * 1e-9,
+            )
+        block = grid.uns["mobility_marginal"]
+        assert float(block["current_ratio"]) == pytest.approx(1.0, abs=1e-9)
+
+        ratio = grid.X.nnz / summed.X.nnz
+        assert 1.2 <= ratio <= 5, f"unexpected non-zero ratio {ratio:.2f}"

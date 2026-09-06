@@ -276,9 +276,10 @@ panel draws.
 | `mobility_edges` | `float64[k + 1]`, **`k = 256`**: equal-width bins in the axis unit, ascending, spanning the axis `values` |
 | `counts` | `float32[m, k]`: mean intensity per bin over pixels |
 
-`k = 256` is fixed on purpose: the opt-in mobility grid table (a later
-feature) defaults to the same 256 channels over the same edges, so a box drawn
-on the heatmap maps onto grid channels by integer index in both directions.
+`k = 256` is fixed on purpose: the mobility grid table below defaults to the
+same 256 channels over the same edges -- literally the same constant and the
+same generator -- so a box drawn on the heatmap maps onto grid channels by
+integer index in both directions.
 The m/z binning is the converter's own nearest-bin rule, coarsened, so under a
 lossless summed spectrum (`--tdf-spectrum scan_sum`) the heatmap summed over
 mobility, `counts.sum(axis=1)`, equals `uns["average_spectrum"]` coarsened to
@@ -313,7 +314,7 @@ table**, `{table}_mobility`, unless `--no-mobility-table` is given:
 | `var["mz"]` | strictly increasing, unique | **non-decreasing with duplicates** |
 | `var["mobility"]` | absent | the feature's 1/K0 (or drift time) |
 | sort | by `mz` | lexicographic `(mz, mobility)` |
-| also | | `mz_index` (column on the MSI axis), `mobility_index` (rank of the mobility value), `uns["feature_axis"]`, `uns["mobility_axis"]` |
+| also | | `mz_index` (column on the MSI axis), `mobility_index` (rank of the mobility value, or the grid channel), `uns["feature_axis"]`, `uns["mobility_axis"]` |
 
 Two isomers at one m/z that separate in mobility are one column in the MSI
 table and two in the mobility table. The `(mz, mobility)` sort means an m/z
@@ -327,11 +328,93 @@ assumes a unique, strictly increasing `var["mz"]` must not be pointed at it.
 sorted pairs) to tables carrying `mobility` and the strict contract to all
 others.
 
-A source whose mobility values differ per pixel (a processed imzML export,
-the raw point cloud) has no shared feature axis; it gets the summed table
-only, with coincident m/z within a pixel summed into one bin. A
-mobility-resolved table for that case needs a common mobility grid, which
-is a later feature.
+#### The same table from a common mobility grid
+
+A source whose mobility values differ per pixel -- a Bruker TDF, where a
+frame is a point cloud and no two pixels are promised the same `(m/z, 1/K0)`
+pairs -- has no shared feature axis to read off. `--mobility-grid` fills the
+**same** `{table}_mobility` element for it by binning: every pixel's points
+go onto one set of mobility channels shared across the conversion, and
+`(m/z bin, channel)` becomes the feature axis.
+
+The two mechanisms produce the same kind of table -- same element key, same
+`var` columns, same sort, same discriminator -- and a consumer does not need
+to tell them apart to read either. What says which one filled it is
+`uns["mobility_grid"]`, present only on a binned table:
+
+| key | value |
+|---|---|
+| `law` | how the channel edges are spaced; `"linear"` (equal width in the axis unit) is the only law today |
+| `lower`, `upper` | the range the channels span, in the axis unit |
+| `n_channels` | how many channels, **256 by default** |
+| `channel_width` | `(upper - lower) / n_channels`, recorded so a reader can see it without arithmetic |
+| `edges` | `float64[n_channels + 1]`, the channel edges themselves |
+
+`msi_metadata.ms_analysis.ion_mobility.grid` carries `law`, `lower`, `upper`
+and `n_channels` too, so a consumer reading only the summed table finds them.
+
+Three things are worth knowing before asking for one:
+
+- **The edges come from the axis values, never the declared acquisition
+  range.** A real file's per-scan 1/K0 overhangs its declared
+  `OneOverK0AcqRange` by a few scans (1.00003 to 1.29133 against a declared
+  1.0 to 1.29 on one measured acquisition), and `uns["mobility_heatmap"]`
+  already bins over the values. `--mobility-min` / `--mobility-max` override
+  them, at the cost of the alignment below.
+- **256 channels is an alignment anchor, not a tuning knob.** It is the
+  heatmap's own channel count over the heatmap's own edges, so a box drawn on
+  the heatmap selects grid channels by integer index with no resampling and
+  no edge off-by-one. `--mobility-bins` changes it and gives that up. The
+  width the anchor realizes on a typical 0.29 1/K0 span is 0.0011, finer than
+  the 0.002 to 0.02 band TIMS resolving power supports; that is said at
+  `INFO` and the count is not moved for it, because the alignment is worth
+  more than the size.
+- **It forces `--tdf-spectrum scan_sum`,** at `WARNING`, unless that option
+  was given explicitly. A grid table is built from raw scans, so its marginal
+  reproduces the summed table only when the summed table was built from the
+  same scans; the default vendor centroid is a peak-picked spectrum over the
+  same ramp. The switch moves the stored TIC by 13 to 21 percent against a
+  default conversion of the same file, which reads as a bug if it happens
+  quietly.
+
+**The marginal invariant.** Summing a grid table's channels within one m/z
+bin reproduces that bin's column of the summed table, per pixel. That is what
+`uns["mobility_marginal"]` records rather than merely asserting:
+
+| key | value |
+|---|---|
+| `summed_table` | element key of the table the marginal is compared against |
+| `current_ratio` | total ion current of the grid table over the summed table's; exactly `1.0` under `scan_sum` |
+| `current_ratio_pixel_min` / `_max` | the same ratio across pixels |
+| `max_absolute_deviation` | largest disagreement between a marginal and the column it mirrors, over all (pixel, m/z bin) |
+| `max_relative_deviation` | that, relative to the largest value in the summed table |
+
+```python
+grid = sdata.tables["msi_dataset_z0_mobility"]
+mz_index = grid.var["mz_index"].to_numpy()
+marginal = np.zeros(sdata.tables["msi_dataset_z0"].n_vars)
+np.add.at(marginal, mz_index, np.asarray(grid.X[0].todense()).ravel())
+# equals the summed table's row 0, to floating point
+```
+
+A grid is refused, at `INFO` or `WARNING` and never as an exception, when:
+
+| refused when | because |
+|---|---|
+| the source has no mobility dimension | there is nothing to bin |
+| `--mobility-grid` was not given | binning is opt in: it costs a pass over the source and a much larger table |
+| the mobility axis carries no per-scan values | a reader opened without its vendor library cannot supply them, and the declared range is not a substitute |
+| the occupied `(m/z bin, channel)` pairs pass 20,000,000 | the count is printed; resample to fewer mass bins or ask for fewer channels |
+
+The size ceiling is on the pairs that carry signal, not on the pairs the grid
+spans. The two differ by an order of magnitude -- 200 frames of a measured
+timsTOF acquisition occupied 3.9M of a possible 35.5M -- so refusing on the
+span would turn away conversions that fit ninefold over. The span is said at
+`INFO` when it passes the ceiling; the count is what refuses, checked as soon
+as the source has been read and before anything wide is built.
+
+Bruker TDF is the only source that needs a grid today; an imzML export with a
+mobility array already has a shared feature axis and is read off it.
 
 ### Fragmentation (MS/MS)
 

@@ -96,13 +96,19 @@ def _validate_paths(input_path: Path, output_path: Path) -> bool:
 
 
 def _create_reader(
-    input_path: Path, reader_options: Optional[Dict[str, Any]] = None
+    input_path: Path,
+    reader_options: Optional[Dict[str, Any]] = None,
+    lossless_spectrum: bool = False,
 ) -> Tuple[Any, str]:
     """Create and return a reader for the input format.
 
     Args:
         input_path: Path to the input MSI data
         reader_options: Optional format-specific reader options (e.g., calibration settings)
+        lossless_spectrum: Ask the reader for the summed spectrum that
+            keeps all of the ion current, where it has a choice. Set when
+            a mobility grid table is being written, so the grid's
+            marginal reproduces the summed table exactly.
 
     Returns:
         Tuple of (reader instance, detected format string)
@@ -113,8 +119,53 @@ def _create_reader(
     logger.info(f"Using reader: {reader_class.__name__}")
 
     # Pass reader options to the reader if provided
-    options = reader_options or {}
+    options = dict(reader_options or {})
+    if lossless_spectrum:
+        _force_scan_sum(reader_class, options)
     return reader_class(input_path, **options), input_format
+
+
+def _force_scan_sum(reader_class: Any, options: Dict[str, Any]) -> None:
+    """Switch a TDF reader to the lossless summed spectrum, out loud.
+
+    A mobility grid table is built from the raw scans, so its marginal
+    over channels reproduces the summed table only when that table was
+    built from the same scans. The vendor centroid is a peak-picked
+    spectrum over the same ramp and keeps 80-90% of the ion current, so
+    with it the two tables of one store genuinely do not add up.
+
+    The switch moves the stored TIC by 13-21%, which reads as a bug if it
+    happens quietly, so it is said at WARNING -- and never applied over an
+    explicit ``--tdf-spectrum``, which is the caller saying they want the
+    other one and will live with the mismatch.
+    """
+    import inspect
+
+    if "tdf_spectrum" in options:
+        logger.warning(
+            "A mobility grid was asked for with --tdf-spectrum %s. The grid "
+            "reads raw scans, so its marginal over mobility channels will "
+            "not reproduce the summed table; uns['mobility_marginal'] on the "
+            "grid table records by how much.",
+            options["tdf_spectrum"],
+        )
+        return
+    try:
+        accepted = inspect.signature(reader_class.__init__).parameters
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return
+    if "tdf_spectrum" not in accepted:
+        return
+    options["tdf_spectrum"] = "scan_sum"
+    logger.warning(
+        "Writing a mobility grid table, so the summed spectrum is built with "
+        "--tdf-spectrum scan_sum instead of the default vendor centroid: the "
+        "grid's marginal over mobility channels must reproduce the summed "
+        "table, and only the lossless sum does. This moves the stored TIC by "
+        "13-21% against a default conversion of the same file. Pass "
+        "--tdf-spectrum vendor_centroid to keep the centroid and accept the "
+        "mismatch."
+    )
 
 
 def _determine_pixel_size(
@@ -336,6 +387,14 @@ def convert_msi(
             mass-mobility frame on the summed table as
             ``uns["mobility_heatmap"]`` whenever the source has an ion
             mobility dimension (Bruker TDF, imzML with a mobility array).
+            ``mobility_grid`` (default False) fills that same sibling for
+            a source that carries mobility per pixel rather than as a
+            shared feature axis (Bruker TDF) by binning the point cloud
+            onto a common mobility grid; ``mobility_bins`` (default 256,
+            the heatmap's own channel count), ``mobility_min`` and
+            ``mobility_max`` size that grid. Asking for it also switches
+            a TDF reader to ``tdf_spectrum="scan_sum"`` unless the caller
+            set that option explicitly, which moves the stored TIC.
             ``msms_table`` (default False) writes the demultiplexed MS/MS
             sibling table when the source isolates several precursors per
             pixel in disjoint mobility slices (Bruker PASEF).
@@ -425,8 +484,15 @@ def convert_msi(
         reader_options["region"] = region
 
     try:
-        # Create reader with format-specific options
-        reader, input_format = _create_reader(input_path, reader_options)
+        # Create reader with format-specific options. A mobility grid
+        # table decides the summed spectrum's semantics, so it has to be
+        # known before the reader is opened -- the choice is bound into
+        # the SDK handle.
+        reader, input_format = _create_reader(
+            input_path,
+            reader_options,
+            lossless_spectrum=bool(kwargs.get("mobility_grid", False)),
+        )
 
         # Determine pixel size
         final_pixel_size, pixel_size_source, pixel_size_detection_info = (
