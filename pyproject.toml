@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "thyra"
-version = "3.13.0"
+version = "3.13.1"
 description = "A modern Python library for converting Mass Spectrometry Imaging (MSI) data into SpatialData/Zarr format - your portal to spatial omics"
 authors = [{ name = "Theodoros Visvikis", email = "t.visvikis@maastrichtuniversity.nl" }]
 maintainers = [{ name = "Theodoros Visvikis", email = "t.visvikis@maastrichtuniversity.nl" }]

@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v3.13.1 (2026-09-06)
+
+### Bug Fixes
+
+- **metadata**: Read stores through an extended-length path on Windows
+  ([`ead3f68`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/ead3f6854e3a96892ea026f337ae3d27dcc41f9e))
+
+
 ## v3.13.0 (2026-09-05)
 
 ### Features
