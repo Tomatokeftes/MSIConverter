@@ -28,7 +28,7 @@ import spatialdata as sd
 sdata = sd.read_zarr("output.zarr")
 block = sdata.tables["msi_dataset_z0"].uns["msi_metadata"]
 
-print(block["schema_version"])                       # "0.2.0"
+print(block["schema_version"])                       # "0.4.0"
 print(block["ms_analysis"]["pixel_size_um"])         # {"x": 20.0, "y": 20.0}
 print(block["ms_analysis"]["ionisation_source"])     # "MALDI"
 print(block["ms_analysis"]["ionisation_source_term"])
@@ -64,6 +64,7 @@ you -- see [Completing the metadata](#completing-the-metadata).
 | | `detector_resolving_power` | `{value, at_mz}` | -- |
 | | `pixel_size_um` | `{x, y}`, **required** | -- |
 | | `ion_mobility` | `{present, separation, separation_term, unit_term, range_lower, range_upper, num_scans, resolved_table, grid}` | PSI-MS (`MS:1002815` / `MS:1002476`, unit `MS:1002814`) |
+| | `fragmentation` | `{present, ms_level, constant_across_pixels, merges_precursors, dissociation_term, windows}` | PSI-MS (`MS:1000511`; windows `MS:1000827` / `828` / `829`, `MS:1000045`, `MS:1000133`) |
 | `processing` | list of `{name, software {name, version, uri}, parameters}` | ordered steps, oldest first | -- |
 | `provenance` | `thyra_version` | text, required | -- |
 | | `source_format` | `"imzml"`, `"bruker"`, ... | -- |
@@ -113,6 +114,17 @@ outside this block, in `uns["mobility_axis"]` and `uns["mobility_heatmap"]`
 and carries no arrays.
 | PHI ToF-SIMS | from the header | SIMS | TOF | platform name |
 | Waters `.raw` | -- | -- | -- | from `_HEADER.TXT` |
+
+Bruker `.d` also fills `fragmentation` from `Frames.MsMsType` and whichever
+precursor table the acquisition uses -- `PasefFrameMsMsInfo` for PASEF frames,
+`FrameMsMsInfo` for single-precursor ones. `present: false` records a survey
+acquisition; the field is left unset when the database cannot be asked at all,
+which means "not reported", not "MS1". `windows` is stored as a JSON string
+(a list of objects does not round-trip through AnnData/zarr) and decoded by
+`read_msi_metadata_blocks` and `thyra validate`. The field names and terms are
+mzPeak's, so an archive and a store describe a precursor the same way; see
+[Output Format](output-format.md#fragmentation-msms) for the array block
+beside it and for what `merges_precursors` means for the stored spectrum.
 
 Everything else -- organism, tissue, condition, matrix, resolving power --
 cannot come from a raw file and stays empty until you provide it.
@@ -250,10 +262,11 @@ table of a store.
   minors.
 
 Versions so far: 0.1.0 (initial), 0.2.0 (`ms_analysis.ion_mobility`
-added), 0.3.0 (`ion_mobility.resolved_table` and `ion_mobility.grid` added).
+added), 0.3.0 (`ion_mobility.resolved_table` and `ion_mobility.grid` added),
+0.4.0 (`ms_analysis.fragmentation` added).
 
 The JSON Schema rendering is committed at
-`thyra/metadata/schema/msi_metadata_schema_v0_3.json` and ships in the
+`thyra/metadata/schema/msi_metadata_schema_v0_4.json` and ships in the
 wheel, so non-Python consumers can validate documents without importing
 Thyra:
 
@@ -263,7 +276,7 @@ import json
 
 schema = json.loads(
     resources.files("thyra.metadata.schema")
-    .joinpath("msi_metadata_schema_v0_3.json")
+    .joinpath("msi_metadata_schema_v0_4.json")
     .read_text()
 )
 ```

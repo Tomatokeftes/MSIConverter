@@ -213,6 +213,28 @@ def validate_document(
                 ValidationIssue("error", "processing", f"not valid JSON: {exc}")
             ]
 
+    # ``ms_analysis.fragmentation.windows`` is JSON on disk for the same
+    # reason; accept both spellings here too.
+    analysis = doc.get("ms_analysis")
+    if isinstance(analysis, dict) and isinstance(analysis.get("fragmentation"), dict):
+        windows = analysis["fragmentation"].get("windows")
+        if isinstance(windows, str):
+            doc = dict(doc)
+            analysis = dict(analysis)
+            fragmentation = dict(analysis["fragmentation"])
+            try:
+                fragmentation["windows"] = json.loads(windows)
+            except json.JSONDecodeError as exc:
+                return None, [
+                    ValidationIssue(
+                        "error",
+                        "ms_analysis.fragmentation.windows",
+                        f"not valid JSON: {exc}",
+                    )
+                ]
+            analysis["fragmentation"] = fragmentation
+            doc["ms_analysis"] = analysis
+
     issues = _check_schema_version(doc)
     if any(issue.severity == "error" for issue in issues):
         return None, issues

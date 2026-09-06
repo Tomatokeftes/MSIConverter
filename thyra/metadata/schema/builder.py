@@ -13,7 +13,9 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, cast
 
 from ..types import ComprehensiveMetadata
 from .models import (
+    Fragmentation,
     IonMobility,
+    IsolationWindow,
     MSAnalysis,
     MSIMetadata,
     PixelSizeUm,
@@ -82,30 +84,28 @@ def _polarity_from_cv_params(raw_metadata: Dict[str, Any]) -> Optional[str]:
     return "positive" if positive else "negative"
 
 
-def _build_ms_analysis(
+def _build_instrument_fields(
     acquisition: Dict[str, Any],
     instrument: Dict[str, Any],
     format_specific: Dict[str, Any],
-    raw_metadata: Dict[str, Any],
-    pixel_size_um: Tuple[float, float],
     source_format: Optional[str],
-    mobility_resolved_table: Optional[str] = None,
-) -> MSAnalysis:
-    """Assemble the acquisition section from what the extractors report."""
-    fields: Dict[str, Any] = {}
+) -> Dict[str, Any]:
+    """What instrument produced the data: source, analyzer and model.
 
-    polarity = normalize_polarity(
-        acquisition.get("polarity") or _polarity_from_cv_params(raw_metadata)
-    )
-    if polarity is not None:
-        fields["polarity"], fields["polarity_term"] = polarity
+    Grouped because all three resolve the same way -- what the extractor
+    reported, then what the format itself implies (a PHI raw file is a
+    TOF-SIMS acquisition), and nothing when neither says. The per-format
+    defaults are consulted by all of them, which is what makes this one
+    step rather than three.
+    """
+    fields: Dict[str, Any] = {}
+    fmt_defaults = _FORMAT_DEFAULTS.get((source_format or "").lower(), {})
 
     source = normalize_ionisation_source(
         _first_string(acquisition, ("ionisation_source", "ion_source", "technique"))
     )
     if source is None and format_specific.get("is_maldi"):
         source = normalize_ionisation_source("maldi")
-    fmt_defaults = _FORMAT_DEFAULTS.get((source_format or "").lower(), {})
     if source is None and "ionisation_source" in fmt_defaults:
         source = normalize_ionisation_source(fmt_defaults["ionisation_source"])
     if source is not None:
@@ -124,11 +124,43 @@ def _build_ms_analysis(
     if instrument_model is not None:
         fields["instrument_model"] = instrument_model
 
+    return fields
+
+
+def _build_ms_analysis(
+    acquisition: Dict[str, Any],
+    instrument: Dict[str, Any],
+    format_specific: Dict[str, Any],
+    raw_metadata: Dict[str, Any],
+    pixel_size_um: Tuple[float, float],
+    source_format: Optional[str],
+    mobility_resolved_table: Optional[str] = None,
+    fragmentation: Any = None,
+) -> MSAnalysis:
+    """Assemble the acquisition section from what the extractors report."""
+    fields: Dict[str, Any] = {}
+
+    polarity = normalize_polarity(
+        acquisition.get("polarity") or _polarity_from_cv_params(raw_metadata)
+    )
+    if polarity is not None:
+        fields["polarity"], fields["polarity_term"] = polarity
+
+    fields.update(
+        _build_instrument_fields(
+            acquisition, instrument, format_specific, source_format
+        )
+    )
+
     ion_mobility = _build_ion_mobility(
         format_specific.get("ion_mobility"), mobility_resolved_table
     )
     if ion_mobility is not None:
         fields["ion_mobility"] = ion_mobility
+
+    fragmentation_block = _build_fragmentation(fragmentation)
+    if fragmentation_block is not None:
+        fields["fragmentation"] = fragmentation_block
 
     return MSAnalysis(
         pixel_size_um=PixelSizeUm(x=pixel_size_um[0], y=pixel_size_um[1]),
@@ -205,6 +237,73 @@ def _mobility_axis_fields(reported: Dict[str, Any]) -> Dict[str, Any]:
     return fields
 
 
+def _build_fragmentation(reported: Any) -> Optional[Fragmentation]:
+    """The fragmentation block from what a reader reported.
+
+    ``None`` in, ``None`` out: a reader that cannot tell says nothing,
+    and an unset block is honest where ``present=False`` would be a
+    claim. Everything is checked for shape rather than trusted -- a
+    window without a usable target m/z is dropped rather than invented,
+    since a precursor list is exactly the thing a consumer would act on.
+    """
+    if not isinstance(reported, dict) or "ms_level" not in reported:
+        return None
+    try:
+        ms_level = int(reported["ms_level"])
+    except (TypeError, ValueError):
+        return None
+    if ms_level < 1:
+        return None
+
+    present = bool(reported.get("present", ms_level > 1))
+    if not present:
+        return Fragmentation(present=False, ms_level=1)
+
+    windows = [
+        window
+        for window in (
+            _build_isolation_window(entry) for entry in reported.get("windows") or []
+        )
+        if window is not None
+    ]
+    term = _optional_term(reported.get("dissociation_accession"))
+    return Fragmentation(
+        present=True,
+        ms_level=max(ms_level, 2),
+        constant_across_pixels=bool(reported.get("constant_across_pixels", True)),
+        merges_precursors=len(windows) > 1,
+        dissociation_term=term if windows else None,
+        windows=windows,
+    )
+
+
+def _build_isolation_window(entry: Any) -> Optional[IsolationWindow]:
+    """One isolation window, or ``None`` when it carries no usable target."""
+    if not isinstance(entry, dict):
+        return None
+    try:
+        target = float(entry["isolation_window_target"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not target > 0:
+        return None
+
+    fields: Dict[str, Any] = {"target": target}
+    for field, key in (
+        ("lower_offset", "isolation_window_lower_offset"),
+        ("upper_offset", "isolation_window_upper_offset"),
+        ("collision_energy", "collision_energy"),
+    ):
+        value = entry.get(key)
+        if isinstance(value, (int, float)):
+            fields[field] = float(value)
+    begin, end = entry.get("scan_begin"), entry.get("scan_end")
+    if isinstance(begin, int) and isinstance(end, int) and end > begin >= 0:
+        fields["scan_begin"] = begin
+        fields["scan_end"] = end
+    return IsolationWindow(**fields)
+
+
 def build_msi_metadata(
     comprehensive: Optional[ComprehensiveMetadata],
     *,
@@ -213,6 +312,7 @@ def build_msi_metadata(
     source_format: Optional[str] = None,
     processing: Optional[List[ProcessingStep]] = None,
     mobility_resolved_table: Optional[str] = None,
+    fragmentation: Any = None,
 ) -> MSIMetadata:
     """Build an :class:`MSIMetadata` document from extracted metadata.
 
@@ -231,6 +331,10 @@ def build_msi_metadata(
             first (see :class:`ProcessingStep`).
         mobility_resolved_table: Element key of the mobility-resolved
             sibling table written beside the summed table, when one was.
+        fragmentation: What the reader reported about fragmentation, as
+            :meth:`thyra.core.msms.FragmentationSchedule.to_extractor_report`
+            renders it. ``None`` means the reader did not say, which is
+            not the same as "MS1" and leaves the block unset.
 
     Returns:
         The populated document.  Fields the source does not report are
@@ -261,6 +365,7 @@ def build_msi_metadata(
             pixel_size_um,
             source_format,
             mobility_resolved_table,
+            fragmentation,
         ),
         processing=list(processing or []),
         provenance=Provenance(

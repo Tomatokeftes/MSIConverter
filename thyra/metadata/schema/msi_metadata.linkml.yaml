@@ -15,7 +15,7 @@ description: >-
   datasets converted to SpatialData.  Stored in
   table.uns["msi_metadata"]; base fields mirror the METASPACE
   submission form.
-version: 0.3.0
+version: 0.4.0
 prefixes:
   linkml: https://w3id.org/linkml/
   MS: http://purl.obolibrary.org/obo/MS_
@@ -116,6 +116,51 @@ classes:
         required: true
       ion_mobility:
         range: IonMobility
+      fragmentation:
+        range: Fragmentation
+  Fragmentation:
+    description: >-
+      Whether, and of what, the acquisition fragmented its ions; the m/z
+      axis of an MS/MS store is fragment m/z, which the axis cannot say.
+    attributes:
+      present:
+        range: boolean
+        required: true
+      ms_level:
+        range: integer
+        required: true
+        slot_uri: MS:1000511
+      constant_across_pixels:
+        range: boolean
+      merges_precursors:
+        range: boolean
+      dissociation_term:
+        range: OntologyTerm
+      windows:
+        range: IsolationWindow
+        multivalued: true
+  IsolationWindow:
+    description: >-
+      One precursor isolation, spanning target minus lower_offset to
+      target plus upper_offset, named as mzPeak names it.
+    attributes:
+      target:
+        range: float
+        required: true
+        slot_uri: MS:1000827
+      lower_offset:
+        range: float
+        slot_uri: MS:1000828
+      upper_offset:
+        range: float
+        slot_uri: MS:1000829
+      collision_energy:
+        range: float
+        slot_uri: MS:1000045
+      scan_begin:
+        range: integer
+      scan_end:
+        range: integer
   IonMobility:
     description: >-
       Whether, and how, the acquisition separated ions by mobility; the

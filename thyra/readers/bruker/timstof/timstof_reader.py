@@ -34,6 +34,11 @@ from ....core.mobility import (
     MOBILITY_KIND_NAMES,
     MobilityAxis,
 )
+from ....core.msms import (
+    COLLISION_INDUCED_DISSOCIATION_ACCESSION,
+    FragmentationSchedule,
+    IsolationWindow,
+)
 from ....core.registry import register_reader
 from ....metadata.extractors.bruker_extractor import BrukerMetadataExtractor
 from ....utils.bruker_exceptions import DataError, FileFormatError, SDKError
@@ -174,6 +179,16 @@ def _get_frame_coordinates(
         return None
 
 
+def _optional_float(value: Any) -> Optional[float]:
+    """A nullable numeric column as a float, keeping NULL as ``None``."""
+    return None if value is None else float(value)
+
+
+def _optional_int(value: Any) -> Optional[int]:
+    """A nullable integer column, keeping NULL as ``None``."""
+    return None if value is None else int(value)
+
+
 def _get_frame_count(db_path: Path) -> int:
     """Get total frame count directly from database.
 
@@ -308,6 +323,8 @@ class BrukerReader(BrukerBaseMSIReader):
         self._frame_count: Optional[int] = None
         self._coordinate_offsets: Optional[Tuple[int, int, int]] = None
         self._mobility_axis: Optional[MobilityAxis] = None
+        self._fragmentation: Optional[FragmentationSchedule] = None
+        self._fragmentation_read: bool = False
         self._mobility_scan_overflow_warned: bool = False
         self._closed: bool = False  # Track if resources have been closed
 
@@ -1017,6 +1034,120 @@ class BrukerReader(BrukerBaseMSIReader):
         if by_name.get("ModelType") is not None:
             calibration["model_type"] = int(by_name["ModelType"])
         return calibration
+
+    # ------------------------------------------------------------------
+    # Fragmentation
+    #
+    # ``Frames.MsMsType`` says whether a frame fragmented anything: 0 is a
+    # survey scan, everything else is MS2 of some flavour. Which table
+    # carries the precursor detail depends on the flavour -- PASEF frames
+    # (type 8) list one row per isolation window in ``PasefFrameMsMsInfo``,
+    # while single-precursor frames (type 2) carry one row per frame in
+    # ``FrameMsMsInfo``.
+    # ------------------------------------------------------------------
+
+    def get_fragmentation(self) -> Optional[FragmentationSchedule]:
+        """The precursor schedule of a TDF acquisition, or ``None``.
+
+        ``None`` for TSF and for any file whose ``Frames`` table has no
+        ``MsMsType`` column: that is "cannot tell", not "MS1". Read once
+        and cached -- the schedule is a property of the method, and on
+        every MALDI file measured so far it is identical at every pixel.
+        """
+        if self.file_type != "tdf":
+            return None
+        if not self._fragmentation_read:
+            self._fragmentation = self._build_fragmentation()
+            self._fragmentation_read = True
+        return self._fragmentation
+
+    def _build_fragmentation(self) -> Optional[FragmentationSchedule]:
+        try:
+            rows = self.conn.execute(
+                "SELECT MsMsType, COUNT(*) FROM Frames GROUP BY MsMsType"
+            ).fetchall()
+        except sqlite3.OperationalError as e:
+            logger.debug(f"Frames has no MsMsType column: {e}")
+            return None
+        counts = {int(kind): int(n) for kind, n in rows if kind is not None}
+        if not counts:
+            return None
+
+        msms_frames = sum(n for kind, n in counts.items() if kind != 0)
+        if msms_frames == 0:
+            return FragmentationSchedule(ms_level=1, source="bruker_tdf")
+
+        # A file holding both survey and fragment frames has no single
+        # schedule per pixel, whatever the precursor tables say.
+        mixed = counts.get(0, 0) > 0
+        windows = self._isolation_windows(msms_frames)
+        return FragmentationSchedule(
+            ms_level=2,
+            windows=windows[0],
+            constant_across_pixels=windows[1] and not mixed,
+            dissociation_accession=(
+                COLLISION_INDUCED_DISSOCIATION_ACCESSION if windows[0] else None
+            ),
+            source="bruker_tdf",
+        )
+
+    def _isolation_windows(
+        self, msms_frames: int
+    ) -> Tuple[Tuple[IsolationWindow, ...], bool]:
+        """The distinct isolation windows, and whether every frame has them all.
+
+        Grouped rather than read per frame: on the files measured so far a
+        scheduled method repeats the same windows at every pixel, so the
+        distinct set *is* the schedule, and its per-window frame count is
+        what proves the repetition.
+        """
+        for query, build in (
+            (
+                "SELECT IsolationMz, IsolationWidth, CollisionEnergy, "
+                "ScanNumBegin, ScanNumEnd, COUNT(DISTINCT Frame) "
+                "FROM PasefFrameMsMsInfo GROUP BY IsolationMz, IsolationWidth, "
+                "CollisionEnergy, ScanNumBegin, ScanNumEnd ORDER BY IsolationMz",
+                lambda row: IsolationWindow.from_full_width(
+                    float(row[0]),
+                    _optional_float(row[1]),
+                    collision_energy=_optional_float(row[2]),
+                    scan_begin=_optional_int(row[3]),
+                    scan_end=_optional_int(row[4]),
+                ),
+            ),
+            (
+                "SELECT TriggerMass, IsolationWidth, CollisionEnergy, "
+                "COUNT(DISTINCT Frame) FROM FrameMsMsInfo "
+                "GROUP BY TriggerMass, IsolationWidth, CollisionEnergy "
+                "ORDER BY TriggerMass",
+                lambda row: IsolationWindow.from_full_width(
+                    float(row[0]),
+                    _optional_float(row[1]),
+                    collision_energy=_optional_float(row[2]),
+                ),
+            ),
+        ):
+            try:
+                rows = self.conn.execute(query).fetchall()
+            except sqlite3.OperationalError:
+                continue
+            rows = [row for row in rows if row[0] is not None]
+            if not rows:
+                continue
+            windows = tuple(build(row) for row in rows)
+            everywhere = all(int(row[-1]) == msms_frames for row in rows)
+            if not everywhere:
+                logger.info(
+                    "The isolation windows are not identical at every frame; "
+                    "the precursor schedule is recorded as varying."
+                )
+            return windows, everywhere
+
+        logger.info(
+            "Frames are marked MS/MS but neither PasefFrameMsMsInfo nor "
+            "FrameMsMsInfo carries a precursor; recording the level only."
+        )
+        return (), True
 
     def iter_mobility_spectra(self, batch_size: Optional[int] = None) -> Generator[
         Tuple[

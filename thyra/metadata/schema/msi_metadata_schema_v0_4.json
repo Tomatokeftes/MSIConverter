@@ -1,5 +1,64 @@
 {
   "$defs": {
+    "Fragmentation": {
+      "additionalProperties": false,
+      "description": "Whether, and how, the acquisition fragmented its ions.\n\nAn MS/MS imaging run measures fragments, so the m/z axis of the table\nmeans fragment m/z. Nothing about the axis says so, which is why this\nblock exists: without it an MS/MS store is indistinguishable from an\nMS1 one.\n\nThyra does not split a frame that isolated several precursors -- the\nstored spectrum still sums them. ``merges_precursors`` says when that\nhas happened, so a consumer knows the spectrum is a chimera rather\nthan discovering it from the peaks.",
+      "properties": {
+        "constant_across_pixels": {
+          "default": true,
+          "description": "Whether every pixel was fragmented on the same schedule. A scheduled method makes it so; a data-dependent one does not, and then the windows below are not a global precursor axis.",
+          "title": "Constant Across Pixels",
+          "type": "boolean"
+        },
+        "dissociation_term": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OntologyTerm"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "PSI-MS dissociation method, e.g. MS:1000133 (CID)."
+        },
+        "merges_precursors": {
+          "default": false,
+          "description": "Whether one stored spectrum sums fragments of more than one precursor, so its peaks cannot be attributed to a single one.",
+          "title": "Merges Precursors",
+          "type": "boolean"
+        },
+        "ms_level": {
+          "cv": {
+            "accession": "MS:1000511",
+            "name": "ms level"
+          },
+          "description": "MS level of the stored spectra: 1 for a survey scan.",
+          "minimum": 1,
+          "title": "Ms Level",
+          "type": "integer"
+        },
+        "present": {
+          "description": "True when the stored spectra are fragment spectra.",
+          "title": "Present",
+          "type": "boolean"
+        },
+        "windows": {
+          "description": "The precursor schedule, empty when none was reported.",
+          "items": {
+            "$ref": "#/$defs/IsolationWindow"
+          },
+          "title": "Windows",
+          "type": "array"
+        }
+      },
+      "required": [
+        "present",
+        "ms_level"
+      ],
+      "title": "Fragmentation",
+      "type": "object"
+    },
     "IonMobility": {
       "additionalProperties": false,
       "description": "Whether, and how, the acquisition separated ions by mobility.\n\nWritten so a consumer can tell a spectrum that was *summed over* a\nmobility ramp (Bruker TDF, TIMS engaged) from one that never had a\nmobility dimension (TSF, imzML, most other sources).  The MSI table\nThyra writes collapses the ramp; the fields here describe what was\ncollapsed.  Mobility is a spectral coordinate, never a spatial one,\nso nothing about it appears in the store's coordinate systems.",
@@ -123,6 +182,108 @@
       "title": "IonMobility",
       "type": "object"
     },
+    "IsolationWindow": {
+      "additionalProperties": false,
+      "description": "One precursor isolation, named the way mzPeak names it.\n\nThe window spans ``[target - lower_offset, target + upper_offset]``.\nOffsets rather than a single width is mzPeak's shape (and mzML's);\na source reporting one full width has it halved into two equal\noffsets, which is the reading every mzML writer for those\ninstruments takes.",
+      "properties": {
+        "collision_energy": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "cv": {
+            "accession": "MS:1000045",
+            "name": "collision energy"
+          },
+          "default": null,
+          "description": "Collision energy in electronvolts (UO:0000266).",
+          "title": "Collision Energy"
+        },
+        "lower_offset": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "cv": {
+            "accession": "MS:1000828",
+            "name": "isolation window lower offset"
+          },
+          "default": null,
+          "description": "How far below the target the window reaches, in m/z.",
+          "title": "Lower Offset"
+        },
+        "scan_begin": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "First mobility scan this window occupies, when the source separates its windows along the mobility ramp (Bruker PASEF).",
+          "title": "Scan Begin"
+        },
+        "scan_end": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "One past the last mobility scan this window occupies.",
+          "title": "Scan End"
+        },
+        "target": {
+          "cv": {
+            "accession": "MS:1000827",
+            "name": "isolation window target m/z"
+          },
+          "description": "Isolation window target m/z.",
+          "exclusiveMinimum": 0,
+          "title": "Target",
+          "type": "number"
+        },
+        "upper_offset": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "cv": {
+            "accession": "MS:1000829",
+            "name": "isolation window upper offset"
+          },
+          "default": null,
+          "description": "How far above the target the window reaches, in m/z.",
+          "title": "Upper Offset"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "title": "IsolationWindow",
+      "type": "object"
+    },
     "MSAnalysis": {
       "additionalProperties": false,
       "description": "How the data was acquired (METASPACE ``MS_Analysis``).\n\n``pixel_size_um`` is the one field that is always known at\nconversion time (conversion refuses to run without a pixel size),\nso it is the one required field of the section.",
@@ -171,6 +332,18 @@
           },
           "default": null,
           "description": "Resolving power at a reference m/z."
+        },
+        "fragmentation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fragmentation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the stored spectra are fragment spectra and, if so, of which precursors; unset when the source does not say."
         },
         "instrument_model": {
           "anyOf": [
@@ -728,7 +901,7 @@
       "description": "What the sample is; user-supplied."
     },
     "schema_version": {
-      "default": "0.3.0",
+      "default": "0.4.0",
       "description": "Semantic version of the schema this document conforms to.",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
       "title": "Schema Version",

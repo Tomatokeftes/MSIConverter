@@ -257,7 +257,27 @@ class TestSyntheticFixture:
         assert conversion["name"] == "conversion"
         assert conversion["parameters"]["tdf_spectrum"] == "scan_sum"
         assert "resolved_table" not in mobility and "grid" not in mobility
-        assert block["schema_version"] == "0.3.0"
+        assert block["schema_version"] == "0.4.0"
+
+    def test_a_survey_acquisition_is_recorded_as_unfragmented(self, tmp_path, expected):
+        """The fixture is MS1, and the store says so rather than staying silent.
+
+        ``present: false`` is a claim the database supports -- ``MsMsType``
+        is there and says 0 -- and it is what tells a consumer the m/z axis
+        is intact-ion m/z. The array block beside it is for MS/MS only, so
+        an MS1 store must not carry one.
+        """
+        from thyra.metadata.schema import read_msi_metadata_blocks
+
+        out = _convert(tmp_path, "scan_sum")
+        table = _read_table(out)
+        block = next(iter(read_msi_metadata_blocks(out).values()))
+
+        fragmentation = block["ms_analysis"]["fragmentation"]
+        assert fragmentation["present"] is False
+        assert fragmentation["ms_level"] == 1
+        assert not fragmentation.get("windows")
+        assert "msms_schedule" not in table.uns
 
     @pytest.mark.parametrize("mode", ["scan_sum", "vendor_centroid"])
     def test_conversion_writes_the_axis_and_the_heatmap(self, tmp_path, mode, expected):
