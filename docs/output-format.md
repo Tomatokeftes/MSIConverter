@@ -144,6 +144,11 @@ plt.title("Average Mass Spectrum")
 plt.show()
 ```
 
+It is the **mean over the acquired spectra** -- the intensity summed down the
+m/z axis and divided by the number of pixels that carry a spectrum, not by the
+number of grid positions. Every write path stores it on that scale, including
+the 3D volume path, which previously stored the undivided sum here.
+
 ### Per-Region Average Spectrum
 
 For multi-region datasets, Thyra also stores a mean spectrum per acquisition

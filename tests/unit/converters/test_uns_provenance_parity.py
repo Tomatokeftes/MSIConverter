@@ -507,6 +507,50 @@ def test_tic_image_totals_the_matrix(stores, path_name):
 
 
 @pytest.mark.parametrize("path_name", list(WRITE_PATHS))
+def test_average_spectrum_is_a_mean_on_every_path(stores, path_name):
+    """``uns["average_spectrum"]`` is the per-pixel mean, not the sum.
+
+    The volume path stored ``total_intensity`` unscaled -- the sum over
+    pixels, under a key named "average". The comment on it said "use
+    total_intensity to match original behavior", carried through the
+    refactor that split the converters and never revisited; the slice
+    paths divide by ``pixel_count`` two lines from the same place.
+
+    So a volume came out with a spectrum ``_N_SPECTRA`` times the one
+    the other three paths wrote from identical data -- and, on a
+    multi-region volume, a factor apart from the
+    ``average_spectrum_per_region`` block beside it in the same ``uns``,
+    which divides by the region's pixel count and always did. Nothing
+    pinned it: no test read this key off the 3D path, and the scale
+    factor is invisible in a plot with an unlabelled y-axis, so it reads
+    as correct until a consumer compares two stores or trusts the axis.
+
+    Derived from ``X`` rather than from ``total_intensity`` so the
+    expectation comes from the stored matrix a consumer can see, not
+    from the accumulator the writer used.
+    """
+    table_path = _table_path(stores, path_name)
+    x = _read_x(table_path)
+    total = np.asarray(x.sum(axis=0)).ravel()
+    stored = np.asarray(_read_uns(table_path)["average_spectrum"], dtype=np.float64)
+
+    np.testing.assert_allclose(
+        stored,
+        total / _N_SPECTRA,
+        rtol=1e-9,
+        err_msg=(
+            f"{path_name} stored an average_spectrum that is not the mean "
+            f"over the {_N_SPECTRA} acquired spectra"
+        ),
+    )
+
+    # Guard the guard: with more than one spectrum the mean and the total
+    # are different arrays, so the assertion above can tell them apart.
+    assert _N_SPECTRA > 1
+    assert not np.allclose(stored, total), f"{path_name} stored the total, not the mean"
+
+
+@pytest.mark.parametrize("path_name", list(WRITE_PATHS))
 def test_read_lazy_sees_the_block(stores, path_name):
     """The access mode a consumer actually uses.
 
