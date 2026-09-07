@@ -2,6 +2,28 @@
 
 <!-- version list -->
 
+## v3.19.1 (2026-09-07)
+
+### Bug Fixes
+
+- **waters**: The laser positions decide which functions hold the image
+  ([#210](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/pull/210),
+  [`76142bc`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/76142bc21b4b3f911862397b34bf6e3adf8fb3d0))
+
+### Documentation
+
+- **decisions**: D7 restated against the files, with what the chunking costs
+  ([#210](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/pull/210),
+  [`76142bc`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/76142bc21b4b3f911862397b34bf6e3adf8fb3d0))
+
+- **decisions**: Record the verified whole-image profile conversion in D7
+  ([#210](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/pull/210),
+  [`76142bc`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/76142bc21b4b3f911862397b34bf6e3adf8fb3d0))
+
+- **notebook**: The explore notebook reads the sibling tables
+  ([`98500ba`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/98500bab5ab2f08064b8d000f534f43161ff6abe))
+
+
 ## v3.19.0 (2026-09-07)
 
 ### Bug Fixes
