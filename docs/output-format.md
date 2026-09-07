@@ -558,23 +558,51 @@ applies to every other table.
     `precursor_index` is a position in **one store's** precursor axis and
     means nothing outside it: two samples whose schedules differ in length
     give the same index to different precursors. Align on
-    `(precursor_mz, precursor_mobility)`. The `var` index labels are named
+    `(precursor_mz, precursor_mobility)` -- by matching the pair, never by
+    comparing it with `==`: two runs acquired back to back agreed on the
+    1/K0 bitwise, while two of the same method on different days came out
+    up to 4.0e-3 apart, because each file carries its own TIMS calibration.
+    The `var` index labels are named
     after the precursor's m/z for the same reason -- `p936.578_mz1732`,
     never `p14_mz1732` -- so `anndata.concat` cannot silently merge two
-    unrelated precursors. The table carries no `mobility`
+    unrelated precursors. Measured on two real acquisitions in opposite
+    polarities, 15 precursors against 13 with none in common: **zero**
+    labels shared, against **5,262** a rank-named scheme would have shared,
+    every one of them naming two different precursors. Differing mass axes
+    do not save you there -- both started at m/z 50, so the low `mz_index`
+    values line up. Concatenate with `join="inner"` to keep
+    a `var` at all: on an outer join every column missing from one side
+    makes `merge="unique"` drop the whole column, while on an inner join it
+    keeps `precursor_mz`, `mz` and `mz_index` and drops exactly
+    `precursor_index` and `precursor_mobility` -- anndata finding, on its
+    own, which of the four travel between stores. The table carries no
+    `mobility`
 column: the scan range is how the precursors are *separated*, not what
 they are *indexed by*, and a table matching both discriminators would tell
 a consumer nothing about which kind it holds.
 
 The split is a filter on the scan number, never an estimate, so Thyra
 refuses rather than approximates and says at `INFO` which condition
-failed:
+failed. They are asked in this order, which is by how much each says about
+the acquisition rather than by how cheap it is to check:
 
 | refused when | because |
 |---|---|
 | the schedule varies from pixel to pixel | the precursors are not a global feature axis |
-| the isolation windows overlap, or carry no scan range | they cannot be separated by mobility alone |
+| the source records no precursor for the fragment frames | there is nothing to separate them by |
 | there is one precursor | the summed table already *is* its fragment spectrum |
+| the isolation windows overlap, or carry no scan range | they cannot be separated by mobility alone |
+
+The order matters because the last three are facts about what the source
+recorded and the first is a fact about the method. A diaPASEF file puts its
+windows in `DiaFrameMsMsWindows`, which the TDF reader does not read, so it
+arrives with no windows at all *and* survey frames mixed in among the
+fragment ones -- and reporting a count first would describe a run isolating
+32 precursors as one isolating a single precursor. A data-dependent
+(DDA) PASEF run trips the first row and the last at once -- one measured
+holds 14,952 distinct windows, each in one to eight frames, overlapping on
+the ramp -- and the varying schedule is the design while the overlap is
+only its consequence.
 
 A refusal writes no sibling table, is never an exception and never touches
 the summed table. Bruker TDF is the only source that reports what the
@@ -615,6 +643,21 @@ already holds for the TIC image.
       two passes, fed from the same frame read, so the split adds no read
       of the source. The largest acquisition this has run on is still 713
       pixels with 15 precursors; `var` grows with the occupied pairs.
+    - **Two acquired schedules have been tested, from one instrument.** 15
+      precursors in positive mode and 13 in negative sharing none of them,
+      over four images of 487 to 713 pixels, plus a third shape made by
+      deleting one window from a copy, the single-precursor refusal on a
+      real `MsMsType = 2` acquisition and the varying-schedule refusal on
+      real DDA-PASEF (see
+      [Design Decisions](design-decisions.md#d2-the-msms-table-is-written-by-default-when-the-schedule-qualifies)).
+      All four come from the same instrument and method family, and none
+      exceeds 713 pixels.
+    - **A label means the same bin only when the axes match.** `mz_index`
+      is a column of *that store's* mass axis, and the default resampling
+      grid follows the acquisition range, so two runs share an axis only
+      when they share that range -- 599,146 bins to m/z 1000 against
+      635,610 to 1200 on the two measured. Check `var["mz"]`, not just the
+      label, before reading across stores.
 
 !!! note "Relation to other MS/MS imaging representations"
     The open formats solve this at the raw layer by never merging: an

@@ -151,17 +151,145 @@ analysis-layer convention to defer to.
 **Objections considered.**
 
 - *It has run on one dataset: 713 pixels, 15 precursors, one schedule
-  shape.* True, and stated as a limit. The assembly engine underneath is
-  the one verified on the 26k-pixel mobility grid, and the MS/MS count span
-  is tiny, so scale is not where it would fail. A different schedule shape
-  is, and no such file exists to test on. That is a reason to document the
-  limit, not to ship the mixture by default.
+  shape.* True when it shipped, and stated as a limit. Answered on
+  2026-09-07 by four more acquisitions, below: a second schedule of 13
+  precursors in the other polarity, sharing no precursor with the first,
+  found by walking the lab share. The assembly engine underneath is the one
+  verified on the 26k-pixel mobility grid, and the MS/MS count span is
+  tiny, so scale is not where it would fail; the schedule shape was, and
+  now there are two of them measured plus a third made by deleting a window
+  from a copy.
 - *A default-on writes an element the user did not ask for and consumers
   must recognise.* The sibling is discriminated by its `uns` block exactly
   as the mobility sibling already is, and the summed table remains the
   primary element.
 
-**Known limits.** Tested to 713 pixels, 15 precursors, one schedule shape.
+### What five more acquisitions showed (2026-09-07)
+
+Every file in `TIMS-test-data\01_tiny_msms_315px`, and the two negative-mode
+images the share search below turned up, converted with the defaults and
+`--no-optical` on both write routes (`--streaming true` and `false`). The
+two routes agreed exactly on every table they wrote -- same `var` labels,
+same `obs`, and the same CSR `indices`, `indptr` and `data` arrays -- so
+only one set of numbers is given:
+
+| acquisition | pixels | `MsMsType` | precursor table | tables written | windows | `current_ratio` | MS/MS `var` |
+|---|---|---|---|---|---|---|---|
+| `220425_MSMS_pos_brain1.d` | 713 | 8 | `PasefFrameMsMsInfo`, 10,695 rows | summed + `_msms` | 15 | 1.0 (per pixel 1.0 to 1.0) | 713 x 264,006, 302,460 nnz |
+| `220425_MSMS_pos_brain1_2.d` | 668 | 8 | `PasefFrameMsMsInfo`, 10,020 rows | summed + `_msms` | 15 | 1.0 (per pixel 1.0 to 1.0) | 668 x 284,235, 335,840 nnz |
+| `220425_MSMS_neg.d` | 487 | 8 | `PasefFrameMsMsInfo`, 6,331 rows | summed + `_msms` | 13 | 1.0 (per pixel 1.0 to 1.0) | 487 x 162,829, 169,079 nnz |
+| `220425_MSMS_neg_test.d` | 519 | 8 | `PasefFrameMsMsInfo`, 6,747 rows | summed + `_msms` | 13 | 1.0 (per pixel 1.0 to 1.0) | 519 x 93,926, 96,046 nnz |
+| `220425_MSMS_pos.d` | 315 | 2 | `FrameMsMsInfo`, 315 rows | summed only | 1 | -- | -- |
+
+Conversion took 6 to 19 s per file per route. The summed axis is 599,146
+bins on the positive files and 635,610 on the negative ones, which acquired
+to m/z 1200 rather than 1000 -- the default grid follows the acquisition
+range, so **two runs share an axis only when they share that range.**
+
+**The refusal on `220425_MSMS_pos.d` is the right answer.** Its 315 frames
+are all `MsMsType = 2`, single-precursor MS/MS, and it has no
+`PasefFrameMsMsInfo` at all: `FrameMsMsInfo` carries one row per frame,
+every one of them `TriggerMass` 1046.54 at `IsolationWidth` 1.5 and
+`CollisionEnergy` 57.327. The whole mobility ramp of every frame fragments
+that one precursor, so the summed table already *is* its fragment spectrum
+and there is nothing to separate. This is the acquisition the "one
+precursor" refusal was written for, met for the first time.
+
+**Two pixel sets of one method align on the labels.** `brain1` and
+`brain1_2` share 38,453 of their 264,006 and 284,235 feature labels, and
+every shared label agrees on `precursor_mz`, `mz`, `mz_index` *and*
+`precursor_index`; `anndata.concat` gives 1,381 x 509,788 with per-pixel
+totals preserved and no column holding two precursors. `precursor_mobility`
+does **not** agree between those two: they carry their own TIMS
+calibration and the same window comes out up to 4.0e-3 apart in 1/K0. The
+two negative-mode runs, acquired back to back, agree on it *bitwise*. So
+the coordinate is reproducible when the calibration is and not otherwise,
+which is why aligning on `(precursor_mz, precursor_mobility)` means
+matching the pair rather than comparing it with `==`.
+
+**A second schedule, acquired as such.** The negative-mode pair isolates 13
+precursors from 519.182 to 1179.731 -- a list with **nothing in common**
+with the positive-mode 15 from 313.275 to 936.578. Concatenating a negative
+store with a positive one shares **zero** labels, which is the whole point:
+two unrelated acquisitions must not merge. Had the labels been named after
+the rank, the two would have shared **5,262** labels and *every one of them*
+would have named two different precursors -- `p0_mz31749` is 519.182 in one
+and 313.275 in the other -- and the different mass axes would not have
+saved it, because both axes start at m/z 50 and their low bins line up. The
+two negative runs, which do share a schedule, share 7,155 labels and agree
+on every column of `var` including the rank.
+
+**And a third shape, made from the data at hand.** A copy of `brain1_2`
+with the lowest-m/z window (313.275) deleted from all 668 frames -- from
+every frame, so `constant_across_pixels` still holds and only the shape
+changes. The result is 14 precursors, each one rank lower than in `brain1`:
+353.32 is `precursor_index` 1 there and 0 here. The alignment survives it.
+36,912 labels are shared and all of them agree on `precursor_mz`, `mz` and
+`mz_index`; `precursor_index` does not, and
+`anndata.concat(join="inner", merge="unique")` drops that column while
+keeping the other three -- anndata itself finding the rank disagrees. The
+15,741 labels of the deleted precursor are `brain1`-only and the reduced
+sample contributes exactly 0 to them; a rank-named scheme would have merged
+all 27,145 labels the two stores would then have shared.
+
+**And the current block says what was removed.** The reduced copy's summed
+table is untouched, so its split now misses exactly the deleted window's
+ion current: `current_ratio` 0.9717425865942857 against
+1 - 0.028257413405714304 = 0.9717425865942857, equal to the last digit.
+
+### The share census
+
+Every `analysis.tdf` under `V:\Instruments` and `V:\Users` was opened
+read-only and asked what it is: **1,021** of them, plus the nine in the
+local corpus. `V:\Instruments\TimsTOF` holds 25 -- most `.d` folders there
+are TSF, TIMS off -- and the other twenty instrument directories hold none.
+Of the 1,021, 230 are imaging acquisitions (they have `MaldiFrameInfo`) and
+95 carry `PasefFrameMsMsInfo`, but only **six are both**, and those six are
+the four positive-mode files above (two of them duplicate copies) plus the
+two negative-mode ones. Every other PASEF file on the share is an LC run
+with no MALDI geometry at all, so the converter stops there long before the
+tables -- a clean conversion failure, not a crash.
+
+Their *schedules* are still worth reading, and reading them exercised two
+refusals no real file had reached before.
+
+- **Data-dependent PASEF.** `V:\Users\Cillero-Pastor_Berta\Pereira_Betzabeth\TIMS TOF 2 PRO\20260313`
+  holds fourteen DDA runs on a timsTOF Pro 2. One
+  (`260313_BP_26_DDA_S2-G10_1_741.d`) has 1,840 survey and 9,912 fragment
+  frames and **14,952 distinct isolation windows, each in 1 to 8 frames**;
+  across the share the count reaches 90,915. The precursors are chosen per
+  frame, so there is no global feature axis, and the windows overlap on the
+  ramp as well. Refused on the first of those, which is the right one: the
+  overlap is a consequence of the design, the varying schedule *is* the
+  design.
+- **diaPASEF.** 654 files interleave survey and DIA fragment frames -- 1,786
+  and about 28,566 of them in one -- with their windows in
+  `DiaFrameMsMsWindows`.
+
+**Reading a diaPASEF one found a refusal that lied.**
+`DiaFrameMsMsWindows` is not one of the two tables the TDF reader looks in,
+so such a file yields a schedule with an empty window list, and
+`constant_across_pixels` false because the frame types are mixed.
+`demultiplex_refusal` asked the window count before the constancy and
+answered *"the acquisition isolates a single precursor"* about a run that
+isolates 32. It now asks the conditions in order of what each says about
+the acquisition -- not MS/MS, then not constant, then no precursor
+recorded, then one precursor, then overlapping -- so that file is refused
+as non-constant, which is true, and an empty window list has a reason of
+its own. The `INFO` line about a `current_ratio` off 1 was likewise
+attributing every deviation to `vendor_centroid`; a schedule whose windows
+do not cover every scan carrying current is the other direction, as the
+reduced copy above measures.
+
+**Known limits.** Tested on four MALDI PASEF images across **two
+independently acquired schedules** -- 15 precursors in positive mode over
+m/z 50-1000, 13 in negative over 50-1200 -- at 487 to 713 pixels, plus a
+third shape made by deleting one window from a copy, the single-precursor
+refusal on a real `MsMsType = 2` acquisition, and the varying-schedule
+refusal on real DDA-PASEF. All four come from the same instrument and the
+same method family, and none exceeds 713 pixels: the assembly engine
+underneath is the one verified on the 26k-pixel mobility grid, but this
+table has not itself been run at that scale.
 
 ---
 
