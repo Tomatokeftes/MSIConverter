@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v3.17.0 (2026-09-07)
+
+### Bug Fixes
+
+- **streaming**: Sort CSC columns when pixels arrive out of raster order
+  ([`4c0b697`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/4c0b69731b2c2bf1855a7244b1d541c165edb1b3))
+
+### Features
+
+- **mobility**: Build the sibling tables out of core
+  ([`103353b`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/103353badf63f865b05835933231ff6bde6fe5d2))
+
+
 ## v3.16.0 (2026-09-07)
 
 ### Bug Fixes
