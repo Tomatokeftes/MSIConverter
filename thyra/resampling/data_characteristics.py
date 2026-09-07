@@ -35,6 +35,13 @@ class DataCharacteristics:
     is_timstof: bool = False
     is_phi_tofsims: bool = False
     is_waters_raw: bool = False
+    # Waters only: the analyser is a SELECT SERIES MRT, per _extern.inf.
+    is_waters_mrt: bool = False
+    # Profile sources whose digitiser grid is known: the spacing between
+    # consecutive stored samples at m/z 1000, in Da. Lets a detector anchor
+    # the default bin width to the data's own sampling rather than to a
+    # constant that fits one instrument.
+    profile_sample_spacing_da_at_1000: Optional[float] = None
 
     @property
     def needs_resampling(self) -> bool:
@@ -158,6 +165,17 @@ class DataCharacteristics:
         # WatersMetadataExtractor stamps "Waters MassLynx raw"; same prefix
         # convention as the PHI flag above.
         is_waters_raw = bool(source_format and source_format.startswith("Waters "))
+        is_waters_mrt = bool(is_waters_raw and format_specific.get("is_mrt"))
+        spacing = (
+            format_specific.get("profile_sample_spacing_da_at_1000")
+            if format_specific
+            else None
+        )
+        profile_sample_spacing = (
+            float(spacing)
+            if isinstance(spacing, (int, float)) and spacing > 0
+            else None
+        )
 
         return cls(
             spectrum_type=spectrum_type,
@@ -170,4 +188,6 @@ class DataCharacteristics:
             is_timstof=is_timstof,
             is_phi_tofsims=is_phi_tofsims,
             is_waters_raw=is_waters_raw,
+            is_waters_mrt=is_waters_mrt,
+            profile_sample_spacing_da_at_1000=profile_sample_spacing,
         )

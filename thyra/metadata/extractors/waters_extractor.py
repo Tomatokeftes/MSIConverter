@@ -14,9 +14,11 @@ from numpy.typing import NDArray
 from tqdm import tqdm
 
 from ...core.base_extractor import MetadataExtractor
+from ...resampling.constants import SpectrumType
 from ..types import ComprehensiveMetadata, EssentialMetadata
 
 if TYPE_CHECKING:
+    from ...readers.waters.instrument import WatersInstrument
     from ...readers.waters.masslynx_lib import MassLynxLib
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,8 @@ class WatersMetadataExtractor(MetadataExtractor):
         imaging_grid,  # ImagingGrid instance
         function_types: Dict[int, Any],
         ms_functions: List[int],
+        instrument: Optional["WatersInstrument"] = None,
+        use_centroid: bool = True,
     ):
         """Initialize Waters metadata extractor.
 
@@ -48,6 +52,15 @@ class WatersMetadataExtractor(MetadataExtractor):
             imaging_grid: Pre-built ImagingGrid with spatial metadata.
             function_types: Map of function index to FunctionType.
             ms_functions: List of MS function indices.
+            instrument: What the run's side files say about the analyser,
+                from :func:`thyra.readers.waters.instrument.identify_waters_instrument`.
+                ``None`` reports nothing instrument-specific.
+            use_centroid: Whether the reader that owns ``handle`` delivers
+                the vendor centroid (``True``) or the profile trace. The
+                representation reported in the essential metadata is the
+                one the reader *delivers*, not the one the file was
+                acquired in: downstream axis and method selection act on
+                the spectra they will actually receive.
         """
         super().__init__(ml)
         self._ml = ml
@@ -56,6 +69,8 @@ class WatersMetadataExtractor(MetadataExtractor):
         self._imaging_grid = imaging_grid
         self._function_types = function_types
         self._ms_functions = ms_functions
+        self._instrument = instrument
+        self._use_centroid = use_centroid
 
     def _extract_essential_impl(self) -> EssentialMetadata:
         """Extract essential metadata.
@@ -80,9 +95,10 @@ class WatersMetadataExtractor(MetadataExtractor):
             pixel_size = (grid.pixel_size_x, grid.pixel_size_y)
 
         # Scan all MS spectra for mass range, spectrum count, peak counts
-        mass_range, n_spectra, total_peaks, peak_counts = self._scan_all_ms_spectra(
+        observed_range, n_spectra, total_peaks, peak_counts = self._scan_all_ms_spectra(
             dimensions
         )
+        mass_range = self._axis_mass_range(observed_range)
 
         # Memory estimate: total_peaks * 2 values (mz + intensity) * 8 bytes
         estimated_memory_gb = (total_peaks * 2 * 8) / (1024**3)
@@ -103,16 +119,86 @@ class WatersMetadataExtractor(MetadataExtractor):
             peak_counts_per_pixel=peak_counts,
         )
 
-    def _detect_spectrum_type(self) -> Optional[str]:
-        """Detect whether data is centroid or profile."""
-        if self._ms_functions:
-            is_profile = self._ml.is_raw_spectrum_profile(
-                self._handle, self._ms_functions[0]
+    def _axis_mass_range(self, observed: Tuple[float, float]) -> Tuple[float, float]:
+        """The range the resampled axis is built over.
+
+        The acquisition setting (``getAcquisitionRangeStart/End``, e.g.
+        100-1000) rather than the span of the stored values (100.007-1000.000
+        on the reference MRT run), so that two runs acquired with the same
+        method land on the same generated axis and share bins -- the same
+        rule the timsTOF route follows with ``MzAcqRangeLower/Upper``. The
+        stored span alone would differ from run to run by whatever the
+        first and last stored samples happened to be.
+
+        Falls back to the stored span when no MS function reports an
+        acquisition range, or when a stored value lies outside it, since a
+        range that drops measured data is worse than one that varies.
+        """
+        acquired = [
+            r
+            for r in (
+                self._ml.get_acquisition_range(self._handle, f)
+                for f in self._ms_functions
             )
-            if is_profile:
-                return "profile spectrum"
-            return "centroid spectrum"
-        return None
+            if r is not None
+        ]
+        if not acquired:
+            logger.info(
+                "No acquisition mass range reported for %s; the resampled "
+                "axis spans the stored m/z values %.4f-%.4f",
+                self._data_path.name,
+                *observed,
+            )
+            return observed
+
+        lo = min(float(r[0]) for r in acquired)
+        hi = max(float(r[1]) for r in acquired)
+        if lo <= observed[0] and hi >= observed[1]:
+            logger.info(
+                "Mass range %.4f-%.4f taken from the acquisition setting "
+                "(stored values span %.4f-%.4f), so runs acquired with the "
+                "same method share one resampled axis",
+                lo,
+                hi,
+                *observed,
+            )
+            return (lo, hi)
+
+        logger.warning(
+            "Stored m/z values %.4f-%.4f fall outside the acquisition range "
+            "%.4f-%.4f; using the stored span so nothing is dropped",
+            *observed,
+            lo,
+            hi,
+        )
+        return observed
+
+    def _detect_spectrum_type(self) -> Optional[str]:
+        """The representation the reader delivers: profile trace or centroid.
+
+        MassLynx can hand back either for a profile-acquired file; which one
+        is a mode switch on the open handle that the owning reader has
+        already set. A centroid-acquired file has no trace to give, so it
+        is centroid whatever was asked for -- said out loud, since a caller
+        who asked for the profile would otherwise get a centroid store
+        that claims nothing was lost.
+        """
+        if not self._ms_functions:
+            return None
+        acquired_profile = self._ml.is_raw_spectrum_profile(
+            self._handle, self._ms_functions[0]
+        )
+        if not acquired_profile:
+            if not self._use_centroid:
+                logger.warning(
+                    "%s was acquired in centroid mode, so there is no profile "
+                    "trace to read; the vendor centroids are delivered instead",
+                    self._data_path.name,
+                )
+            return SpectrumType.CENTROID
+        if self._use_centroid:
+            return SpectrumType.CENTROID
+        return SpectrumType.PROFILE
 
     def _read_scan_mzs(self, func: int, scan: int) -> Optional[NDArray[np.floating]]:
         """Read m/z array for a single scan, returning None on failure."""
@@ -242,12 +328,39 @@ class WatersMetadataExtractor(MetadataExtractor):
         ``data_format`` predates it and only ever fed the stored
         format-specific block, so both are kept: renaming it would change
         stored metadata for no downstream gain.
+
+        ``is_mrt`` and ``profile_sample_spacing_da_at_1000`` are likewise
+        read by ``DataCharacteristics.from_metadata``: the first selects the
+        MRT bin width, the second lets another Waters instrument's profile
+        conversion size its bins from its own digitiser.
         """
-        return {
+        specific: Dict[str, Any] = {
             "format": "Waters MassLynx raw",
             "data_format": "waters_raw",
             "data_path": str(self._data_path),
             "is_imaging": True,
+            # What the reader delivers, as distinct from what was acquired
+            # (``acquisition_params["function_N_is_profile"]``).
+            "spectrum_source": (
+                "vendor_centroid" if self._use_centroid else "profile_trace"
+            ),
+        }
+        if self._instrument is not None:
+            spacing = self._instrument.profile_sample_spacing_da(1000.0)
+            specific.update(
+                {
+                    "instrument": self._instrument.name,
+                    "is_mrt": self._instrument.is_mrt,
+                    "instrument_decided_by": self._instrument.decided_by,
+                    "profile_sample_spacing_da_at_1000": spacing,
+                }
+            )
+        specific.update(self._function_layout())
+        return specific
+
+    def _function_layout(self) -> Dict[str, Any]:
+        """The function and grid facts that have always been reported here."""
+        return {
             "n_functions": self._ml.get_number_of_functions(self._handle),
             "ms_functions": self._ms_functions,
             "function_types": {
@@ -295,10 +408,15 @@ class WatersMetadataExtractor(MetadataExtractor):
         ``vendor``, which nothing downstream consumed, so the fact that a
         file was Waters never reached the resampling detector chain.
         """
-        return {
+        info: Dict[str, Any] = {
             "manufacturer": "Waters",
             "format": "MassLynx .raw",
         }
+        if self._instrument is not None and self._instrument.is_mrt:
+            info["instrument_model"] = self._instrument.name
+        if self._instrument is not None and self._instrument.resolution is not None:
+            info["declared_resolution"] = self._instrument.resolution
+        return info
 
     def _extract_raw_metadata(self) -> Dict[str, Any]:
         """Extract raw metadata dictionary."""

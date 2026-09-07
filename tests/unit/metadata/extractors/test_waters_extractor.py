@@ -167,15 +167,26 @@ class TestWatersMetadataExtractorEssential:
         assert essential.spectrum_type == "centroid spectrum"
 
     def test_spectrum_type_profile(self):
-        """Test profile spectrum type detection."""
+        """A profile-acquired file read as the profile trace."""
         mock_ml, handle, grid, ft, ms = _make_grid_and_ml()
         mock_ml.is_raw_spectrum_profile.return_value = True
         extractor = WatersMetadataExtractor(
-            mock_ml, handle, Path("/test/data.raw"), grid, ft, ms
+            mock_ml, handle, Path("/test/data.raw"), grid, ft, ms, use_centroid=False
         )
         essential = extractor.get_essential()
 
         assert essential.spectrum_type == "profile spectrum"
+
+    def test_spectrum_type_is_what_the_reader_delivers(self):
+        """The same profile-acquired file, read through the vendor centroider."""
+        mock_ml, handle, grid, ft, ms = _make_grid_and_ml()
+        mock_ml.is_raw_spectrum_profile.return_value = True
+        extractor = WatersMetadataExtractor(
+            mock_ml, handle, Path("/test/data.raw"), grid, ft, ms, use_centroid=True
+        )
+        essential = extractor.get_essential()
+
+        assert essential.spectrum_type == "centroid spectrum"
 
     def test_source_path(self):
         """Test source path is preserved."""
@@ -361,6 +372,9 @@ class TestNoFabricatedMassRange:
             (np.array([300.0, 400.0]), np.array([1.0, 2.0])),
             (np.array([]), np.array([])),
         ]
+        # No acquisition range, so the stored span is the range; with one
+        # reported, that setting would rightly be used instead.
+        mock_ml.get_acquisition_range.return_value = None
 
         essential = self._extractor(mock_ml, handle, grid, ft, ms).get_essential()
 
@@ -377,20 +391,83 @@ class TestWatersResamplingDetection:
     by accident, profile fell to ``DefaultDetector``'s CONSTANT axis.
     """
 
-    @pytest.mark.parametrize("is_profile", [True, False])
-    def test_reflector_tof_for_either_representation(self, is_profile):
+    @staticmethod
+    def _chain_answer(is_profile, use_centroid, instrument=None):
         from thyra.preview import _resampling_metadata_dict
         from thyra.resampling.decision_tree import ResamplingDecisionTree
-        from thyra.resampling.types import AxisType, ResamplingMethod
 
         mock_ml, handle, grid, ft, ms = _make_grid_and_ml()
         mock_ml.is_raw_spectrum_profile.return_value = is_profile
         extractor = WatersMetadataExtractor(
-            mock_ml, handle, Path("/test/data.raw"), grid, ft, ms
+            mock_ml,
+            handle,
+            Path("/test/data.raw"),
+            grid,
+            ft,
+            ms,
+            instrument=instrument,
+            use_centroid=use_centroid,
         )
         comprehensive = extractor.get_comprehensive()
         metadata = _resampling_metadata_dict(comprehensive.essential, comprehensive)
-
         tree = ResamplingDecisionTree()
-        assert tree.select_axis_type(metadata) is AxisType.REFLECTOR_TOF
-        assert tree.select_strategy(metadata) is ResamplingMethod.NEAREST_NEIGHBOR
+        return (
+            tree.select_axis_type(metadata),
+            tree.select_strategy(metadata),
+            tree.select_reference_width(metadata),
+            tree.select_tof_law(metadata),
+        )
+
+    @pytest.mark.parametrize("is_profile", [True, False])
+    def test_vendor_centroid_bins_on_reflector_tof(self, is_profile):
+        """What the reader delivers decides, not what the file was acquired in."""
+        from thyra.resampling.types import AxisType, ResamplingMethod
+
+        axis, method, width, law = self._chain_answer(is_profile, use_centroid=True)
+        assert axis is AxisType.REFLECTOR_TOF
+        assert method is ResamplingMethod.NEAREST_NEIGHBOR
+        assert width == (0.002, 1000.0)
+        assert law is None
+
+    def test_profile_trace_interpolates_on_linear_tof(self):
+        from thyra.resampling.types import AxisType, ResamplingMethod
+
+        axis, method, width, _ = self._chain_answer(True, use_centroid=False)
+        assert axis is AxisType.LINEAR_TOF
+        assert method is ResamplingMethod.TIC_PRESERVING
+        # Not an MRT and no digitiser constants: the MRT width, with a warning.
+        assert width == (0.0013, 1000.0)
+
+    def test_mrt_profile_trace_is_pinned_at_1_3_mda(self):
+        from thyra.readers.waters.instrument import WatersInstrument
+        from thyra.resampling.types import AxisType, ResamplingMethod
+
+        mrt = WatersInstrument(is_mrt=True, decided_by="OpticMode=MRT")
+        axis, method, width, _ = self._chain_answer(
+            True, use_centroid=False, instrument=mrt
+        )
+        assert axis is AxisType.LINEAR_TOF
+        assert method is ResamplingMethod.TIC_PRESERVING
+        assert width == (0.0013, 1000.0)
+
+    def test_mrt_vendor_centroid_follows_the_measured_width_law(self):
+        from thyra.readers.waters.instrument import WatersInstrument
+        from thyra.resampling.mass_axis import MRT_TOF_LAW
+        from thyra.resampling.types import AxisType, ResamplingMethod
+
+        mrt = WatersInstrument(is_mrt=True, decided_by="OpticMode=MRT")
+        axis, method, width, law = self._chain_answer(
+            True, use_centroid=True, instrument=mrt
+        )
+        assert axis is AxisType.TOF
+        assert method is ResamplingMethod.NEAREST_NEIGHBOR
+        assert width is None
+        assert law == MRT_TOF_LAW
+
+    def test_centroid_acquired_file_cannot_deliver_a_trace(self):
+        """Asked for the profile of a centroid-mode file: centroids, so reflector."""
+        from thyra.resampling.types import AxisType, ResamplingMethod
+
+        axis, method, _, _ = self._chain_answer(False, use_centroid=False)
+        assert axis is AxisType.REFLECTOR_TOF
+        assert method is ResamplingMethod.NEAREST_NEIGHBOR

@@ -14,8 +14,8 @@ thyra [OPTIONS] INPUT OUTPUT
 !!! tip "Grouped help"
     `thyra --help` lists every option under a category heading -- Conversion,
     Logging, Resampling (advanced), Performance, imzML-specific,
-    Bruker-specific, Other, and a General section holding `--version` and
-    `--help` -- in the same order as the sections on this page.
+    Bruker-specific, Waters-specific, Other, and a General section holding
+    `--version` and `--help` -- in the same order as the sections on this page.
 
 ---
 
@@ -173,12 +173,14 @@ thyra tims_data.d output.zarr --mobility-grid --mobility-bins 512     --mobility
 
 These options control how spectra are mapped onto a common mass axis. In most
 cases the defaults work well -- Thyra auto-detects the instrument type and
-chooses an appropriate method and bin count.
+chooses an appropriate method, axis law and bin width. **Start with no flags**;
+the table after this one says when each option is actually needed.
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--resample-method METHOD` | `auto` | `auto`, `nearest_neighbor`, or `tic_preserving` |
-| `--mass-axis-type TYPE` | `auto` | `auto`, `constant`, `linear_tof`, `reflector_tof`, `orbitrap`, `fticr` |
+| `--mass-axis-type TYPE` | `auto` | `auto`, `constant`, `linear_tof`, `reflector_tof`, `tof`, `orbitrap`, `fticr` |
+| `--tof-law A B` | auto | Coefficients of the `tof` width law `sqrt(A m + B m^2)` mDa (`A` in mDa<sup>2</sup>/Da, `B` dimensionless). Only for an instrument Thyra has no pair for; an MRT centroid run or a timsTOF supplies its own |
 | `--resample-bins INTEGER` | auto | Number of bins (mutually exclusive with `--resample-width-at-mz`) |
 | `--resample-min-mz FLOAT` | auto | Minimum m/z value |
 | `--resample-max-mz FLOAT` | auto | Maximum m/z value |
@@ -186,18 +188,41 @@ chooses an appropriate method and bin count.
 | `--resample-reference-mz FLOAT` | `1000.0` | Reference m/z for width specification |
 | `--resample-gap-tolerance FLOAT` | none | `tic_preserving` only: discard target bins farther than this many Da from any measured m/z, instead of interpolating across the gap |
 
+### Which of these you actually need
+
+Every instrument Thyra recognises gets a measured default: the method, the
+axis law and the bin width all come from the detector that matched the file
+(see [Resampling](resampling.md#which-detector-wins)). The flags exist for the
+cases the defaults cannot know about.
+
+| You want to | Use | Leave alone |
+|---|---|---|
+| Convert a file from a recognised instrument | nothing | everything here |
+| A finer or coarser axis than the default | `--resample-width-at-mz` (with `--resample-reference-mz`) | `--mass-axis-type`: the law stays the instrument's, only the width moves |
+| A fixed number of bins instead of a width | `--resample-bins` | |
+| A narrower mass window | `--resample-min-mz` / `--resample-max-mz` | |
+| An axis law for an instrument Thyra could not identify | `--mass-axis-type` | Note that a manual axis type also resets the width to the axis type's own default (5 mDa at m/z 1000; 17 mDa at 300 for `linear_tof`), since a width tuned for one law is not a default for another |
+| The measured `tof` law on a timsTOF, or on a new TOF you have fitted | `--mass-axis-type tof`, plus `--tof-law A B` only when Thyra has no pair for the instrument | |
+| Force interpolation on data Thyra would bin | `--resample-method tic_preserving`, and `--resample-gap-tolerance` if the m/z arrays are sparse | |
+| The raw m/z values, no common axis | `--no-resample` | |
+
+The bin width of a `tof` axis is set the same way as any other: the width at
+the reference m/z. Thyra derives the bins per peak width from it (3 by
+default), so there is no separate flag for that quantity.
+
 !!! info "Choosing a resampling method"
     - **`nearest_neighbor`** -- Each target bin takes the nearest original m/z
       value. Correct for **centroid** data, where peaks are discrete masses.
     - **`tic_preserving`** -- Linear interpolation, rescaled so the total ion
       current is unchanged. Correct for **profile** data on a target axis
-      whose bin widths scale the same way the source points are spaced --
-      pair it only with `constant` unless you know otherwise.
-    - **`auto`** -- Picks `tic_preserving` only for Bruker flexImaging /
-      Rapiflex data, whose source grid is uniform in m/z, and
-      `nearest_neighbor` for everything else -- including profile data from
-      an instrument Thyra cannot identify, because the interpolating method
-      is only exact when the two axis laws match. See
+      whose bin widths scale the same way the source points are spaced.
+    - **`auto`** -- Picks `tic_preserving` only where the source grid's law
+      is known and the target axis follows it: Bruker flexImaging / Rapiflex
+      data (uniform in m/z, onto `constant`) and the Waters profile trace
+      (uniform in flight time, onto `linear_tof`). Everything else gets
+      `nearest_neighbor` -- including profile data from an instrument Thyra
+      cannot identify, because the interpolating method is only exact when
+      the two axis laws match. See
       [Resampling](resampling.md#which-detector-wins) for the full decision
       table.
 
@@ -207,6 +232,7 @@ chooses an appropriate method and bin count.
     - **`constant`** -- Uniform bin width (Da). Suitable for MALDI-TOF in linear mode.
     - **`linear_tof`** -- Width scales as sqrt(m/z). Matches TOF resolution.
     - **`reflector_tof`** -- Width scales linearly with m/z (constant relative resolution). Matches reflector TOF.
+    - **`tof`** -- Width follows a measured peak-width law `sqrt(A m + B m^2)`, of which the two above are the limits. See [the two-term TOF law](resampling.md#the-two-term-tof-law).
     - **`orbitrap`** -- Width scales as m/z^(3/2). Matches Orbitrap resolution.
     - **`fticr`** -- Width scales as m/z^2. Matches FTICR resolution.
     - **`auto`** -- Detected from instrument metadata.
@@ -350,6 +376,42 @@ thyra tims_data.d output.zarr --tdf-spectrum scan_sum
     **before** writing to zarr. This reduces file size but is irreversible.
     Use with care -- inspect the data with `-v DEBUG` first to choose an
     appropriate threshold.
+
+---
+
+## Waters-Specific
+
+This option only applies when converting Waters `.raw` directories.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--waters-spectrum {centroid,profile}` | `profile` on a SELECT SERIES MRT, `centroid` on every other Waters instrument | What MassLynx hands back for one pixel: the vendor peak picker, or the sampled trace behind it |
+
+### Examples
+
+```bash
+# An MRT run: the profile trace on a linear_tof axis at 1.3 mDa, no flags needed
+thyra mrt_run.raw output.zarr
+
+# The same run through the vendor peak picker instead (reflector_tof, 2 mDa)
+thyra mrt_run.raw output.zarr --waters-spectrum centroid
+
+# A Synapt run's profile trace; the bin width follows its own digitiser
+thyra synapt_run.raw output.zarr --waters-spectrum profile
+```
+
+!!! note "When the profile is worth its size"
+    MassLynx centroiding reports a single peak wherever the sampled trace has
+    two maxima a few mDa apart, and puts it partway between them. On a
+    SELECT SERIES MRT brain section, four separate 8-9 mDa doublets between
+    m/z 760 and 830 -- including the <sup>13</sup>C<sub>2</sub> isotopologue of
+    PC 34:1 [M+K]<sup>+</sup> against PC 34:0 [M+K]<sup>+</sup> -- came back as
+    one centroid in 96-100% of the pixels that resolved them, 4-8 ppm from
+    either true mass. The profile keeps them apart, for about 3 times the
+    store, and is not slower: MassLynx centroids on demand, so a profile read
+    skips that work. On a Synapt G2-Si the centroider was found to merge
+    nothing the profile resolves, which is why only the MRT defaults to it;
+    see [Supported Formats](supported-formats.md#waters-masslynx).
 
 ---
 

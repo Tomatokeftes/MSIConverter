@@ -805,15 +805,11 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         if self._nn_route:
             return self._nearest_neighbor_resample(mzs, intensities)
 
-        # Fallback: general resampling with zero filtering
-        resampled_ints = self._resample_spectrum(mzs, intensities)
-        if self._common_mass_axis is None:
-            raise RuntimeError("Common mass axis not initialized")
-        mz_indices = self._cached_mass_axis_indices
-        if mz_indices is None or mz_indices.size != len(self._common_mass_axis):
-            mz_indices = np.arange(len(self._common_mass_axis))
-        mask = resampled_ints != 0
-        return mz_indices[mask], resampled_ints[mask]
+        # TIC-preserving, evaluated only where the interpolant can be
+        # non-zero and returned already zero-filtered. On a zero-suppressed
+        # profile source the dense form of this call -- interpolate onto
+        # every bin, then mask -- was 35x the cost of reading the file.
+        return self._tic_preserving_resample_sparse(mzs, intensities)
 
     def _create_data_structures_from_coo(
         self, coo_result: Dict[str, Any]

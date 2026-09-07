@@ -6,10 +6,10 @@ instrument detection.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from .data_characteristics import DataCharacteristics
-from .instrument_detectors import InstrumentDetectorChain
+from .instrument_detectors import InstrumentDetectorChain, ReferenceWidth
 from .types import AxisType, ResamplingMethod
 
 logger = logging.getLogger(__name__)
@@ -86,3 +86,47 @@ class ResamplingDecisionTree:
 
         # Use detector chain to find matching instrument
         return self._detector_chain.get_axis_type(characteristics)
+
+    def select_reference_width(
+        self, metadata: Optional[Dict[str, Any]] = None
+    ) -> Optional[ReferenceWidth]:
+        """The bin width the detected instrument asks for, if any.
+
+        Parameters
+        ----------
+        metadata : Optional[Dict[str, Any]]
+            Metadata dictionary containing instrument information
+
+        Returns
+        -------
+        Optional[ReferenceWidth]
+            ``(width_da, reference_mz)`` when the matching detector declares
+            a default, otherwise ``None`` and the converter's per-axis-type
+            defaults apply.
+        """
+        if metadata is None:
+            return None
+
+        characteristics = DataCharacteristics.from_metadata(metadata)
+        return self._detector_chain.get_reference_width(characteristics)
+
+    def select_tof_law(
+        self, metadata: Optional[Dict[str, Any]] = None
+    ) -> Optional[Tuple[float, float]]:
+        """The two-term TOF width law the detected instrument declares, if any.
+
+        Parameters
+        ----------
+        metadata : Optional[Dict[str, Any]]
+            Metadata dictionary containing instrument information
+
+        Returns
+        -------
+        Optional[Tuple[float, float]]
+            ``(A, B)`` for ``AxisType.TOF``, or ``None``.
+        """
+        if metadata is None:
+            return None
+
+        characteristics = DataCharacteristics.from_metadata(metadata)
+        return self._detector_chain.get_tof_law(characteristics)
