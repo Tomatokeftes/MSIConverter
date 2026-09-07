@@ -336,32 +336,211 @@ accident.
 
 ---
 
-## D7. Waters: the summed table takes MS level 1 only
+## D7. Waters: which functions hold the image
 
-**Status:** Implemented 2026-09-07, as a correctness fix.
+**Status:** Implemented 2026-09-07, then **restated the same day against
+real files, which contradicted its premise.** The first version is kept
+below because the correction is the point.
 
-**What was found.** The Waters reader classifies acquisition functions and
-then yields every scan of every MS-classified function as a pixel spectrum,
-keyed by laser coordinate. A two-function acquisition, MSe low and high
-energy or a data-dependent run, therefore emits two spectra at the same
-coordinate, one MS1 and one MS2. The per-scan MS level and precursor m/z
-that MassLynx reports are parsed and then ignored. What the converter does
-with the duplicate coordinate is not verified, and no Waters MS/MS imaging
-file was available to test on; either outcome, overwrite or sum, is wrong.
+### What the first version decided, and why it was wrong
 
-**Decision.** Convert the MS level 1 functions only, and list the others,
-with their level, precursor m/z and scan count, under `excluded_functions`
-in the Waters-specific metadata block. The versioned `fragmentation` block
-describes the spectra in the store, so it says MS1 for such a file; a file
-with MS/MS functions only converts them and reports their precursors there,
-as the Bruker path does. A demultiplexed Waters table waits until a
-scheduled Waters acquisition exists to look at.
+The Waters reader classifies acquisition functions and then yields every
+scan of every MS-classified function as a pixel spectrum, keyed by laser
+coordinate. A two-function acquisition -- MSe low and high energy, or a
+data-dependent run -- would therefore emit two spectra at the same
+coordinate, one MS1 and one MS2, and the per-scan MS level MassLynx reports
+was parsed and then ignored. Summing an intact-ion and a fragment spectrum
+into one pixel makes a spectrum of nothing, so the fix was to convert the
+functions MassLynx labelled MS level 1 and record the rest under
+`excluded_functions`. No Waters MS/MS imaging file was available; the
+objection *no test data* was answered with "the filter is on a field already
+parsed and is testable with a synthetic scan record".
 
-**Objections considered.**
+That answer was wrong, and the entry said so itself without noticing: a
+synthetic record can only confirm that the code reads the field it was
+written to read. It cannot say what the field **means**.
 
-- *No test data.* The filter is on a field already parsed and is testable
-  with a synthetic scan record. The fix does not depend on the MS/MS table
-  work.
+### What the real files say
+
+7,486 Waters `.raw` directories were found on the lab share (the six Waters
+instrument folders under `V:\Instruments`, plus `V:\Users\Cuypers_Eva`);
+1,396 hold more than one `_FUNC*.DAT`, and the multi-function ones were
+opened. **Every multi-function MALDI imaging run is a single-function raster
+that MassLynx split across functions**, because it caps a `_FUNC*.DAT` file
+at about 1.6 GB and opens a new *function* when a long run reaches it. In
+each of those files:
+
+- `_extern.inf` declares exactly **one** acquisition function -- "MALDI TOF
+  MS FUNCTION", or "MALDI MOBILITY TOF MS FUNCTION" on the G2-Si -- however
+  many functions the file holds. `_FUNCTNS.INF` carries one 416-byte record
+  per stored chunk (10,400 bytes for the 25-function file).
+- The chunks **tile** the stage and the run: consecutive, non-overlapping y
+  bands and retention-time ranges, and **zero** shared pixels between any
+  two functions. Their positioned scans sum exactly to the file's distinct
+  laser positions (7,682 on `180814_EVO_Fresh_image.raw`, which is also
+  exactly its 167 x 46 grid).
+- MassLynx reports MS level 1 for the first chunk, 2 for the middle ones and
+  **0** for the last, and `getLockmassFunction` names that last chunk as the
+  file's lockmass function (it returns -1 only when the file has one
+  function). `isMsFunction` is 1 for every chunk, including the one it calls
+  lockmass, and **no chunk carries a precursor m/z**.
+
+So on these files the level filter dropped every chunk after the first, and
+the lockmass classification -- which predates this decision -- dropped the
+last one on top of that. Measured, pixels converted against pixels in the
+file:
+
+| File | Instrument | Functions | v3.19.0 | In the file |
+|---|---|---|---|---|
+| `20140509_ZF_No13.raw` | Synapt G1 | 25 | 1,657 | 37,033 |
+| `20140513_ZF_No16.raw` | Synapt G1 | 11 | 2,496 | 21,732 |
+| `20141003 MTB_04.raw` | Synapt G1 | 8 | 1,700 | 12,972 |
+| `140903_trypsin_vs_no.raw` | Synapt G1 | 5 | 2,284 | 9,223 |
+| `180814_EVO_Fresh_image.raw` | Synapt G1 | 3 | 3,200 | 7,682 |
+| `20201209_BCtumor_left Analyte 2.raw` | Synapt G2-Si | 4 | 15,790 | 61,107 |
+| `20201223_BCTumor_Eva MDA_468.raw` | Synapt G2-Si | 3 | 5,837 | 17,550 |
+| `20201218_MDA468_slide20201208 Analyte 5.raw` | Synapt G2-Si | 2 | 7,355 | 8,547 |
+
+The two-function G2-Si run is the mildest case and still loses 14 percent of
+the image; the 25-function one keeps 4.5 percent of it. Nothing in the store
+said so: the reader logged a warning about "MS level 2" functions and the
+conversion looked healthy.
+
+**One real multi-function acquisition was found**, and it is what makes the
+rule below decidable rather than a guess:
+`Xevo DESI\Pierre\DESI_PIMAX.PRO\Data\20191107_fastDDA_neg_002.raw`. Its
+`_extern.inf` declares **16** functions -- one "TOF FAST DDA FUNCTION" and
+15 "TOF SURVEY FUNCTION"s -- against the one function the chunked files
+declare. Function 0 is MS1 with no precursor; functions 1 to 15 are level 2
+and report a *different* precursor per scan, 28 distinct values each. And
+every one of the 16 lands on the **same** position. So the two cases
+separate cleanly on the positions: a chunked raster tiles them, a real
+parallel acquisition repeats them.
+
+(That file grids to 1x1, because the reader builds the grid from laser
+coordinates and a DESI stage records none. That is a separate gap, tracked
+outside this entry; it is not what D7 is about.)
+
+### Decision
+
+Decide from the **laser positions**, the same measurement the pixel grid is
+already built from.
+
+- A function landing on pixels no earlier function covers **extends the
+  raster** and is converted, whatever level MassLynx reports for it and
+  whether or not MassLynx calls it the lockmass function. Only ever widens a
+  file that already has an MS-classified function, so a run with no MS
+  function is still refused.
+- Functions **competing for the same pixels** were acquired in parallel.
+  Only one of them can be the pixel's spectrum, so among those the MS1 ones
+  win when the group has any, and the rest are listed with their level,
+  precursor m/z, scan count and the reason they stayed out under
+  `excluded_functions`. That is the original decision, kept -- scoped to the
+  functions it was actually about.
+
+`format_specific.function_types` keeps MassLynx's own classification next to
+`format_specific.ms_functions`, so a rescued chunk is visible in the store.
+
+### The catch: the tail chunk cannot be centroided
+
+The library will not centroid the function `getLockmassFunction` names.
+Measured on `180814_EVO_Fresh_image.raw`, sampling scans from each chunk:
+
+| Function | `setCentroid(1)` | `setCentroid(0)` | `isRawSpectrumContinuum` |
+|---|---|---|---|
+| 0 (MS) | 7,408 points, TIC 3.35e4 | 82,876 points | continuum |
+| 1 (MS, "level 2") | 8,508 points, TIC 3.60e4 | 91,274 points | continuum |
+| 2 (named lockmass) | **112,594 points, TIC 1.11e5** | 112,594 points | continuum |
+
+All three are acquired as continuum, and the request is honoured for the
+first two and ignored for the third: it returns the same profile trace
+either way. `ScanInfo.isProfile` reports this faithfully (0, 0, 1), since it
+is read after `setCentroid`. There is no per-function centroid entry point
+in the library to work around it.
+
+Converting that chunk into a store of centroids therefore lays a band of
+profile rows across the top of the image. It was converted that way once, by
+accident, and the TIC image shows it: rows 0 to 37 average 3.1e4 to 3.7e4 and
+rows 39 to 45 -- exactly the rescued chunk -- average 8.6e4 to 9.3e4, a
+sharp 2.3x step at the chunk boundary and not a feature of the sample.
+
+So the rule takes the representation into account: while the run is read as
+centroids, a chunk the library will not centroid **stays out**, and
+`excluded_functions` records it with its scan count, the pixels it would
+have added and the reason. Reading the run as the profile trace
+(`--waters-spectrum profile`, and the default on an MRT) converts every
+chunk, because then all of them come back the same way. The warning names
+the cost and the flag:
+
+    Function(s) 2 hold 1274 pixels (16.6% of the image) that no other
+    function covers, but MassLynx names them the lockmass function and will
+    not centroid them. They stay out rather than put profile rows in a table
+    of centroids: pass --waters-spectrum profile to convert the whole image.
+
+The alternative -- forcing the whole run to the profile trace whenever a
+chunk cannot be centroided -- would keep the image whole automatically, but
+it silently overrides D1's measured choice for a whole vendor and costs
+about ten times the non-zeros on every chunked file, of which this share
+holds 1,396. Better to convert what is consistent, say what is missing, and
+leave the trade to the one flag that already exists.
+
+The `fragmentation` block follows the **precursor**, not the level: a
+converted function holds fragment spectra when MassLynx reports a precursor
+m/z for it. A reported level with no precursor behind it is the chunk
+artefact above, and reads as MS1.
+
+**Verified on real data** (2026-09-07):
+
+| Check | Result |
+|---|---|
+| `180814_EVO_Fresh_image.raw`, 3 chunks, converted whole | 7,682 pixels, no duplicate coordinates, `ms_functions [0, 1, 2]`, `function_types["2"] == "LOCKMASS"`, `fragmentation` MS1 |
+| `20170818_08.raw`, a real single-precursor MS/MS run | `fragmentation` MS level 2, one window at m/z 377.4, collision energy 35.0, CID; converter declines a demultiplexed table because one precursor needs none |
+| every file in the table above | pixels converted equal the file's distinct laser positions, and no two converted functions share a pixel |
+
+### Objections considered
+
+- *The level is what MassLynx says; the chunking is its bug to report, not
+  ours to work around.* It is not a bug that can be worked around later:
+  there is no other field that separates a chunk from a high-energy
+  function, and the level is wrong in both directions at once (0 for a
+  chunk that holds image data, 2 for one that holds MS1 data). The
+  positions are a direct measurement of the thing the rule is about --
+  whether two spectra land on the same pixel -- so they are the better
+  signal even if MassLynx were fixed tomorrow.
+- *A lockmass function could legitimately carry laser positions, and would
+  now be converted.* A reference function is acquired **alongside** the
+  image, so its scans land on pixels the MS function already covers and it
+  is excluded by the same rule. The one real parallel lockmass function
+  found (`050517_BILE ACIDS 01.raw`) sits at a single constant position for
+  the whole run, which no raster chunk does.
+- *Two functions covering complementary mass ranges at one pixel should be
+  summed, not filtered.* They still are: functions competing for a pixel and
+  reporting the same level are all kept and summed, exactly as before. Only
+  a mixed-level group is filtered.
+
+**Known limit.** A raster chunk is recognised by covering new pixels, so a
+chunked acquisition whose stage revisits a position -- a re-scan of the same
+area in a later function -- would have that function read as a parallel one
+and excluded. No such file was found, and the acquisition would be
+ambiguous anyway: the store holds one spectrum per pixel.
+
+### No Waters demultiplexed table yet
+
+The second half of the original entry -- "a demultiplexed Waters table waits
+until a scheduled Waters acquisition exists to look at" -- still waits. Of
+506 Waters `.raw` directories surveyed, **113 declare a "MALDI TOF MSMS
+FUNCTION"**, and every one of them has exactly **one** function isolating
+**one** precursor, 224 KB to 3.9 MB, 9 to 60 scans on five or fewer distinct
+positions: spot acquisitions, not images. A Waters demultiplexer needs a
+file whose MS/MS functions each isolate a *different* constant precursor
+over one raster, and no such file exists here, so it was not built.
+
+What those files do establish, which the synthetic tests could not: MassLynx
+reports the precursor faithfully when there is one (377.4, 482.0, 476.16,
+each matching `Set Mass` in `_extern.inf`) together with a real collision
+energy (35.0, and a 6 -> 30 eV ramp on one), so `precursor_mz` is the field
+to trust. `quadIsolationStart`/`End` stay 0.0 even on these, so the
+isolation window has no offsets from this API and only a target.
 
 ---
 
