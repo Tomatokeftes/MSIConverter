@@ -2,6 +2,24 @@
 
 <!-- version list -->
 
+## v3.19.2 (2026-09-07)
+
+### Bug Fixes
+
+- **msms**: A refusal must not call a 32-window run a single precursor
+  ([`e5fedfc`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/e5fedfce0225b3c83559e8461d57eac39fae28a8))
+
+### Documentation
+
+- **decisions**: A second acquired schedule, and the share census behind it
+  ([`a6e6481`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/a6e6481f364b536d62a2032d644ced70a79592f7))
+
+### Testing
+
+- **msms**: The split on real PASEF, and across schedules that differ
+  ([`0422b38`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/0422b38f770db23a62db56d9ea9802409c4e49ef))
+
+
 ## v3.19.1 (2026-09-07)
 
 ### Bug Fixes
