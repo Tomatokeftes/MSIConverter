@@ -98,17 +98,17 @@ def _validate_paths(input_path: Path, output_path: Path) -> bool:
 def _create_reader(
     input_path: Path,
     reader_options: Optional[Dict[str, Any]] = None,
-    lossless_spectrum: bool = False,
+    lossless_spectrum: str = "",
 ) -> Tuple[Any, str]:
     """Create and return a reader for the input format.
 
     Args:
         input_path: Path to the input MSI data
         reader_options: Optional format-specific reader options (e.g., calibration settings)
-        lossless_spectrum: Ask the reader for the summed spectrum that
-            keeps all of the ion current, where it has a choice. Set when
-            a mobility grid table is being written, so the grid's
-            marginal reproduces the summed table exactly.
+        lossless_spectrum: Names the sibling table being written that
+            needs the summed spectrum to keep all of the ion current
+            (``"mobility grid"``, ``"demultiplexed MS/MS"``), so that
+            table adds back up to the summed one exactly; empty when none.
 
     Returns:
         Tuple of (reader instance, detected format string)
@@ -121,32 +121,35 @@ def _create_reader(
     # Pass reader options to the reader if provided
     options = dict(reader_options or {})
     if lossless_spectrum:
-        _force_scan_sum(reader_class, options)
+        _force_scan_sum(reader_class, options, lossless_spectrum)
     return reader_class(input_path, **options), input_format
 
 
-def _force_scan_sum(reader_class: Any, options: Dict[str, Any]) -> None:
+def _force_scan_sum(reader_class: Any, options: Dict[str, Any], what: str) -> None:
     """Switch a TDF reader to the lossless summed spectrum, out loud.
 
-    A mobility grid table is built from the raw scans, so its marginal
-    over channels reproduces the summed table only when that table was
-    built from the same scans. The vendor centroid is a peak-picked
-    spectrum over the same ramp and keeps 80-90% of the ion current, so
-    with it the two tables of one store genuinely do not add up.
+    A sibling table -- the mobility grid, the demultiplexed MS/MS table --
+    is built from the raw scans, so it reproduces the summed table (the
+    grid's marginal over channels, the split's blocks added back up) only
+    when that table was built from the same scans. The vendor centroid is
+    a peak-picked spectrum over the same ramp and keeps 80-90% of the ion
+    current, so with it the two tables of one store genuinely do not add
+    up.
 
     The switch moves the stored TIC by 13-21%, which reads as a bug if it
     happens quietly, so it is said at WARNING -- and never applied over an
     explicit ``--tdf-spectrum``, which is the caller saying they want the
-    other one and will live with the mismatch.
+    other one and will live with the mismatch, which the sibling's
+    ``uns`` block then records.
     """
     import inspect
 
     if "tdf_spectrum" in options:
         logger.warning(
-            "A mobility grid was asked for with --tdf-spectrum %s. The grid "
-            "reads raw scans, so its marginal over mobility channels will "
-            "not reproduce the summed table; uns['mobility_marginal'] on the "
-            "grid table records by how much.",
+            "A %s table was asked for with --tdf-spectrum %s. The table reads "
+            "raw scans, so it will not add back up to the summed table; its "
+            "uns block records by how much.",
+            what,
             options["tdf_spectrum"],
         )
         return
@@ -158,14 +161,24 @@ def _force_scan_sum(reader_class: Any, options: Dict[str, Any]) -> None:
         return
     options["tdf_spectrum"] = "scan_sum"
     logger.warning(
-        "Writing a mobility grid table, so the summed spectrum is built with "
+        "Writing a %s table, so the summed spectrum is built with "
         "--tdf-spectrum scan_sum instead of the default vendor centroid: the "
-        "grid's marginal over mobility channels must reproduce the summed "
-        "table, and only the lossless sum does. This moves the stored TIC by "
-        "13-21% against a default conversion of the same file. Pass "
-        "--tdf-spectrum vendor_centroid to keep the centroid and accept the "
-        "mismatch."
+        "table must add back up to the summed table, and only the lossless "
+        "sum does. This moves the stored TIC by 13-21%% against a default "
+        "conversion of the same file. Pass --tdf-spectrum vendor_centroid to "
+        "keep the centroid and accept the mismatch.",
+        what,
     )
+
+
+def _lossless_spectrum_for(kwargs: Dict[str, Any]) -> str:
+    """Which sibling table, if any, needs the lossless summed spectrum."""
+    wanted = []
+    if kwargs.get("mobility_grid", False):
+        wanted.append("mobility grid")
+    if kwargs.get("msms_table", False):
+        wanted.append("demultiplexed MS/MS")
+    return " and ".join(wanted)
 
 
 def _determine_pixel_size(
@@ -491,7 +504,7 @@ def convert_msi(
         reader, input_format = _create_reader(
             input_path,
             reader_options,
-            lossless_spectrum=bool(kwargs.get("mobility_grid", False)),
+            lossless_spectrum=_lossless_spectrum_for(kwargs),
         )
 
         # Determine pixel size

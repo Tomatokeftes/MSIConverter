@@ -315,9 +315,14 @@ class SpatialData2DConverter(BaseSpatialDataConverter):
                 # Add per-region mean spectra for multi-region datasets
                 self._store_per_region_avg(adata, data_structures)
 
-                # Decide on the sibling tables first so uns can name them.
+                # Decide on the sibling tables first so uns can name them,
+                # then run the raw mobility pass once for the heatmap and
+                # the grid's discovery together, before uns is built.
                 self._mobility_table_key = self._plan_mobility_table(slice_id)
                 self._msms_table_key = self._plan_msms_table(slice_id)
+                self._prepare_sibling_scans(
+                    adata.obs, z_value=slice_data.get("z_value")
+                )
 
                 # Add MSI metadata to .uns
                 self._add_metadata_to_uns(adata)
@@ -343,14 +348,7 @@ class SpatialData2DConverter(BaseSpatialDataConverter):
                 # Add to tables and create shapes
                 data_structures["tables"][slice_id] = table
                 data_structures["shapes"][region_key] = self._create_pixel_shapes(adata)
-                self._attach_mobility_table(
-                    data_structures,
-                    slice_id,
-                    region_key,
-                    adata.obs,
-                    z_value=slice_data.get("z_value"),
-                )
-                self._attach_msms_table(
+                self._attach_sibling_tables(
                     data_structures,
                     slice_id,
                     region_key,

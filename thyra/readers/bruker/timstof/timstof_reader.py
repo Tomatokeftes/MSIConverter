@@ -1344,19 +1344,22 @@ class BrukerReader(BrukerBaseMSIReader):
             inverse = np.asarray(inverse).ravel()
             intensities = raw_intensities.astype(np.float64)
             window_of_point = np.take(scan_map, scans, mode="clip")
-            for window_index in range(n_windows):
-                selected = window_of_point == window_index
-                if not selected.any():
-                    continue
-                # Sum over the window's scans per digitizer index: the
-                # mobility dimension is collapsed inside the window, the
-                # way iter_spectra collapses it over the whole ramp.
-                sums = np.bincount(
-                    inverse[selected],
-                    weights=intensities[selected],
-                    minlength=unique_indices.size,
+            isolated = window_of_point >= 0
+            n_unique = int(unique_indices.size)
+            # Sum over each window's scans per digitizer index, every
+            # window at once: the mobility dimension is collapsed inside
+            # the window, the way iter_spectra collapses it over the whole
+            # ramp. One bincount over (window, index) keys instead of one
+            # pass over the frame per window.
+            sums = np.bincount(
+                window_of_point[isolated] * n_unique + inverse[isolated],
+                weights=intensities[isolated],
+                minlength=n_windows * n_unique,
+            ).reshape(n_windows, n_unique)
+            for window_index in np.flatnonzero(sums.any(axis=1)).tolist():
+                mzs, window_intensities = self._apply_intensity_filter(
+                    unique_mz, sums[window_index]
                 )
-                mzs, window_intensities = self._apply_intensity_filter(unique_mz, sums)
                 nonzero = np.flatnonzero(window_intensities)
                 if nonzero.size:
                     yield (

@@ -532,9 +532,11 @@ class GroupedCommand(click.Command):
         "When the source carries ion mobility per pixel rather than as a "
         "shared feature list (Bruker TDF), bin the point cloud onto a common "
         "mobility grid and write the same mobility-resolved sibling table "
-        "(default: disabled; one extra pass over the source and a much larger "
-        "table). Also switches the summed spectrum to --tdf-spectrum scan_sum "
-        "unless that was given explicitly, which moves the stored TIC"
+        "(default: disabled; one extra pass over the source beyond the "
+        "heatmap's and a much larger table, built out of core so any "
+        "acquisition fits). Also switches the summed spectrum to "
+        "--tdf-spectrum scan_sum unless that was given explicitly, which "
+        "moves the stored TIC"
     ),
 )
 @click.option(
@@ -544,7 +546,9 @@ class GroupedCommand(click.Command):
         "When the source isolates several precursors per pixel in disjoint "
         "mobility slices (Bruker PASEF), also write them split apart as a "
         "demultiplexed sibling table next to the summed MSI table "
-        "(default: disabled; one extra pass over the source)"
+        "(default: disabled; two extra passes over the source). Also switches "
+        "the summed spectrum to --tdf-spectrum scan_sum unless that was given "
+        "explicitly, so the split adds back up to it exactly"
     ),
 )
 @click.option(

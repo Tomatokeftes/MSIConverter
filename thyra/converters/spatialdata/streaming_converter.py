@@ -284,6 +284,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             # being set), so calling it from the PCS path where temp
             # storage was never created is a no-op.
             self._cleanup_temp_storage()
+            self._release_sibling_scratch()
             self.reader.close()
 
     def _refuse_multiple_z_planes(self) -> None:
@@ -989,9 +990,12 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 if avg_per_region is not None:
                     adata.uns["average_spectrum_per_region"] = avg_per_region
 
-                # Decide on the sibling tables first so uns can name them.
+                # Decide on the sibling tables first so uns can name them,
+                # then run the raw mobility pass once for the heatmap and
+                # the grid's discovery together, before uns is built.
                 self._mobility_table_key = self._plan_mobility_table(slice_id)
                 self._msms_table_key = self._plan_msms_table(slice_id)
+                self._prepare_sibling_scans(adata.obs, z_value=0)
 
                 # Add MSI metadata to .uns
                 self._add_metadata_to_uns(adata)
@@ -1017,10 +1021,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 # Add to tables and create shapes
                 data_structures["tables"][slice_id] = table
                 data_structures["shapes"][region_key] = self._create_pixel_shapes(adata)
-                self._attach_mobility_table(
-                    data_structures, slice_id, region_key, adata.obs, z_value=0
-                )
-                self._attach_msms_table(
+                self._attach_sibling_tables(
                     data_structures, slice_id, region_key, adata.obs, z_value=0
                 )
 
@@ -1550,9 +1551,14 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         n_x, n_y, _ = self._dimensions
         n_rows = int(kept_grid.size)
         # Decide on the sibling tables before uns is written, so the
-        # table's uns can name them (see _collect_mobility_axis).
+        # table's uns can name them (see _collect_mobility_axis), and run
+        # the raw mobility pass once for the heatmap and the grid's
+        # discovery together. The siblings' obs mirrors this table's rows:
+        # one per kept grid position, indexed by the grid index as a string.
         self._mobility_table_key = self._plan_mobility_table(slice_id)
         self._msms_table_key = self._plan_msms_table(slice_id)
+        sibling_obs = self._sibling_obs(kept_grid, n_x, region_key)
+        self._prepare_sibling_scans(sibling_obs, z_value=0)
 
         # Clean output directory
         if self.output_path.exists():
@@ -1793,13 +1799,30 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         # Add TIC image and pixel shapes using SpatialData
         logger.info("  Adding TIC image and pixel shapes...")
         self._add_tic_image_and_shapes_to_store(
-            tic_values, kept_grid, n_x, n_y, slice_id, region_key
+            tic_values, kept_grid, n_x, n_y, slice_id, region_key, sibling_obs
         )
 
         # Consolidate metadata after all elements are written
         logger.info("  Consolidating metadata...")
         with _suppress_upstream_warnings():
             zarr.consolidate_metadata(str(self.output_path))
+
+    @staticmethod
+    def _sibling_obs(
+        kept_grid: NDArray[np.int64], n_x: int, region_key: str
+    ) -> pd.DataFrame:
+        """The ``obs`` a sibling table mirrors on this route."""
+        kept = np.asarray(kept_grid, dtype=np.int64)
+        obs = pd.DataFrame(
+            {
+                "x": kept % n_x,
+                "y": kept // n_x,
+                "region": np.full(kept.size, region_key),
+            },
+            index=kept.astype(str),
+        )
+        obs.index.name = "instance_id"
+        return obs
 
     def _add_tic_image_and_shapes_to_store(
         self,
@@ -1809,6 +1832,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         n_y: int,
         slice_id: str,
         region_key: str,
+        sibling_obs: Optional[pd.DataFrame] = None,
     ) -> None:
         """Add TIC image and pixel shapes to the Zarr store using SpatialData.
 
@@ -1828,6 +1852,8 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             n_y: Number of pixels in y dimension.
             slice_id: Identifier for this slice (e.g., "msi_dataset_z0").
             region_key: Region key for shapes (e.g., "msi_dataset_z0_pixels").
+            sibling_obs: The ``obs`` the sibling tables mirror, when the
+                caller already built it for the scans; built here otherwise.
         """
         if not SPATIALDATA_AVAILABLE:
             logger.warning("SpatialData not available, skipping TIC image and shapes")
@@ -1914,24 +1940,16 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         }
 
         # The sibling tables, when the source supports one. Their obs
-        # mirrors the hand-written table's rows: one per kept grid
-        # position, indexed by the grid index as a string.
+        # mirrors the hand-written table's rows (see _sibling_obs).
         if self._mobility_table_key is not None or self._msms_table_key is not None:
             kept = np.asarray(kept_grid, dtype=np.int64)
-            obs = pd.DataFrame(
-                {
-                    "x": kept % n_x,
-                    "y": kept // n_x,
-                    "region": np.full(kept.size, region_key),
-                },
-                index=kept.astype(str),
-            )
-            obs.index.name = "instance_id"
-            self._attach_mobility_table(
+            if sibling_obs is None:
+                sibling_obs = self._sibling_obs(kept, n_x, region_key)
+            self._attach_sibling_tables(
                 data_structures,
                 slice_id,
                 region_key,
-                obs,
+                sibling_obs,
                 z_value=0,
                 # The summed table went straight to disk on this route and
                 # is not in hand; its per-pixel ion current is, because the
@@ -1939,9 +1957,6 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 summed_row_totals=np.asarray(tic_values, dtype=np.float64).ravel()[
                     kept
                 ],
-            )
-            self._attach_msms_table(
-                data_structures, slice_id, region_key, obs, z_value=0
             )
 
         # Load optical images through the COO converter's path so they get
@@ -1971,6 +1986,10 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             )
             with table_write_config():
                 sdata.write_element(element_names, overwrite=True)
+        # The siblings were written from their memmaps; drop every
+        # reference so their scratch directories can go.
+        del sdata
+        self._release_sibling_scratch(data_structures["tables"])
 
         n_optical = len(data_structures["images"]) - 1
         logger.info(

@@ -11,6 +11,7 @@ acquisition whose precursors cannot be told apart must produce no table
 and a reason, never an apportioned guess.
 """
 
+import json
 from types import SimpleNamespace
 
 import numpy as np
@@ -209,9 +210,7 @@ class TestTheRowMirror:
         )
 
     def test_uns_carries_the_provenance_and_the_feature_axis(self):
-        import json
-
-        uns = _build().uns
+        uns = _build(_reader(ramp=RAMP)).uns
 
         assert uns["provenance"] == "unchanged"
         assert json.loads(uns["feature_axis"]["dims"]) == [
@@ -220,6 +219,24 @@ class TestTheRowMirror:
             "mz",
         ]
         assert uns["feature_axis"]["summed_table"] == "msi_z0"
+
+
+class TestTheDescriptorMatchesTheColumns:
+    def test_with_a_ramp_the_mobility_dimension_is_named(self):
+        table = _build(_reader(ramp=RAMP))
+        assert "precursor_mobility" in table.var.columns
+        assert json.loads(table.uns["feature_axis"]["dims"]) == [
+            "precursor_mz",
+            "precursor_mobility",
+            "mz",
+        ]
+
+    def test_without_a_ramp_it_is_not(self):
+        # A descriptor naming a column the table does not carry is a lie
+        # a consumer could act on.
+        table = _build()
+        assert "precursor_mobility" not in table.var.columns
+        assert json.loads(table.uns["feature_axis"]["dims"]) == ["precursor_mz", "mz"]
 
 
 class TestRefusals:

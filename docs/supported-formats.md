@@ -145,10 +145,10 @@ directly the way an imzML mobility export has; the flag bins every pixel's
 across the conversion and writes the result as `{table}_mobility` -- the same
 element, columns and sort a shared-axis source produces. The default 256
 channels over the axis' own value range are the heatmap's, so a box on the
-heatmap indexes the table's channels. It costs a second pass over the source,
-a table with 1.3 to 4 times the summed table's non-zeros held in memory while
-it is built (so a whole large acquisition may need converting one `--region` at
-a time), and a switch to
+heatmap indexes the table's channels. It costs a second pass over the source
+(the first is shared with the heatmap), a table with 1.3 to 4 times the summed
+table's non-zeros -- built out of core, so a whole acquisition converts
+whatever its size -- and a switch to
 `--tdf-spectrum scan_sum` (said at `WARNING`) so the table's marginal over
 channels reproduces the summed table exactly. See
 [Output Format](output-format.md#the-same-table-from-a-common-mobility-grid).
