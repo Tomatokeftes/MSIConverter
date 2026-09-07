@@ -49,8 +49,8 @@ thyra input.imzML output.zarr && python analyse.py output.zarr
 | `--include-optical / --no-optical` | enabled | Include optical images in output |
 | `--mobility-table / --no-mobility-table` | enabled | Also write the mobility-resolved sibling table when the source shares one set of (m/z, ion mobility) features across pixels (see [Output Format](output-format.md#ion-mobility)) |
 | `--mobility-heatmap / --no-mobility-heatmap` | enabled | When the source has an ion mobility dimension, store the mean mass-mobility frame on the summed table as `uns["mobility_heatmap"]`; one extra pass over the source (see [Output Format](output-format.md#ion-mobility)) |
-| `--mobility-grid / --no-mobility-grid` | **disabled** | When the source carries ion mobility per pixel rather than as a shared feature list (Bruker TDF), bin the point cloud onto a common mobility grid and write the same mobility-resolved sibling table; one extra pass over the source, a much larger table, and it forces `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#the-same-table-from-a-common-mobility-grid)) |
-| `--msms-table / --no-msms-table` | **disabled** | When the source isolates several precursors per pixel in disjoint mobility slices (Bruker PASEF), also write them split apart as a demultiplexed sibling table; one extra pass over the source (see [Output Format](output-format.md#demultiplexed-msms-table)) |
+| `--mobility-grid / --no-mobility-grid` | **disabled** | When the source carries ion mobility per pixel rather than as a shared feature list (Bruker TDF), bin the point cloud onto a common mobility grid and write the same mobility-resolved sibling table; one extra pass over the source beyond the heatmap's, a much larger table built out of core so any acquisition fits, and it forces `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#the-same-table-from-a-common-mobility-grid)) |
+| `--msms-table / --no-msms-table` | **disabled** | When the source isolates several precursors per pixel in disjoint mobility slices (Bruker PASEF), also write them split apart as a demultiplexed sibling table; two extra passes over the source, and it forces `--tdf-spectrum scan_sum` so the split adds back up to the summed table exactly (see [Output Format](output-format.md#demultiplexed-msms-table)) |
 
 ### Examples
 
@@ -133,13 +133,18 @@ thyra tims_data.d output.zarr --mobility-grid
 thyra tims_data.d output.zarr --mobility-grid --mobility-bins 512     --mobility-min 1.05 --mobility-max 1.25
 ```
 
-!!! warning "The grid table is built in memory, and a whole acquisition may not fit"
-    Unlike the summed table, which the streaming route scatters to disk, the
-    mobility grid table is accumulated in RAM. 400 frames of a measured timsTOF
-    acquisition peaked at 2.0 GB; its full 26,000 pixels project to about 109 GB.
-    The conversion projects that figure as it reads, warns past a quarter of the
-    machine's free memory and refuses past half of it. Convert one `--region` at
-    a time if a whole image will not fit.
+!!! note "The grid table is built out of core"
+    Like the summed table on the streaming route, the grid table is built in
+    two passes: the first counts the occupied `(m/z bin, channel)` cells and
+    the second scatters every pixel straight into memmapped CSC arrays in a
+    scratch directory next to the output (`.thyra_mobility_*`, removed once
+    the table is written). Memory is the count array over the grid's span --
+    142 MB on a default-resampled timsTOF axis -- plus one frame, whatever the
+    number of pixels; disk is 12 bytes per stored non-zero while the table is
+    being built. Measured on a whole 26,087-pixel timsTOF acquisition on a
+    40,000-bin axis (7.3M features, 1.59 billion non-zeros, 18 GB of scratch):
+    the table's own phases peaked at 3.2 GB of private memory above the
+    interpreter's baseline, in the `var` frame rather than in the matrix.
 
 !!! note "A mobility-resolved table wants a coarser mass axis than the default"
     The table's features are `(m/z bin, mobility channel)` pairs, so the mass
@@ -315,7 +320,7 @@ These options only apply when converting Bruker `.d` directories.
 | `--use-recalibrated / --no-recalibrated` | enabled | Use recalibrated m/z state |
 | `--interactive-calibration` | off | Display available calibration states |
 | `--intensity-threshold FLOAT` | none | Minimum intensity filter |
-| `--tdf-spectrum {vendor_centroid,scan_sum}` | `vendor_centroid`; `scan_sum` when `--mobility-grid` is given | How a TDF (TIMS) frame's mobility scans collapse into one spectrum per pixel |
+| `--tdf-spectrum {vendor_centroid,scan_sum}` | `vendor_centroid`; `scan_sum` when `--mobility-grid` or `--msms-table` is given | How a TDF (TIMS) frame's mobility scans collapse into one spectrum per pixel |
 
 ### Examples
 

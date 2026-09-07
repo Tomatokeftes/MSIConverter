@@ -21,6 +21,13 @@ bins. Under the vendor centroid it is not, and cannot be: the centroid
 keeps 80-90% of the ion current and merges bins, and the heatmap is built
 from the raw points, not from the centroid.
 
+The raw pass itself is :func:`scan_mobility`, which maps every pixel's
+points onto the mass axis once and hands the result to whichever sinks
+were given -- the heatmap, the mobility grid's discovery pass, or both.
+Mapping is the expensive part of the pass (the vendor read is a fifth of
+it), so a grid conversion that fuses its discovery into the heatmap's
+pass pays for it once rather than twice.
+
 Mobility is a feature coordinate. Nothing here knows where a pixel is.
 """
 
@@ -57,6 +64,8 @@ HEATMAP_MOBILITY_CHANNELS = MOBILITY_CHANNELS
 #: ``bincount`` over a few million entries is far cheaper than an
 #: ``add.at`` per frame; the buffer is bounded so memory stays flat.
 _FLUSH_POINTS = 4_000_000
+
+Coords = Tuple[int, int, int]
 
 
 def mz_bin_edges(
@@ -100,6 +109,44 @@ def mobility_bin_edges(
     happen to agree.
     """
     return build_mobility_grid(lower, upper, channels).edges
+
+
+def map_points_to_axis(
+    axis: NDArray[np.float64],
+    mzs: NDArray[np.float64],
+    mobility: NDArray[np.float64],
+    intensities: NDArray[np.float64],
+) -> Tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.float64], int]:
+    """One pixel's points onto the common mass axis, the summed table's way.
+
+    "In range" is the strict axis span, and a point outside it is dropped
+    rather than folded onto an edge bin -- the summed table drops it, so
+    a marginal over mobility that kept it would exceed the column it
+    mirrors. Points in range go to their nearest axis entry through the
+    converter's own rule (ties to the right). This is the one place the
+    mapping is written: the heatmap, the grid's discovery pass and the
+    grid's scatter pass all go through it, so they cannot disagree.
+
+    Returns:
+        ``(bins, mobility, intensities, n_dropped)`` -- the axis index of
+        every kept point, the two other arrays masked to match, and how
+        many points were dropped.
+    """
+    mzs = np.asarray(mzs, dtype=np.float64)
+    mobility = np.asarray(mobility, dtype=np.float64)
+    intensities = np.asarray(intensities, dtype=np.float64)
+    if mzs.size == 0:
+        return np.zeros(0, dtype=np.int64), mobility, intensities, 0
+    in_range = (mzs >= axis[0]) & (mzs <= axis[-1])
+    n_dropped = 0
+    if not in_range.all():
+        n_dropped = int(mzs.size - in_range.sum())
+        mzs = mzs[in_range]
+        mobility = mobility[in_range]
+        intensities = intensities[in_range]
+        if mzs.size == 0:
+            return np.zeros(0, dtype=np.int64), mobility, intensities, n_dropped
+    return _nn_map_to_bins(axis, mzs).astype(np.int64), mobility, intensities, n_dropped
 
 
 class MobilityHeatmap:
@@ -159,32 +206,39 @@ class MobilityHeatmap:
         range) is clipped into the edge channel rather than lost, so the
         marginal keeps every count.
         """
+        bins, mobility, intensities, n_dropped = map_points_to_axis(
+            self._axis, mzs, mobility, intensities
+        )
+        self.add_mapped(None, bins, mobility, intensities, n_dropped)
+
+    def add_mapped(
+        self,
+        coords: Optional[Coords],
+        bins: NDArray[np.int64],
+        mobility: NDArray[np.float64],
+        intensities: NDArray[np.float64],
+        n_dropped: int,
+    ) -> None:
+        """Fold in one pixel already mapped by :func:`map_points_to_axis`.
+
+        The sink interface :func:`scan_mobility` feeds; the heatmap does
+        not care where a pixel is, so ``coords`` is ignored.
+        """
         self.n_pixels += 1
-        mzs = np.asarray(mzs, dtype=np.float64)
-        if mzs.size == 0:
+        self.n_out_of_range += int(n_dropped)
+        if bins.size == 0:
             return
-        mobility = np.asarray(mobility, dtype=np.float64)
-        intensities = np.asarray(intensities, dtype=np.float64)
-        axis = self._axis
-        in_range = (mzs >= axis[0]) & (mzs <= axis[-1])
-        if not in_range.all():
-            self.n_out_of_range += int(mzs.size - in_range.sum())
-            mzs = mzs[in_range]
-            mobility = mobility[in_range]
-            intensities = intensities[in_range]
-            if mzs.size == 0:
-                return
-        mz_bin = _nn_map_to_bins(axis, mzs) // self._step
+        mz_bin = bins // self._step
         channel = linear_channel(
             mobility,
             self._mobility_lower,
             self._mobility_lower + self._mobility_span,
             self.n_mobility,
         )
-        self._buffer_cells.append(mz_bin.astype(np.int64) * self.n_mobility + channel)
-        self._buffer_weights.append(intensities)
-        self._buffered += int(mzs.size)
-        self.n_points += int(mzs.size)
+        self._buffer_cells.append(mz_bin * self.n_mobility + channel)
+        self._buffer_weights.append(np.asarray(intensities, dtype=np.float64))
+        self._buffered += int(bins.size)
+        self.n_points += int(bins.size)
         if self._buffered >= _FLUSH_POINTS:
             self._flush()
 
@@ -234,19 +288,14 @@ def _mobility_range(reader: BaseMSIReader) -> Optional[Tuple[float, float]]:
     return None
 
 
-def build_mobility_heatmap(
-    reader: BaseMSIReader,
-    mass_axis: NDArray[np.float64],
-    n_spectra: Optional[int] = None,
-) -> Optional[Dict[str, Any]]:
-    """Accumulate the heatmap over every pixel of ``reader``.
+def prepare_mobility_heatmap(
+    reader: BaseMSIReader, mass_axis: NDArray[np.float64]
+) -> Optional[MobilityHeatmap]:
+    """An empty heatmap sized for ``reader``, or ``None`` with the reason logged.
 
-    One pass over :meth:`BaseMSIReader.iter_mobility_spectra` -- the raw
-    scan read, which a Bruker source needs even when its summed spectrum
-    is the vendor centroid (one extra library call per frame, about a
-    millisecond). Returns ``None``, with the reason logged, when the
-    reader has no mobility dimension or its axis gives no range to bin
-    over (a per-pixel mobility source without a shared axis).
+    ``None`` when the reader has no mobility dimension or its axis gives
+    no range to bin over (a per-pixel mobility source without a shared
+    axis), or when the common mass axis is empty.
     """
     if not getattr(reader, "has_ion_mobility", False):
         return None
@@ -260,15 +309,11 @@ def build_mobility_heatmap(
     if np.asarray(mass_axis).size == 0:
         logger.warning("No mass-mobility heatmap: the common mass axis is empty")
         return None
+    return MobilityHeatmap(np.asarray(mass_axis, dtype=np.float64), mobility_range)
 
-    from tqdm import tqdm
 
-    heatmap = MobilityHeatmap(np.asarray(mass_axis, dtype=np.float64), mobility_range)
-    with tqdm(total=n_spectra, desc="Mobility heatmap", unit="spectrum") as pbar:
-        for _coords, mzs, mobility, intensities in reader.iter_mobility_spectra():
-            heatmap.add(mzs, mobility, intensities)
-            pbar.update(1)
-
+def finish_mobility_heatmap(heatmap: MobilityHeatmap) -> Optional[Dict[str, Any]]:
+    """The ``uns`` block of a heatmap the scan has been run over, or ``None``."""
     if heatmap.n_pixels == 0:
         logger.warning(
             "No mass-mobility heatmap: the source yielded no mobility spectra"
@@ -288,3 +333,55 @@ def build_mobility_heatmap(
         heatmap.n_points,
     )
     return heatmap.finalize()
+
+
+def scan_mobility(
+    reader: BaseMSIReader,
+    mass_axis: NDArray[np.float64],
+    *sinks: Any,
+    n_spectra: Optional[int] = None,
+    description: str = "Mobility scan",
+) -> None:
+    """One raw pass over :meth:`BaseMSIReader.iter_mobility_spectra`.
+
+    Every pixel's points are mapped onto the mass axis once, by
+    :func:`map_points_to_axis`, and handed to each sink's ``add_mapped``.
+    On a Bruker source this is the raw scan read, needed even when the
+    summed spectrum is the vendor centroid (one extra library call per
+    frame, about a millisecond); the mapping costs more than the read,
+    which is why the sinks share a pass rather than each taking one.
+    """
+    from tqdm import tqdm
+
+    axis = np.asarray(mass_axis, dtype=np.float64)
+    with tqdm(total=n_spectra, desc=description, unit="spectrum") as pbar:
+        for coords, mzs, mobility, intensities in reader.iter_mobility_spectra():
+            mapped = map_points_to_axis(axis, mzs, mobility, intensities)
+            for sink in sinks:
+                sink.add_mapped(coords, *mapped)
+            pbar.update(1)
+
+
+def build_mobility_heatmap(
+    reader: BaseMSIReader,
+    mass_axis: NDArray[np.float64],
+    n_spectra: Optional[int] = None,
+) -> Optional[Dict[str, Any]]:
+    """Accumulate the heatmap over every pixel of ``reader``.
+
+    One pass over :meth:`BaseMSIReader.iter_mobility_spectra`. Returns
+    ``None``, with the reason logged, when the reader has no mobility
+    dimension or its axis gives no range to bin over (a per-pixel mobility
+    source without a shared axis).
+    """
+    heatmap = prepare_mobility_heatmap(reader, mass_axis)
+    if heatmap is None:
+        return None
+    scan_mobility(
+        reader,
+        mass_axis,
+        heatmap,
+        n_spectra=n_spectra,
+        description="Mobility heatmap",
+    )
+    return finish_mobility_heatmap(heatmap)

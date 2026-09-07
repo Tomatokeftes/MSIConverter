@@ -404,31 +404,29 @@ A grid is refused, at `INFO` or `WARNING` and never as an exception, when:
 | the source has no mobility dimension | there is nothing to bin |
 | `--mobility-grid` was not given | binning is opt in: it costs a pass over the source and a much larger table |
 | the mobility axis carries no per-scan values | a reader opened without its vendor library cannot supply them, and the declared range is not a substitute |
+| the grid spans more pairs than the counting pass can hold (a raw, unresampled axis of millions of bins) | the count array is `4 bytes x bins x channels`, capped at 1 GB; resample to fewer mass bins |
 | the occupied `(m/z bin, channel)` pairs pass 20,000,000 | the count is printed; resample to fewer mass bins or ask for fewer channels |
-| the table is on course to need more than half the machine's free memory | see the note below; the projection and the free memory are both printed |
 
-!!! warning "This table is held in memory while it is built"
-    The summed MSI table is memory-bounded: the streaming route pre-scans the
-    source, counts, and scatters into a memmap, so it converts an acquisition
-    far larger than RAM. **The mobility grid table is not.** It accumulates its
-    `(pixel, m/z bin, channel)` triples in memory, so what it needs is linear in
-    the table's non-zeros: measured, 400 frames of a timsTOF acquisition peaked
-    at 2.0 GB, and the same acquisition's full 26,000 pixels projects to about
-    109 GB.
-
-    So the conversion projects that number from the pixels it has read, warns
-    past a quarter of the machine's free memory and **refuses past half of it**,
-    early, with the figures printed -- rather than letting the run reach the
-    ceiling below and die there. Convert one `--region` at a time, resample to
-    fewer mass bins, or ask for fewer channels. A memmap-scattered route that
-    removes the limit is the next piece of work on this table.
+**How it is built, and why its size does not matter.** The table is built
+the way the summed table is built on the streaming route, in two passes over
+the raw scans. The first pass counts, per `(m/z bin, channel)` cell of the
+grid, how many pixels occupy it -- a dense count over the grid's span, 142 MB
+on a default-resampled timsTOF axis, sized before the first pixel is read and
+independent of how many pixels there are. That pass is fused with the
+heatmap's: both need every point mapped onto the mass axis, and the mapping
+costs more than the vendor read, so it is done once. The second pass re-reads
+the source and scatters each pixel's cells straight into memmapped CSC arrays
+in a scratch directory next to the output (`.thyra_mobility_*`, removed once
+the table is written), 12 bytes of disk per stored non-zero. Nothing is ever
+held for the whole image: memory is the count array plus one frame.
 
 The size ceiling is on the pairs that carry signal, not on the pairs the grid
 spans. The two differ by an order of magnitude -- 200 frames of a measured
 timsTOF acquisition occupied 3.9M of a possible 35.5M -- so refusing on the
 span would turn away conversions that fit ninefold over. The span is said at
-`INFO` when it passes the ceiling; the count is what refuses, checked as soon
-as the source has been read and before anything wide is built.
+`INFO` when it passes the ceiling; the count is what refuses, checked the
+moment the first pass ends and before a single value has been scattered, so a
+refusal costs one read and no memory.
 
 Bruker TDF is the only source that needs a grid today; an imzML export with a
 mobility array already has a shared feature axis and is read off it.
@@ -508,9 +506,12 @@ precursor's fragments are therefore a contiguous column block whose row
 sums are its ion image, and **the blocks add back up**: summing all
 fragment columns of every precursor reproduces the summed table's TIC per
 pixel, because each recorded point falls in exactly one isolation window.
-(Exactly, under `--tdf-spectrum scan_sum`; the default `vendor_centroid`
-summed spectrum is the vendor peak picker's, which keeps 80 to 90 percent
-of the raw ion current, while the split is built from the raw scans.)
+Exactly, because `--msms-table` selects `--tdf-spectrum scan_sum` for the
+summed table (at `WARNING`, as `--mobility-grid` does, and never over an
+explicit `--tdf-spectrum`): the split is built from the raw scans, and only
+a summed spectrum built from the same scans can add back up to it. The
+vendor centroid keeps 80 to 90 percent of the raw ion current and the two
+tables of one store would genuinely not agree.
 
 ```python
 msms = sdata.tables["msi_z0_msms"]
@@ -570,12 +571,14 @@ split needs today.
 **`uns["demultiplexed_current"]`** records how much of the summed table's
 ion current the split holds: `current_ratio` over the whole image, and
 `current_ratio_pixel_min` / `_max` across pixels. Under
-`--tdf-spectrum scan_sum` it is exactly `1.0`. Under the default
-`vendor_centroid` it is **above** 1 -- the vendor peak picker discards
-single counts while the split reads raw scans, which on a real acquisition
-is about 1.5% overall and up to 1.14x on a single pixel. The two tables
-genuinely do not add up in that mode, and this block is where the store
-says so.
+`--tdf-spectrum scan_sum`, which the table selects, it is exactly `1.0`.
+Under an explicit `--tdf-spectrum vendor_centroid` it is **above** 1 -- the
+vendor peak picker discards single counts while the split reads raw scans,
+which on a real acquisition is about 1.5% overall and up to 1.14x on a
+single pixel. The two tables genuinely do not add up in that mode, and this
+block is where the store says so. It is written on every route, including
+the streaming one, which compares against the per-pixel ion current it
+already holds for the TIC image.
 
 !!! note "Deliberate limits"
     - **The feature axis depends on the data.** Only `(precursor, bin)`
@@ -590,9 +593,13 @@ says so.
       necessity.
     - **Do not select precursors by float equality.** Look the precursor up
       once and slice on `precursor_index` within that store.
-    - **Untested at scale.** The largest acquisition this has run on is 713
-      pixels with 15 precursors. A 100,000-pixel run with 25 has not been
-      measured; `var` grows with the occupied pairs.
+    - **Built out of core, like the mobility grid.** Two passes over the
+      precursor spectra -- count the occupied `(precursor, bin)` pairs,
+      then scatter into memmapped CSC arrays in a scratch directory next to
+      the output (`.thyra_msms_*`) -- so memory is the count array
+      (`4 bytes x precursors x mass bins`) plus one frame, whatever the
+      pixel count. The largest acquisition this has run on is still 713
+      pixels with 15 precursors; `var` grows with the occupied pairs.
 
 !!! note "Relation to other MS/MS imaging representations"
     The open formats solve this at the raw layer by never merging: an

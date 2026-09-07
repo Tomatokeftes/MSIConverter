@@ -29,10 +29,17 @@ The fragment axis is the MSI table's own mass axis: a feature is a
 and the corresponding column of the summed table are the same m/z bin, and
 the demultiplexed columns of a pixel add back up to what the summed table
 holds there.
+
+Like its mobility sibling, the table is built in two passes through
+:class:`~thyra.converters.spatialdata.csc_assembly.CscAssembly` -- count
+the occupied ``(precursor, bin)`` pairs, then scatter every pixel's values
+into memmapped CSC arrays -- so a 100,000-pixel acquisition with 25
+precursors costs the same memory as a 700-pixel one with 15.
 """
 
 import logging
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -41,12 +48,28 @@ from scipy import sparse
 
 from ...core.base_reader import BaseMSIReader
 from ...core.msms import FragmentationSchedule, windows_overlap
-from .mobility_table import Coords, RowLookup, row_lookup
+from .csc_assembly import (
+    CscAssembly,
+    release_when_collected,
+    remove_scratch,
+    scratch_directory,
+)
+from .mobility_table import (
+    Coords,
+    RowLookup,
+    assemble_sibling_table,
+    collapse_row,
+    disambiguate_labels,
+    int_strings,
+    row_lookup,
+)
 
 logger = logging.getLogger(__name__)
 
 #: Suffix appended to the MSI table's key for its demultiplexed sibling.
 MSMS_TABLE_SUFFIX = "_msms"
+
+_STRING = np.dtypes.StringDType()
 
 
 def msms_table_key(table_key: str) -> str:
@@ -54,13 +77,21 @@ def msms_table_key(table_key: str) -> str:
     return f"{table_key}{MSMS_TABLE_SUFFIX}"
 
 
-def feature_axis_block(summed_table_key: str) -> Dict[str, Any]:
-    """The ``uns["feature_axis"]`` descriptor of a demultiplexed table."""
-    return {
-        "dims": ["precursor_mz", "precursor_mobility", "mz"],
-        "sorted": True,
-        "summed_table": summed_table_key,
-    }
+def feature_axis_block(
+    summed_table_key: str, with_mobility: bool = True
+) -> Dict[str, Any]:
+    """The ``uns["feature_axis"]`` descriptor of a demultiplexed table.
+
+    ``dims`` names the ``var`` columns the sort runs over, in order --
+    and only the ones the table carries: ``precursor_mobility`` is absent
+    when the source has no per-scan mobility axis to look the isolation
+    position up in, and a descriptor naming a column that is not there
+    would be a lie a consumer could act on.
+    """
+    dims = ["precursor_mz", "precursor_mobility", "mz"]
+    if not with_mobility:
+        dims.remove("precursor_mobility")
+    return {"dims": dims, "sorted": True, "summed_table": summed_table_key}
 
 
 def demultiplex_refusal(schedule: Optional[FragmentationSchedule]) -> Optional[str]:
@@ -149,7 +180,11 @@ def _precursor_axis(
     return targets[order], mobility[order], rank
 
 
-def _var_labels(precursor_mz: NDArray[np.float64], mz_index: NDArray[np.int64]) -> list:
+def _var_labels(
+    precursor_mz: NDArray[np.float64],
+    precursor_index: NDArray[np.int64],
+    mz_index: NDArray[np.int64],
+) -> NDArray[Any]:
     """``p{precursor}_mz{i}`` per feature, disambiguated where two collide.
 
     Named after the precursor's m/z rather than its position in the
@@ -159,14 +194,14 @@ def _var_labels(precursor_mz: NDArray[np.float64], mz_index: NDArray[np.int64]) 
     m/z and so share a stem; they are disambiguated in mobility order,
     which is the same order in any dataset acquired the same way.
     """
-    seen: Dict[str, int] = {}
-    out = []
-    for mz, index in zip(precursor_mz.tolist(), mz_index.tolist()):
-        label = f"p{mz:g}_mz{index}"
-        n = seen.get(label, 0)
-        seen[label] = n + 1
-        out.append(label if n == 0 else f"{label}_{n}")
-    return out
+    stems = np.array([f"p{mz:g}" for mz in precursor_mz.tolist()], dtype=_STRING)
+    labels = np.strings.add(
+        np.strings.add(stems[precursor_index], "_mz"), int_strings(mz_index)
+    )
+    _unique_stems, stem_id = np.unique(stems, return_inverse=True)
+    stem_id = np.asarray(stem_id).ravel().astype(np.int64)
+    stride = int(mz_index.max()) + 1 if mz_index.size else 1
+    return disambiguate_labels(labels, stem_id[precursor_index] * stride + mz_index)
 
 
 def _bin_indices(
@@ -187,89 +222,40 @@ def _bin_indices(
     return _nn_map_to_bins(axis, kept).astype(np.int64), in_range
 
 
-class _Accumulator:
-    """The ``(pixel, precursor, mass axis column)`` triples of one slice."""
+class _Demultiplexer:
+    """The ``(precursor, mass axis column)`` entries of one pixel-precursor pair.
+
+    One key per pair: ascending key is ascending ``(precursor_mz, mz)``,
+    which is the order ``var`` wants. This is the one place the key is
+    derived; the counting pass and the scatter pass both come here, so
+    they cannot disagree on what a row holds.
+    """
 
     def __init__(
-        self,
-        axis: NDArray[np.float64],
-        row_for: RowLookup,
-        window_rank: NDArray[np.int64],
+        self, axis: NDArray[np.float64], window_rank: NDArray[np.int64]
     ) -> None:
-        self._axis = axis
-        self._row_for = row_for
-        self._window_rank = window_rank
-        self._rows: List[NDArray[np.int64]] = []
-        self._keys: List[NDArray[np.int64]] = []
-        self._data: List[NDArray[np.float64]] = []
-        self.n_skipped = 0
+        self.axis = axis
+        self.window_rank = window_rank
         self.n_dropped = 0
 
-    def add(
+    def entries(
         self,
-        coords: Coords,
         window_index: int,
         mzs: NDArray[np.float64],
         intensities: NDArray[np.float64],
-    ) -> None:
-        row = self._row_for(coords)
-        if row is None:
-            self.n_skipped += 1
-            return
-        columns, in_range = _bin_indices(self._axis, mzs)
+    ) -> Tuple[NDArray[np.int64], NDArray[np.float64]]:
+        columns, in_range = _bin_indices(self.axis, mzs)
         if columns.size == 0:
             self.n_dropped += int(mzs.size)
-            return
+            return columns, np.zeros(0, dtype=np.float64)
         if columns.size != mzs.size:
             self.n_dropped += int(mzs.size - columns.size)
             intensities = intensities[in_range]
-        rank = int(self._window_rank[window_index])
-        self._rows.append(np.full(columns.size, row, dtype=np.int64))
-        # One key per (precursor, mass axis column) pair. Ascending key is
-        # ascending (precursor_mz, mz), which is the order var wants.
-        self._keys.append(rank * self._axis.size + columns)
-        self._data.append(np.asarray(intensities, dtype=np.float64))
-
-    def matrix(
-        self, n_obs: int
-    ) -> Optional[Tuple[sparse.csc_matrix, NDArray[np.int64]]]:
-        """The pixels x features matrix and the feature keys it is built on.
-
-        Only the ``(precursor, column)`` pairs that carry ion current
-        somewhere become features: the precursor axis is discrete but the
-        fragment axis is the whole MSI mass axis, and a precursor's
-        fragments occupy a small part of it.
-        """
-        if self.n_skipped:
-            logger.warning(
-                "%d demultiplexed spectra had no row in the MSI table and "
-                "were skipped",
-                self.n_skipped,
-            )
-        if self.n_dropped:
-            logger.warning(
-                "%d fragment peaks fell outside the mass axis and were "
-                "dropped from the demultiplexed table",
-                self.n_dropped,
-            )
-        if not self._rows:
-            logger.warning(
-                "No demultiplexed spectra matched the MSI table; no MS/MS "
-                "table written"
-            )
-            return None
-
-        keys = np.concatenate(self._keys)
-        unique_keys = np.unique(keys)
-        columns = np.searchsorted(unique_keys, keys)
-        matrix = sparse.coo_matrix(
-            (
-                np.concatenate(self._data),
-                (np.concatenate(self._rows), columns),
-            ),
-            shape=(n_obs, int(unique_keys.size)),
-        ).tocsc()
-        return matrix, unique_keys
+        rank = int(self.window_rank[window_index])
+        return collapse_row(
+            rank * int(self.axis.size) + columns,
+            np.asarray(intensities, dtype=np.float64),
+        )
 
 
 def _feature_var(
@@ -296,8 +282,66 @@ def _feature_var(
     if np.isfinite(precursor_mobility).any():
         columns["precursor_mobility"] = precursor_mobility[precursor_index]
     return pd.DataFrame(
-        columns, index=_var_labels(precursor_mz[precursor_index], mz_index)
+        columns,
+        index=_var_labels(precursor_mz, precursor_index, mz_index),
+        copy=False,
     )
+
+
+def _demultiplex(
+    reader: BaseMSIReader,
+    row_for: RowLookup,
+    axis: NDArray[np.float64],
+    window_rank: NDArray[np.int64],
+    n_obs: int,
+    scratch: Path,
+) -> Optional[Tuple[sparse.csc_matrix, NDArray[np.int64], CscAssembly]]:
+    """Two passes over the precursor spectra; ``(matrix, keys, assembly)`` or ``None``."""
+    from tqdm import tqdm
+
+    n_windows = int(window_rank.size)
+    demux = _Demultiplexer(axis, window_rank)
+    assembly = CscAssembly(n_windows * int(axis.size), n_obs)
+    n_skipped = 0
+    n_rows_seen = 0
+    with tqdm(desc="MS/MS table: counting", unit="spectrum") as pbar:
+        for coords, window_index, mzs, intensities in reader.iter_precursor_spectra():
+            pbar.update(1)
+            row = row_for(coords)
+            if row is None:
+                n_skipped += 1
+                continue
+            keys, _values = demux.entries(window_index, mzs, intensities)
+            if keys.size:
+                n_rows_seen += 1
+            assembly.count(row, keys)
+    if n_skipped:
+        logger.warning(
+            "%d demultiplexed spectra had no row in the MSI table and were skipped",
+            n_skipped,
+        )
+    if demux.n_dropped:
+        logger.warning(
+            "%d fragment peaks fell outside the mass axis and were dropped "
+            "from the demultiplexed table",
+            demux.n_dropped,
+        )
+    if n_rows_seen == 0:
+        logger.warning(
+            "No demultiplexed spectra matched the MSI table; no MS/MS table written"
+        )
+        return None
+    assembly.finish_counting()
+    assembly.allocate(scratch)
+    with tqdm(desc="MS/MS table: scattering", unit="spectrum") as pbar:
+        for coords, window_index, mzs, intensities in reader.iter_precursor_spectra():
+            pbar.update(1)
+            row = row_for(coords)
+            if row is None:
+                continue
+            keys, values = demux.entries(window_index, mzs, intensities)
+            assembly.scatter(row, keys, values)
+    return assembly.matrix(), assembly.unique_keys, assembly
 
 
 def build_msms_table(
@@ -309,6 +353,7 @@ def build_msms_table(
     uns: Dict[str, Any],
     z_value: Optional[int] = None,
     pixel_key: Optional[Callable[[Coords], Optional[str]]] = None,
+    scratch: Optional[Path] = None,
 ) -> Optional[Any]:
     """Build the demultiplexed MS/MS table for one MSI table, or ``None``.
 
@@ -325,6 +370,8 @@ def build_msms_table(
             column; pixels on other planes are skipped.
         pixel_key: Optional override mapping a reader coordinate to an
             ``obs`` index label; the default matches on ``(x, y[, z])``.
+        scratch: Directory for the memmapped CSC arrays the table is built
+            on; see :func:`~thyra.converters.spatialdata.mobility_table.build_mobility_table`.
 
     Returns:
         A ``TableModel``-parsed AnnData, or ``None`` when the acquisition
@@ -340,34 +387,42 @@ def build_msms_table(
     if axis.size == 0:
         return None
 
-    from anndata import AnnData
-    from spatialdata.models import TableModel
-
-    from .base_spatialdata_converter import _jsonify_string_lists
-
     precursor_mz, precursor_mobility, window_rank = _precursor_axis(
         schedule, _window_mobility(reader)
     )
-    accumulator = _Accumulator(axis, row_lookup(obs, z_value, pixel_key), window_rank)
-    for coords, window_index, mzs, intensities in reader.iter_precursor_spectra():
-        accumulator.add(coords, window_index, mzs, intensities)
-    accumulated = accumulator.matrix(int(len(obs)))
-    if accumulated is None:
+    n_obs = int(len(obs))
+    owns_scratch = scratch is None
+    workdir = scratch_directory("thyra_msms_") if scratch is None else Path(scratch)
+    built = None
+    try:
+        built = _demultiplex(
+            reader,
+            row_lookup(obs, z_value, pixel_key),
+            axis,
+            window_rank,
+            n_obs,
+            workdir,
+        )
+    finally:
+        if built is None and owns_scratch:
+            remove_scratch(workdir)
+    if built is None:
         return None
-    matrix, unique_keys = accumulated
+    matrix, unique_keys, assembly = built
 
     var = _feature_var(unique_keys, axis, precursor_mz, precursor_mobility)
-    table_obs = obs.copy()
-    n_obs = int(len(obs))
-    table_obs["region"] = pd.Categorical([region_key] * n_obs)
-    table_obs["instance_key"] = table_obs.index.astype(str)
-
-    adata = AnnData(X=matrix, obs=table_obs, var=var)
-    adata.uns.update(uns)
-    # String lists become JSON strings, as everywhere else in uns: a list of
-    # strings does not round-trip through zarr on numpy 2.1-2.2.
-    adata.uns["feature_axis"] = _jsonify_string_lists(feature_axis_block(slice_key))
-
+    table = assemble_sibling_table(
+        matrix,
+        var,
+        obs,
+        region_key,
+        uns,
+        feature_axis_block(
+            slice_key, with_mobility="precursor_mobility" in var.columns
+        ),
+    )
+    if owns_scratch:
+        release_when_collected(table, assembly, workdir)
     logger.info(
         "Demultiplexed MS/MS table: %d pixels x %d (precursor, fragment) "
         "features over %d precursors, %d non-zeros",
@@ -376,9 +431,4 @@ def build_msms_table(
         int(precursor_mz.size),
         int(matrix.nnz),
     )
-    return TableModel.parse(
-        adata,
-        region=region_key,
-        region_key="region",
-        instance_key="instance_key",
-    )
+    return table
