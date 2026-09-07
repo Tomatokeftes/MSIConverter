@@ -31,6 +31,11 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ...core.base_reader import BaseMSIReader
+from ...resampling.mobility_grid import (
+    MOBILITY_CHANNELS,
+    build_mobility_grid,
+    linear_channel,
+)
 from .base_spatialdata_converter import _nn_map_to_bins
 
 logger = logging.getLogger(__name__)
@@ -40,12 +45,13 @@ logger = logging.getLogger(__name__)
 HEATMAP_MZ_BINS = 4000
 
 #: Number of mobility channels, exactly. This is an alignment anchor, not
-#: a rendering choice: the mobility-resolved grid table (the opt-in
-#: table of a later phase) defaults to the same 256 channels over the
-#: same edges, so a box drawn on the heatmap maps onto grid channels by
-#: integer index in both directions, with no resampling and no edge
-#: off-by-one. Change one and the other has to follow.
-HEATMAP_MOBILITY_CHANNELS = 256
+#: a rendering choice: the opt-in mobility grid table defaults to the same
+#: 256 channels over the same edges, so a box drawn on the heatmap maps
+#: onto grid channels by integer index in both directions, with no
+#: resampling and no edge off-by-one. It is literally the grid's own
+#: constant, and :func:`mobility_bin_edges` is the grid's own generator,
+#: so the two cannot drift apart.
+HEATMAP_MOBILITY_CHANNELS = MOBILITY_CHANNELS
 
 #: Points buffered before they are folded into the accumulator. One
 #: ``bincount`` over a few million entries is far cheaper than an
@@ -87,12 +93,13 @@ def mz_bin_edges(
 def mobility_bin_edges(
     lower: float, upper: float, channels: int = HEATMAP_MOBILITY_CHANNELS
 ) -> NDArray[np.float64]:
-    """``channels`` equal-width bins over ``[lower, upper]``, ascending."""
-    if not np.isfinite(lower) or not np.isfinite(upper) or upper <= lower:
-        raise ValueError(
-            f"The mobility range [{lower}, {upper}] has no extent to bin over"
-        )
-    return np.linspace(float(lower), float(upper), int(channels) + 1)
+    """``channels`` equal-width bins over ``[lower, upper]``, ascending.
+
+    The grid table's own linear generator, so the heatmap's edges and a
+    default grid's edges are the same array rather than two arrays that
+    happen to agree.
+    """
+    return build_mobility_grid(lower, upper, channels).edges
 
 
 class MobilityHeatmap:
@@ -168,10 +175,12 @@ class MobilityHeatmap:
             if mzs.size == 0:
                 return
         mz_bin = _nn_map_to_bins(axis, mzs) // self._step
-        channel = np.floor(
-            (mobility - self._mobility_lower) / self._mobility_span * self.n_mobility
+        channel = linear_channel(
+            mobility,
+            self._mobility_lower,
+            self._mobility_lower + self._mobility_span,
+            self.n_mobility,
         )
-        channel = np.clip(channel, 0, self.n_mobility - 1).astype(np.int64)
         self._buffer_cells.append(mz_bin.astype(np.int64) * self.n_mobility + channel)
         self._buffer_weights.append(intensities)
         self._buffered += int(mzs.size)

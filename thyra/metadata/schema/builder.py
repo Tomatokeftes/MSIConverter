@@ -16,6 +16,7 @@ from .models import (
     Fragmentation,
     IonMobility,
     IsolationWindow,
+    MobilityGrid,
     MSAnalysis,
     MSIMetadata,
     PixelSizeUm,
@@ -135,6 +136,7 @@ def _build_ms_analysis(
     pixel_size_um: Tuple[float, float],
     source_format: Optional[str],
     mobility_resolved_table: Optional[str] = None,
+    mobility_grid: Optional[Dict[str, Any]] = None,
     fragmentation: Any = None,
     msms_resolved_table: Optional[str] = None,
 ) -> MSAnalysis:
@@ -154,7 +156,7 @@ def _build_ms_analysis(
     )
 
     ion_mobility = _build_ion_mobility(
-        format_specific.get("ion_mobility"), mobility_resolved_table
+        format_specific.get("ion_mobility"), mobility_resolved_table, mobility_grid
     )
     if ion_mobility is not None:
         fields["ion_mobility"] = ion_mobility
@@ -181,7 +183,9 @@ def _optional_term(accession: Any) -> Optional[Any]:
 
 
 def _build_ion_mobility(
-    reported: Any, resolved_table: Optional[str] = None
+    reported: Any,
+    resolved_table: Optional[str] = None,
+    grid: Optional[Dict[str, Any]] = None,
 ) -> Optional[IonMobility]:
     """The mobility block from what a reader's extractor reported.
 
@@ -191,10 +195,20 @@ def _build_ion_mobility(
     is not the same as "no mobility". A resolved table written beside
     the summed one is named here whatever the extractor said, since its
     existence proves the dimension.
+
+    ``grid`` is present only when that table was *binned* onto a common
+    mobility grid rather than read off a shared feature axis. It is the
+    one thing in the store that says which of the two mechanisms filled
+    the table, and it is a description: the table itself is the same
+    shape either way.
     """
     if not isinstance(reported, dict) or "present" not in reported:
         if resolved_table:
-            return IonMobility(present=True, resolved_table=resolved_table)
+            return IonMobility(
+                present=True,
+                resolved_table=resolved_table,
+                grid=_mobility_grid(grid),
+            )
         return None
     present = bool(reported["present"])
     if not present and not resolved_table:
@@ -203,8 +217,32 @@ def _build_ion_mobility(
     fields: Dict[str, Any] = {"present": True}
     if resolved_table:
         fields["resolved_table"] = resolved_table
+    grid_block = _mobility_grid(grid)
+    if grid_block is not None:
+        fields["grid"] = grid_block
     fields.update(_mobility_axis_fields(reported))
     return IonMobility(**fields)
+
+
+def _mobility_grid(reported: Any) -> Optional[MobilityGrid]:
+    """The grid block from what the converter resolved, or ``None``.
+
+    Checked for shape rather than trusted, like everything else here: a
+    grid that will not validate is dropped, since an invented one would
+    let a consumer map a heatmap box onto channels that do not exist.
+    """
+    if not isinstance(reported, dict):
+        return None
+    try:
+        return MobilityGrid(
+            law=str(reported["law"]),
+            lower=float(reported["lower"]),
+            upper=float(reported["upper"]),
+            n_channels=int(reported["n_channels"]),
+        )
+    except (KeyError, TypeError, ValueError) as e:
+        logger.debug("Mobility grid block is not usable and was dropped: %s", e)
+        return None
 
 
 def _mobility_axis_fields(reported: Dict[str, Any]) -> Dict[str, Any]:
@@ -320,6 +358,7 @@ def build_msi_metadata(
     source_format: Optional[str] = None,
     processing: Optional[List[ProcessingStep]] = None,
     mobility_resolved_table: Optional[str] = None,
+    mobility_grid: Optional[Dict[str, Any]] = None,
     fragmentation: Any = None,
     msms_resolved_table: Optional[str] = None,
 ) -> MSIMetadata:
@@ -340,6 +379,11 @@ def build_msi_metadata(
             first (see :class:`ProcessingStep`).
         mobility_resolved_table: Element key of the mobility-resolved
             sibling table written beside the summed table, when one was.
+        mobility_grid: The common mobility grid that table was binned
+            onto, as
+            :meth:`thyra.resampling.mobility_grid.MobilityGrid.to_schema_report`
+            renders it. ``None`` for a table read off a shared feature
+            axis, which was binned onto nothing.
         fragmentation: What the reader reported about fragmentation, as
             :meth:`thyra.core.msms.FragmentationSchedule.to_extractor_report`
             renders it. ``None`` means the reader did not say, which is
@@ -376,6 +420,7 @@ def build_msi_metadata(
             pixel_size_um,
             source_format,
             mobility_resolved_table,
+            mobility_grid,
             fragmentation,
             msms_resolved_table,
         ),

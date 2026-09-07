@@ -18,6 +18,12 @@ from ...core.base_reader import BaseMSIReader
 from ...metadata.types import ComprehensiveMetadata, EssentialMetadata
 from ...resampling import ResamplingDecisionTree, ResamplingMethod
 from ...resampling.gaps import zero_across_gaps
+from ...resampling.mobility_grid import (
+    MOBILITY_CHANNELS,
+    MobilityGrid,
+    build_mobility_grid,
+    report_channel_width,
+)
 from ...resampling.tic import preserved_tic, rescale_to_preserved_tic
 from ...resampling.types import ResamplingConfig
 from ...utils.zarr_atomic_write import install_windows_atomic_write_retry
@@ -258,6 +264,81 @@ def _calc_optical_scale_factors(
     return factors
 
 
+#: How far a marginal may sit from the column it mirrors, relative to the
+#: largest value in the summed table, and still be called exact. Summing
+#: the same float64 values in a different order is the only difference
+#: under ``--tdf-spectrum scan_sum``.
+_MARGINAL_TOLERANCE = 1e-9
+
+
+def _marginal_current(
+    table: Any, row_totals: Any, summed_key: str
+) -> Optional[Dict[str, Any]]:
+    """The current ratio alone, against per-pixel totals of the summed table.
+
+    What the streaming route can say without the summed matrix: the ratio
+    is the same number either way, since a marginal over every m/z bin of
+    a pixel is that pixel's row sum.
+    """
+    totals = np.asarray(row_totals, dtype=np.float64).ravel()
+    split = np.asarray(table.X.sum(axis=1)).ravel().astype(np.float64)
+    if split.size != totals.size or not totals.any():
+        return None
+    per_pixel = split / np.where(totals == 0, np.nan, totals)
+    return {
+        "summed_table": summed_key,
+        "current_ratio": float(split.sum() / totals.sum()),
+        "current_ratio_pixel_min": float(np.nanmin(per_pixel)),
+        "current_ratio_pixel_max": float(np.nanmax(per_pixel)),
+    }
+
+
+def _marginal_agreement(
+    table: Any, summed: Any, summed_key: str
+) -> Optional[Dict[str, Any]]:
+    """Compare a grid table's marginal over channels with the summed table.
+
+    The marginal is ``X`` collapsed onto ``var["mz_index"]``, which is a
+    single sparse product rather than a loop over m/z bins, and is
+    compared against the summed table cell by cell. ``None`` when the two
+    cannot be compared at all (an empty table, a summed table with no ion
+    current), which is not a disagreement and so is not recorded as one.
+    """
+    from scipy import sparse
+
+    mz_index = np.asarray(table.var["mz_index"].to_numpy(), dtype=np.int64)
+    n_axis = int(summed.n_vars)
+    if mz_index.size == 0 or int(mz_index.max()) >= n_axis:
+        return None
+    collapse = sparse.csr_matrix(
+        (
+            np.ones(mz_index.size, dtype=np.float64),
+            (np.arange(mz_index.size, dtype=np.int64), mz_index),
+        ),
+        shape=(int(mz_index.size), n_axis),
+    )
+    marginal = sparse.csr_matrix(table.X) @ collapse
+    whole = sparse.csr_matrix(summed.X)
+    if marginal.shape != whole.shape:
+        return None
+    total = np.asarray(whole.sum(axis=1)).ravel().astype(np.float64)
+    if not total.any():
+        return None
+    difference = marginal - whole
+    max_abs = float(np.abs(difference.data).max()) if difference.nnz else 0.0
+    scale = float(np.abs(whole.data).max()) if whole.nnz else 0.0
+    split = np.asarray(marginal.sum(axis=1)).ravel().astype(np.float64)
+    per_pixel = split / np.where(total == 0, np.nan, total)
+    return {
+        "summed_table": summed_key,
+        "current_ratio": float(split.sum() / total.sum()),
+        "current_ratio_pixel_min": float(np.nanmin(per_pixel)),
+        "current_ratio_pixel_max": float(np.nanmax(per_pixel)),
+        "max_absolute_deviation": max_abs,
+        "max_relative_deviation": float(max_abs / scale) if scale else 0.0,
+    }
+
+
 def _nn_map_to_bins(
     axis: NDArray[np.float64], mzs: NDArray[np.float64]
 ) -> NDArray[np.int_]:
@@ -397,6 +478,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         apply_optical_alignment: bool = True,
         write_mobility_table: bool = True,
         mobility_heatmap: bool = True,
+        mobility_grid: bool = False,
+        mobility_bins: int = MOBILITY_CHANNELS,
+        mobility_min: Optional[float] = None,
+        mobility_max: Optional[float] = None,
         msms_table: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -432,6 +517,24 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 the raw scan read and store it on the summed table as
                 ``uns["mobility_heatmap"]`` (default: True). Costs one
                 extra pass over the source; see ``mobility_heatmap.py``.
+            mobility_grid: When the reader carries mobility per pixel
+                rather than as a shared feature axis (Bruker TDF), bin
+                the point cloud onto a common mobility grid and write the
+                result as the same ``{table}_mobility`` sibling
+                (default: False -- opt in, it costs an extra pass and a
+                far larger table). Ignored by a source that already
+                shares a feature axis, which needs no grid.
+            mobility_bins: Channels the grid divides the mobility range
+                into (default: 256). The default is the mass-mobility
+                heatmap's own channel count over the same edges, which is
+                what lets a box drawn on the heatmap index grid channels
+                directly; changing it gives that up.
+            mobility_min: Lower edge of the grid, in the axis unit.
+                ``None`` (default) takes the smallest mobility value the
+                source's axis actually holds, which is also where the
+                heatmap starts.
+            mobility_max: Upper edge of the grid; ``None`` takes the
+                largest value the axis holds.
             msms_table: When the source isolates several precursors per
                 pixel in disjoint mobility slices (Bruker PASEF), also
                 write them split apart as a demultiplexed sibling table
@@ -521,6 +624,16 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         # -- the element key it gets, so the MSI table's uns can name it.
         self._write_mobility_table = bool(write_mobility_table)
         self._mobility_table_key: Optional[str] = None
+        # The common mobility grid (see resampling/mobility_grid.py): the
+        # second way to fill the same sibling, for a source whose pixels
+        # each carry their own mobility values. Resolved once by
+        # _plan_mobility_table, so the MSI table's metadata block and the
+        # sibling describe the same grid.
+        self._mobility_grid_enabled = bool(mobility_grid)
+        self._mobility_bins = int(mobility_bins)
+        self._mobility_bounds = (mobility_min, mobility_max)
+        self._mobility_grid: Optional[MobilityGrid] = None
+        self._mobility_grid_resolved = False
         # The mass-mobility heatmap (see mobility_heatmap.py): built once
         # per conversion, on first demand, and shared by every uns block
         # that asks for it. ``_built`` distinguishes "not yet" from
@@ -929,22 +1042,120 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
     def _plan_mobility_table(self, table_key: str) -> Optional[str]:
         """The key of the mobility table this slice gets, or ``None``.
 
-        Decided before the MSI table's ``uns`` is built so the two agree.
+        Decided before the MSI table's ``uns`` is built so the two agree,
+        which for the grid route also means the grid itself is resolved
+        here: the summed table's metadata block names it, and the sibling
+        must be binned onto the very grid that was named.
+
+        Two mechanisms can fill the same key -- a shared feature axis
+        (nothing to decide) or a common grid (opt in) -- and a source that
+        allows neither gets no table, said by name rather than silently.
         """
         if not self._write_mobility_table:
             return None
         try:
-            if not (
-                getattr(self.reader, "has_ion_mobility", False)
-                and self.reader.has_shared_mobility_axis
-            ):
+            if not getattr(self.reader, "has_ion_mobility", False):
                 return None
+            shared = bool(self.reader.has_shared_mobility_axis)
         except Exception as e:  # pragma: no cover - reader-defined
             logger.warning("Could not inspect the mobility axis: %s", e)
             return None
         from .mobility_table import mobility_table_key
 
+        if shared:
+            return mobility_table_key(table_key)
+        if not self._mobility_grid_enabled:
+            logger.info(
+                "No mobility-resolved table: %s carries mobility per pixel "
+                "rather than as a shared feature axis. Pass --mobility-grid "
+                "to bin it onto a common mobility grid.",
+                type(self.reader).__name__,
+            )
+            return None
+        if not self._mobility_grid_resolved:
+            self._mobility_grid_resolved = True
+            self._mobility_grid = self._resolve_mobility_grid()
+        if self._mobility_grid is None:
+            return None
         return mobility_table_key(table_key)
+
+    def _resolve_mobility_grid(self) -> Optional[MobilityGrid]:
+        """The common mobility grid this conversion bins onto, or ``None``.
+
+        Bounds come from the axis values unless the caller overrode them:
+        the per-scan 1/K0 of a real file overhangs its declared
+        acquisition range, and the mass-mobility heatmap already bins over
+        the values, so anything else breaks the index-for-index mapping
+        between the two. Every refusal is said by name.
+        """
+        from .mobility_table import (
+            MAX_GRID_VAR_ENTRIES,
+            grid_refusal,
+            grid_var_bound,
+            mobility_grid_range,
+        )
+
+        if self._common_mass_axis is None:
+            logger.warning(
+                "No mobility-resolved table: the common mass axis is not "
+                "built yet, so the grid's m/z bins are unknown"
+            )
+            return None
+        try:
+            measured = mobility_grid_range(self.reader)
+        except Exception as e:  # pragma: no cover - reader-defined
+            logger.warning("Could not read the mobility axis values: %s", e)
+            return None
+        lower, upper = self._mobility_bounds
+        if measured is None and (lower is None or upper is None):
+            logger.warning(
+                "No mobility-resolved table: the source's mobility axis "
+                "carries no per-scan values to bin over (a reader opened "
+                "without its vendor library cannot supply them). Give "
+                "--mobility-min and --mobility-max to bin over a stated range."
+            )
+            return None
+        span = measured or (0.0, 0.0)
+        try:
+            grid = build_mobility_grid(
+                span[0] if lower is None else float(lower),
+                span[1] if upper is None else float(upper),
+                self._mobility_bins,
+            )
+        except ValueError as e:
+            logger.warning("No mobility-resolved table: %s", e)
+            return None
+        refusal = grid_refusal(self.reader, self._common_mass_axis, grid)
+        if refusal is not None:
+            logger.warning("No mobility-resolved table: %s", refusal)
+            return None
+        unit = None
+        axis = self.reader.get_mobility_axis()
+        if axis is not None and axis.unit_name:
+            unit = str(axis.unit_name)
+        logger.info(
+            "Mobility grid: %d %s channels over [%.5f, %.5f]%s",
+            grid.n_channels,
+            grid.law,
+            grid.lower,
+            grid.upper,
+            "" if unit is None else f" {unit}",
+        )
+        report_channel_width(grid)
+        bound = grid_var_bound(self._common_mass_axis, grid)
+        if bound > MAX_GRID_VAR_ENTRIES:
+            # A bound above the ceiling settles nothing -- real occupancy
+            # runs an order of magnitude below it -- so it is said and the
+            # source is read; the count decides (see var_ceiling_refusal).
+            logger.info(
+                "The mobility grid spans %s (m/z bin, channel) pairs, above "
+                "the var ceiling of %s. Most of them will be empty; the "
+                "table is refused only if the pairs that carry signal pass "
+                "the ceiling too.",
+                f"{bound:,}",
+                f"{MAX_GRID_VAR_ENTRIES:,}",
+            )
+        return grid
 
     def _attach_mobility_table(
         self,
@@ -953,6 +1164,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         region_key: str,
         obs: pd.DataFrame,
         z_value: Optional[int] = None,
+        summed_row_totals: Optional[NDArray[np.float64]] = None,
     ) -> None:
         """Build the mobility-resolved sibling of ``table_key`` and add it.
 
@@ -979,12 +1191,82 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 region_key,
                 sibling_uns,
                 z_value=z_value,
+                grid=self._mobility_grid,
             )
         except Exception as e:
             logger.error("Could not build the mobility-resolved table: %s", e)
             return
-        if table is not None:
-            data_structures["tables"][key] = table
+        if table is None:
+            return
+        if self._mobility_grid is not None:
+            self._record_mobility_marginal(
+                table,
+                data_structures["tables"].get(table_key),
+                table_key,
+                summed_row_totals,
+            )
+        data_structures["tables"][key] = table
+
+    @staticmethod
+    def _record_mobility_marginal(
+        table: Any,
+        summed: Any,
+        summed_key: str,
+        row_totals: Optional[NDArray[np.float64]] = None,
+    ) -> None:
+        """Say how far the grid table's marginal is from the summed table.
+
+        Summing a grid table's channels within one m/z bin must reproduce
+        that bin's column of the summed table: both are the same points,
+        binned the same way, differing only in whether mobility was kept.
+        Under ``--tdf-spectrum scan_sum`` that holds exactly; under the
+        vendor centroid it cannot, because the centroid is a peak-picked
+        spectrum over the same ramp and keeps 80-90% of the ion current
+        while the grid reads raw scans. A store whose two tables disagree
+        must say by how much rather than leave a reader to find it by
+        subtraction.
+
+        The streaming route writes the summed table straight to disk and
+        never holds it, so there ``row_totals`` -- the per-pixel ion
+        current that route already computed for the TIC image -- stands in
+        for it. The current ratio is then exactly the same number; only
+        the per-column deviation, which needs both matrices, is left out.
+        """
+        try:
+            if summed is not None:
+                block = _marginal_agreement(table, summed, summed_key)
+            elif row_totals is not None:
+                block = _marginal_current(table, row_totals, summed_key)
+            else:
+                return
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("Could not compare the mobility marginal: %s", e)
+            return
+        if block is None:
+            return
+        table.uns["mobility_marginal"] = block
+        deviation = block.get("max_relative_deviation")
+        exact = abs(float(block["current_ratio"]) - 1.0) <= _MARGINAL_TOLERANCE and (
+            deviation is None or float(deviation) <= _MARGINAL_TOLERANCE
+        )
+        log = logger.info if exact else logger.warning
+        log(
+            "The mobility grid table holds %.4fx the summed table's ion "
+            "current (per pixel %.4f to %.4f)%s. They agree exactly only "
+            "under --tdf-spectrum scan_sum; the vendor centroid is a "
+            "peak-picked spectrum over the same scans and keeps less of "
+            "the current.",
+            block["current_ratio"],
+            block["current_ratio_pixel_min"],
+            block["current_ratio_pixel_max"],
+            (
+                ""
+                if deviation is None
+                else "; the largest disagreement between a marginal over "
+                f"channels and its summed column is {deviation:.4g} of the "
+                "table's largest value"
+            ),
+        )
 
     def _plan_msms_table(self, table_key: str) -> Optional[str]:
         """The key of the demultiplexed MS/MS table this slice gets, or ``None``.
@@ -1128,6 +1410,11 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 source_format=info.get("source_format"),
                 processing=self._processing_provenance(),
                 mobility_resolved_table=self._mobility_table_key,
+                mobility_grid=(
+                    None
+                    if self._mobility_grid is None
+                    else self._mobility_grid.to_schema_report()
+                ),
                 fragmentation=self._fragmentation_report(),
                 msms_resolved_table=self._msms_table_key,
             )

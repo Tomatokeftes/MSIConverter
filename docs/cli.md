@@ -49,6 +49,7 @@ thyra input.imzML output.zarr && python analyse.py output.zarr
 | `--include-optical / --no-optical` | enabled | Include optical images in output |
 | `--mobility-table / --no-mobility-table` | enabled | Also write the mobility-resolved sibling table when the source shares one set of (m/z, ion mobility) features across pixels (see [Output Format](output-format.md#ion-mobility)) |
 | `--mobility-heatmap / --no-mobility-heatmap` | enabled | When the source has an ion mobility dimension, store the mean mass-mobility frame on the summed table as `uns["mobility_heatmap"]`; one extra pass over the source (see [Output Format](output-format.md#ion-mobility)) |
+| `--mobility-grid / --no-mobility-grid` | **disabled** | When the source carries ion mobility per pixel rather than as a shared feature list (Bruker TDF), bin the point cloud onto a common mobility grid and write the same mobility-resolved sibling table; one extra pass over the source, a much larger table, and it forces `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#the-same-table-from-a-common-mobility-grid)) |
 | `--msms-table / --no-msms-table` | **disabled** | When the source isolates several precursors per pixel in disjoint mobility slices (Bruker PASEF), also write them split apart as a demultiplexed sibling table; one extra pass over the source (see [Output Format](output-format.md#demultiplexed-msms-table)) |
 
 ### Examples
@@ -108,6 +109,58 @@ thyra input.imzML output.zarr --log-file conversion.log
     When something looks wrong in the output, re-run with `-v DEBUG --log-file
     debug.log`. The log will contain pixel size detection details, resampling
     parameters, region info, and timing for each step.
+
+---
+
+## Ion Mobility Grid (Advanced)
+
+These size the grid `--mobility-grid` bins onto. They do nothing without it.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--mobility-bins INTEGER` | `256` | Mobility channels the grid divides the range into |
+| `--mobility-min FLOAT` | axis minimum | Lower edge of the grid, in the axis unit (1/K0 for TIMS) |
+| `--mobility-max FLOAT` | axis maximum | Upper edge of the grid |
+
+### Examples
+
+```bash
+# The mobility-resolved table for a TIMS acquisition, at the default
+# 256 channels over the range the acquisition actually used
+thyra tims_data.d output.zarr --mobility-grid
+
+# A narrower range at finer resolution, giving up the heatmap alignment
+thyra tims_data.d output.zarr --mobility-grid --mobility-bins 512     --mobility-min 1.05 --mobility-max 1.25
+```
+
+!!! warning "The grid table is built in memory, and a whole acquisition may not fit"
+    Unlike the summed table, which the streaming route scatters to disk, the
+    mobility grid table is accumulated in RAM. 400 frames of a measured timsTOF
+    acquisition peaked at 2.0 GB; its full 26,000 pixels project to about 109 GB.
+    The conversion projects that figure as it reads, warns past a quarter of the
+    machine's free memory and refuses past half of it. Convert one `--region` at
+    a time if a whole image will not fit.
+
+!!! note "A mobility-resolved table wants a coarser mass axis than the default"
+    The table's features are `(m/z bin, mobility channel)` pairs, so the mass
+    axis' width is multiplied by 256. A default resampled timsTOF axis is
+    around 140,000 bins; 200 frames of one measured acquisition filled 3.9
+    million of the resulting pairs, and a whole 26,000-pixel acquisition
+    would pass the 20,000,000 ceiling the table is refused at. Reach for
+    `--resample-bins` when the whole image is wanted resolved.
+
+!!! warning "The defaults are an alignment, and the grid changes the TIC"
+    256 channels over the mobility axis' own value range is exactly what
+    `uns["mobility_heatmap"]` bins over, so a box drawn on the heatmap
+    selects grid channels by integer index. `--mobility-bins`,
+    `--mobility-min` and `--mobility-max` each give that up.
+
+    Asking for a grid also switches a TDF conversion to `--tdf-spectrum
+    scan_sum` unless that option was given explicitly, and says so at
+    `WARNING`: the grid is built from raw scans, and its marginal over
+    channels reproduces the summed table only when that table was built the
+    same way. The switch moves the stored TIC by 13 to 21 percent against a
+    default conversion of the same file.
 
 ---
 
@@ -262,7 +315,7 @@ These options only apply when converting Bruker `.d` directories.
 | `--use-recalibrated / --no-recalibrated` | enabled | Use recalibrated m/z state |
 | `--interactive-calibration` | off | Display available calibration states |
 | `--intensity-threshold FLOAT` | none | Minimum intensity filter |
-| `--tdf-spectrum {vendor_centroid,scan_sum}` | `vendor_centroid` | How a TDF (TIMS) frame's mobility scans collapse into one spectrum per pixel |
+| `--tdf-spectrum {vendor_centroid,scan_sum}` | `vendor_centroid`; `scan_sum` when `--mobility-grid` is given | How a TDF (TIMS) frame's mobility scans collapse into one spectrum per pixel |
 
 ### Examples
 

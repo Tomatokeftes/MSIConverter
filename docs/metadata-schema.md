@@ -107,7 +107,11 @@ the ramp; how it was summed is the `tdf_spectrum` parameter of the
 `resolved_table` names the mobility-resolved sibling table when one was
 written beside the summed table, and `grid` (`{law, lower, upper,
 n_channels}`) describes the common mobility grid such a table was binned onto
-when it was built from per-pixel mobility values; both are unset otherwise.
+when it was built from per-pixel mobility values (`--mobility-grid`); both
+are unset otherwise. `grid` is the only thing in the store that says which of
+the two mechanisms filled that table -- reading it off a shared feature axis
+bins nothing -- and it is a description, not a structural difference: the
+table is the same shape either way.
 The arrays that describe the axis itself and the mass-mobility heatmap live
 outside this block, in `uns["mobility_axis"]` and `uns["mobility_heatmap"]`
 (see [Output Format](output-format.md#ion-mobility)): this block is versioned
@@ -233,7 +237,7 @@ consumer can rely on one spelling:
 | `mobility` | the converter, on mobility-resolved tables only | The feature's ion mobility (1/K0 or drift time; see `uns["mobility_axis"]`). Its presence is what marks the table as mobility-resolved. |
 | `precursor_mz` | the converter, on demultiplexed MS/MS tables only | The isolated m/z the feature's fragments came from (see `uns["msms_schedule"]`). Its presence is what marks the table as demultiplexed; such a table never carries `mobility` as well. |
 | `mz_index` | the converter, on sibling tables only | Column of the feature's m/z on the summed MSI table's axis |
-| `mobility_index` | the converter, on mobility-resolved tables only | Rank of the feature's mobility among the table's distinct mobility values |
+| `mobility_index` | the converter, on mobility-resolved tables only | The feature's position on the table's mobility axis: the rank of its mobility among the distinct values a shared-axis source lists, or the channel it fell in on a common grid (`ion_mobility.grid`) |
 | `precursor_mobility` | the converter, on demultiplexed MS/MS tables only | The 1/K0 the precursor was isolated at (the middle of its mobility window). What tells two precursors sharing an m/z apart -- an isomer pair -- so they are never merged |
 | `precursor_index` | the converter, on demultiplexed MS/MS tables only | The precursor's position in **this store's** precursor axis, and the identity of its column block. Means nothing outside the store: align two stores on `(precursor_mz, precursor_mobility)` |
 | `formula` | annotation tools | Molecular formula of the annotation |

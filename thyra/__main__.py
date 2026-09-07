@@ -13,6 +13,7 @@ import click  # noqa: E402
 from thyra import __version__  # noqa: E402
 from thyra.convert import convert_msi  # noqa: E402
 from thyra.core.registry import detect_format  # noqa: E402
+from thyra.resampling.mobility_grid import MOBILITY_CHANNELS  # noqa: E402
 from thyra.utils.logging_config import setup_logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -387,10 +388,17 @@ class GroupedCommand(click.Command):
             "--no-mobility-table",
             "--mobility-heatmap",
             "--no-mobility-heatmap",
+            "--mobility-grid",
+            "--no-mobility-grid",
             "--msms-table",
             "--no-msms-table",
         ],
         "Logging": ["--log-level", "-v", "--log-file"],
+        "Ion mobility grid (advanced)": [
+            "--mobility-bins",
+            "--mobility-min",
+            "--mobility-max",
+        ],
         "Resampling (advanced)": [
             "--resample-method",
             "--mass-axis-type",
@@ -518,6 +526,18 @@ class GroupedCommand(click.Command):
     ),
 )
 @click.option(
+    "--mobility-grid/--no-mobility-grid",
+    default=False,
+    help=(
+        "When the source carries ion mobility per pixel rather than as a "
+        "shared feature list (Bruker TDF), bin the point cloud onto a common "
+        "mobility grid and write the same mobility-resolved sibling table "
+        "(default: disabled; one extra pass over the source and a much larger "
+        "table). Also switches the summed spectrum to --tdf-spectrum scan_sum "
+        "unless that was given explicitly, which moves the stored TIC"
+    ),
+)
+@click.option(
     "--msms-table/--no-msms-table",
     default=False,
     help=(
@@ -531,6 +551,38 @@ class GroupedCommand(click.Command):
     "--include-optical/--no-optical",
     default=True,
     help="Include optical images in output (default: True)",
+)
+# -- Ion mobility grid (advanced) --
+@click.option(
+    "--mobility-bins",
+    type=int,
+    default=MOBILITY_CHANNELS,
+    show_default=True,
+    help=(
+        "Mobility channels the grid divides the range into, for "
+        "--mobility-grid. The default is the mass-mobility heatmap's own "
+        "channel count over the same edges, so a box drawn on the heatmap "
+        "indexes grid channels directly; another value gives that up"
+    ),
+)
+@click.option(
+    "--mobility-min",
+    type=float,
+    default=None,
+    help=(
+        "Lower edge of the mobility grid, in the axis unit (1/K0 for TIMS). "
+        "Default: the smallest value the source's mobility axis holds, which "
+        "is where the heatmap starts"
+    ),
+)
+@click.option(
+    "--mobility-max",
+    type=float,
+    default=None,
+    help=(
+        "Upper edge of the mobility grid, in the axis unit. Default: the "
+        "largest value the source's mobility axis holds"
+    ),
 )
 # -- Logging --
 @click.option(
@@ -708,6 +760,10 @@ def main(
     include_optical: bool,
     mobility_table: bool,
     mobility_heatmap: bool,
+    mobility_grid: bool,
+    mobility_bins: int,
+    mobility_min: Optional[float],
+    mobility_max: Optional[float],
     msms_table: bool,
     intensity_threshold: Optional[float],
     tdf_spectrum: Optional[str],
@@ -801,6 +857,10 @@ def main(
         region=region,
         write_mobility_table=mobility_table,
         mobility_heatmap=mobility_heatmap,
+        mobility_grid=mobility_grid,
+        mobility_bins=mobility_bins,
+        mobility_min=mobility_min,
+        mobility_max=mobility_max,
         msms_table=msms_table,
     )
 
