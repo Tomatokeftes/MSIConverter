@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v3.16.0 (2026-09-07)
+
+### Bug Fixes
+
+- **mobility**: Refuse a grid table that will not fit in memory
+  ([`1c92b1b`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/1c92b1b1ecf8c33bfdf3b9c60539b66894495f3e))
+
+### Features
+
+- **mobility**: Bin a TDF point cloud onto a common mobility grid
+  ([`c14ccbf`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/c14ccbfd04d0c883f5a5331cff32b247ef739494))
+
+
 ## v3.15.0 (2026-09-06)
 
 ### Bug Fixes
