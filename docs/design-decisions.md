@@ -229,9 +229,27 @@ table that is routine on a workstation is fatal on a laptop.
   measured and documented, and a guess wrong by a factor of two still
   refuses at half of free memory.
 
-**Known limits.** The whole slide at the default axis lands 5.5 percent over
-the present fixed ceiling and is refused after one fused read; with
-`--resample-bins 40000` it converts.
+**Measured on the whole slide** (2026-09-07, 26,087 pixels at the default
+138,629-bin axis, `--mobility-grid --no-optical`, warm, no optical image).
+The conversion the fixed ceiling refused now runs: 21,101,151 occupied
+`(m/z bin, mobility channel)` pairs, 1,627,659,585 non-zeros through 18.19 GB
+of scratch, 239 of 256 channels occupied, a marginal of exactly 1.0 in every
+pixel, an 8.0 GB store (2.5 GB summed, 5.6 GB grid). The guard neither warned
+nor refused, which is what a projection of 6.5 GB against 90 GB free should
+do.
+
+The constant held: peak private bytes were 6.38 GB, which over 21,101,151
+features is **302 bytes per feature**, 8 percent under the 330 the guard
+projects with and measured the way that number was, as the whole process's
+private peak over the feature count. The `var` frame's own step is narrower
+-- private sat at 2.49 GB through both passes and both column sorts and rose
+to 6.38 GB over three seconds while the frame was built, so 184 bytes per
+feature is what the frame alone costs -- and the guard is conservative under
+either reading, on a grid 1.6 times the one the constant was measured on. It
+stays at 330.
+
+**Known limits.** The `var` frame is still the peak (D8), and the grid at the
+default axis is 5.6 GB of store for a slide whose summed table is 2.5 GB.
 
 ---
 
@@ -243,7 +261,8 @@ about 4 percent of wall time; the whole-slide logs from the D1 measurement
 then showed the mobility heatmap's own pass at 201 s of a 528 s conversion
 under `scan_sum` and 272 s of 438 s under the vendor centroid. The extra
 reads were 38 to 62 percent of a default conversion, not 4, and the reopen
-condition was met on the same afternoon.
+condition was met on the same afternoon. The mapping this left as the next
+lever was taken the same week, by the frame's own unique indices; see below.
 
 **Decision.** A Bruker TDF reader hands each frame over once, as a record
 of its raw scan read, from which the summed spectrum, the mobility point
@@ -285,10 +304,59 @@ pass, which grew from about 120 s to 266 s: what was saved is the read and
 the index-to-m/z conversion of every frame, about 55 s, plus the second
 scatter-side read. What remains is the mapping of every raw point onto the
 mass axis, 51,000 points per frame on this slide, which the heatmap and
-the grid need and the summed spectrum does not. That mapping is the next
-lever, not another read: the points of a frame share about 30,000 unique
-digitizer indices, and mapping those once and gathering would give the
-same bins for two fifths of the work. Not done here.
+the grid need and the summed spectrum does not. That mapping was the next
+lever, not another read, and it was taken the same week.
+
+**The mapping, by the frame's unique indices** (implemented 2026-09-07). A
+TDF frame is read as digitizer indices, and the reader already converts the
+unique ones: measured on this slide, 28,560 unique of 49,070 points, 58
+percent. Both halves of the mapping -- nearest bin, and in range or not --
+are elementwise in the m/z, so mapping the unique values and gathering by
+the frame's own inverse gives the same bins, the same mask and the same drop
+count for 58 percent of the binary searches. The record offers that view as
+`mobility_points_indexed`, the fused passes prefer it, and a record that
+does not offer it is mapped point by point as before; the iterators and the
+standalone passes are untouched.
+
+**Measured** (2026-09-07, the same slide, warm, local disk, no optical
+image; each pair one session, v3.19.0 against the branch):
+
+| whole 26,087-pixel slide | v3.19.0 | indexed mapping |
+|---|---|---|
+| default, wall | 420 s | 343 s |
+| default, pass 1 (maps every point, for the heatmap) | 250 s | 171 s |
+| default, pass 2 (no mobility sink) | 137 s | 139 s |
+| `--mobility-grid` at the default axis, wall | 1,201 s | 724 s |
+| grid, pass 1 (heatmap and discovery) | 401 s | 237 s |
+| grid, pass 2 (grid scatter) | 627 s | 357 s |
+
+The pass that maps points is a third faster, and where both passes map, the
+conversion is 40 percent faster; the default's second pass, which has no
+mobility sink to map for, is unchanged, which is the control. Taking 42
+percent of the searches out of the default's mapping pass took 79 s off it,
+which puts the searches at roughly 190 s of that pass's 250 and roughly 110 s
+of its 171 now -- still the largest single item in it, and the gather and
+the mask that remain are proportional to the points however few searches
+they cost.
+
+Identity was checked the way the fused passes were: stores written by
+v3.19.0 and by the branch, compared array by array (X data, indices and
+indptr with dtypes, `var`, `obs` and `uns`), on the 400-frame slice with and
+without the grid and on the 713-pixel PASEF set, and then on the whole slide
+in both configurations by hashing every array of every table in chunks.
+Identical throughout, the heatmap's `counts` included.
+
+**Cold cache on the lab share** (2026-09-07, the deferral D5 left open).
+The same slide copied to the SMB share, default conversion, branch code, the
+file pushed out of the machine's standby list before the first run so the
+read is genuinely cold: 365 s cold against 342 s warm, pass 1 178 s against
+170 s, pass 2 143 s against 138 s. The first read of a never-read file costs
+about 5 percent of the pass; a conversion's second pass is warm either way,
+since the first pulls the acquisition into the cache. The share is not the
+bottleneck the deferral suspected -- on this machine a cold network read is
+within seconds of a warm local one (171 s for the same pass), so the mapping
+and not the read is what a conversion of this shape spends its time on,
+wherever the file lives.
 
 **Objections considered.**
 
@@ -300,6 +368,15 @@ same bins for two fifths of the work. Not done here.
   raw scans.* Correct; in that mode the record asks the library for the
   centroid as a second call per frame, and the raw read still serves the
   sinks. That mode is the opt-in.
+- *The record contract grew a method for one reader's convenience.* The
+  indexed view is reached with `getattr` and a record that does not offer
+  it is mapped point by point, which the stub records in the tests pin. It
+  is a view of the read every record already has, not a new obligation.
+- *Mapping every unique value maps ones that are then dropped as out of
+  range.* It does, and it costs a few searches more on a frame whose points
+  overhang the axis -- 8,328 points of 1.65 billion on this slide. The
+  alternative, masking before mapping, would need the mask expanded to the
+  points first, which is the work the factoring exists to avoid.
 
 **Known limits.** Only the Bruker TDF reader hands frames over as records;
 every other source keeps its iterators and its standalone passes, which for
