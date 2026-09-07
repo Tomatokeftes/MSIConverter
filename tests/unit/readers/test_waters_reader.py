@@ -10,13 +10,13 @@ from thyra.readers.waters.masslynx_lib import FunctionType, ScanInfoData
 from thyra.readers.waters.waters_reader import WatersReader
 
 
-def _make_scan_info(x_mm=0.1, y_mm=0.2, ms_level=1, has_pos=True):
+def _make_scan_info(x_mm=0.1, y_mm=0.2, ms_level=1, has_pos=True, is_profile=0):
     """Helper to create a ScanInfoData with given laser position."""
     return ScanInfoData(
         ms_level=ms_level,
         polarity=0,
         drift_scan_count=0,
-        is_profile=0,
+        is_profile=is_profile,
         precursor_mz=0.0,
         rt=1.0,
         laser_x_pos=x_mm if has_pos else -1.0,
@@ -489,19 +489,66 @@ def _two_function_grid(levels, precursors=None):
     )
 
 
-def _open_reader(mock_ml_cls, mock_build_grid, mock_waters_data, grid, n_funcs):
+def _chunked_grid(levels, scans_per_function=3, profile_functions=()):
+    """A raster MassLynx split across functions, as the real files are.
+
+    Function ``f`` records ``scans_per_function`` scans on pixels no other
+    function visits, so the functions tile the stage instead of competing
+    for it. ``levels`` maps function index -> the MS level MassLynx reports,
+    which on a real chunked file is 1 for the first chunk, 2 for the middle
+    ones and 0 for the last.
+    """
+    scan_map = {}
+    x_index_map = {}
+    for column, (func, scan) in enumerate(
+        (f, s) for f in sorted(levels) for s in range(scans_per_function)
+    ):
+        x_mm = (column + 1) / 10.0
+        x_index_map[round(x_mm * 1000.0, 2)] = column
+        scan_map[(func, scan)] = _make_scan_info(
+            x_mm,
+            0.05,
+            ms_level=levels[func],
+            is_profile=1 if func in profile_functions else 0,
+        )
+    return ImagingGrid(
+        x_index_map=x_index_map,
+        y_index_map={50.0: 0},
+        pixel_count_x=len(x_index_map),
+        pixel_count_y=1,
+        pixel_size_x=100.0,
+        pixel_size_y=100.0,
+        lateral_width=100.0 * (len(x_index_map) - 1),
+        lateral_height=0.0,
+        scan_map=scan_map,
+    )
+
+
+def _open_reader(
+    mock_ml_cls,
+    mock_build_grid,
+    mock_waters_data,
+    grid,
+    n_funcs,
+    types=None,
+    scans_per_function=3,
+    use_centroid=True,
+):
     mock_ml = MagicMock()
     mock_ml_cls.get_instance.return_value = mock_ml
     mock_ml.is_imaging_file.return_value = True
     mock_ml.get_number_of_functions.return_value = n_funcs
-    mock_ml.classify_function.return_value = FunctionType.MS
-    mock_ml.get_number_of_scans_in_function.return_value = 3
+    if types is None:
+        mock_ml.classify_function.return_value = FunctionType.MS
+    else:
+        mock_ml.classify_function.side_effect = lambda _h, f: types[f]
+    mock_ml.get_number_of_scans_in_function.return_value = scans_per_function
     mock_ml.read_spectrum.return_value = (
         np.array([100.0, 200.0]),
         np.array([1.0, 2.0]),
     )
     mock_build_grid.return_value = grid
-    return WatersReader(mock_waters_data), mock_ml
+    return WatersReader(mock_waters_data, use_centroid=use_centroid), mock_ml
 
 
 class TestWatersReaderMsLevels:
@@ -585,4 +632,166 @@ class TestWatersReaderMsLevels:
         assert len(spectra) == 6
         assert {call.args[1] for call in mock_ml.read_spectrum.call_args_list} == {0, 1}
         assert reader.get_fragmentation().ms_level == 1
+        reader.close()
+
+
+class TestWatersReaderChunkedRaster:
+    """One raster split across functions: every chunk is part of the image.
+
+    MassLynx caps a ``_FUNC*.DAT`` at about 1.6 GB and opens a new function
+    when a long imaging run reaches it. On the real files the chunks come
+    back as MS level 1, then 2, then 0, the last one is what
+    ``getLockmassFunction`` names, and none of them carries a precursor --
+    so neither the level nor the lockmass index can decide what to convert.
+    The laser positions can: chunks tile the stage, parallel functions
+    repeat it.
+    """
+
+    @patch("thyra.readers.waters.waters_reader.MassLynxLib")
+    @patch("thyra.readers.waters.waters_reader.build_imaging_grid")
+    def test_every_chunk_of_a_split_raster_is_converted(
+        self, mock_build_grid, mock_ml_cls, mock_waters_data
+    ):
+        grid = _chunked_grid({0: 1, 1: 2, 2: 0})
+        reader, mock_ml = _open_reader(
+            mock_ml_cls,
+            mock_build_grid,
+            mock_waters_data,
+            grid,
+            3,
+            types={0: FunctionType.MS, 1: FunctionType.MS, 2: FunctionType.LOCKMASS},
+        )
+        spectra = list(reader.iter_spectra())
+
+        # Nine pixels, one spectrum each, read from all three functions
+        assert len(spectra) == 9
+        assert len({c for c, _, _ in spectra}) == 9
+        assert {call.args[1] for call in mock_ml.read_spectrum.call_args_list} == {
+            0,
+            1,
+            2,
+        }
+        assert reader._ms_functions == [0, 1, 2]
+        assert reader._excluded_functions == {}
+        reader.close()
+
+    @patch("thyra.readers.waters.waters_reader.MassLynxLib")
+    @patch("thyra.readers.waters.waters_reader.build_imaging_grid")
+    def test_a_level_two_chunk_is_not_a_fragmentation_schedule(
+        self, mock_build_grid, mock_ml_cls, mock_waters_data
+    ):
+        grid = _chunked_grid({0: 1, 1: 2, 2: 0})
+        reader, _ = _open_reader(
+            mock_ml_cls,
+            mock_build_grid,
+            mock_waters_data,
+            grid,
+            3,
+            types={0: FunctionType.MS, 1: FunctionType.MS, 2: FunctionType.LOCKMASS},
+        )
+        schedule = reader.get_fragmentation()
+        assert schedule.ms_level == 1 and not schedule.is_msms
+        assert schedule.windows == ()
+
+        block = reader._create_metadata_extractor()._extract_waters_specific()
+        # The block keeps MassLynx's own classification next to what was
+        # converted, so the rescue is visible in the store.
+        assert block["ms_functions"] == [0, 1, 2]
+        assert block["function_types"]["2"] == "LOCKMASS"
+        reader.close()
+
+    @patch("thyra.readers.waters.waters_reader.MassLynxLib")
+    @patch("thyra.readers.waters.waters_reader.build_imaging_grid")
+    def test_a_lockmass_function_on_the_image_pixels_stays_out(
+        self, mock_build_grid, mock_ml_cls, mock_waters_data
+    ):
+        # A reference function acquired alongside the image covers no pixel
+        # the MS function does not already cover, so it is not rescued.
+        grid = _two_function_grid({0: 1, 1: 0})
+        reader, mock_ml = _open_reader(
+            mock_ml_cls,
+            mock_build_grid,
+            mock_waters_data,
+            grid,
+            2,
+            types={0: FunctionType.MS, 1: FunctionType.LOCKMASS},
+        )
+        reader._ensure_initialized()
+        assert reader._ms_functions == [0]
+        assert len(list(reader.iter_spectra())) == 3
+        assert {call.args[1] for call in mock_ml.read_spectrum.call_args_list} == {0}
+        reader.close()
+
+    @patch("thyra.readers.waters.waters_reader.MassLynxLib")
+    @patch("thyra.readers.waters.waters_reader.build_imaging_grid")
+    def test_a_chunked_mse_run_keeps_the_ms1_function_of_every_chunk(
+        self, mock_build_grid, mock_ml_cls, mock_waters_data
+    ):
+        # Two chunks, each an MSe pair: functions 0/1 on one set of pixels,
+        # functions 2/3 on the next.
+        grid = _chunked_grid({0: 1, 2: 1})
+        for func, twin in ((0, 1), (2, 3)):
+            for (f, scan), info in list(grid.scan_map.items()):
+                if f != func:
+                    continue
+                grid.scan_map[(twin, scan)] = ScanInfoData(
+                    **{**info.__dict__, "ms_level": 2, "precursor_mz": 0.0}
+                )
+        reader, mock_ml = _open_reader(
+            mock_ml_cls, mock_build_grid, mock_waters_data, grid, 4
+        )
+        reader._ensure_initialized()
+        assert reader._ms_functions == [0, 2]
+        assert sorted(reader._excluded_functions) == [1, 3]
+        assert len(list(reader.iter_spectra())) == 6
+        assert reader.get_fragmentation().ms_level == 1
+        reader.close()
+
+    @patch("thyra.readers.waters.waters_reader.MassLynxLib")
+    @patch("thyra.readers.waters.waters_reader.build_imaging_grid")
+    def test_a_chunk_masslynx_will_not_centroid_stays_out_of_a_centroid_store(
+        self, mock_build_grid, mock_ml_cls, mock_waters_data
+    ):
+        # MassLynx's centroider skips the function it names the lockmass
+        # function, so that chunk comes back as profile whatever was asked.
+        # Converting it anyway would band the top of the image.
+        grid = _chunked_grid({0: 1, 1: 2, 2: 0}, profile_functions={2})
+        reader, mock_ml = _open_reader(
+            mock_ml_cls,
+            mock_build_grid,
+            mock_waters_data,
+            grid,
+            3,
+            types={0: FunctionType.MS, 1: FunctionType.MS, 2: FunctionType.LOCKMASS},
+        )
+        assert len(list(reader.iter_spectra())) == 6
+        assert reader._ms_functions == [0, 1]
+        assert {call.args[1] for call in mock_ml.read_spectrum.call_args_list} == {0, 1}
+
+        left_out = reader._excluded_functions[2]
+        assert left_out["n_scans"] == 3
+        assert left_out["n_unique_pixels"] == 3
+        assert left_out["reason"] == "MassLynx will not centroid this function"
+        reader.close()
+
+    @patch("thyra.readers.waters.waters_reader.MassLynxLib")
+    @patch("thyra.readers.waters.waters_reader.build_imaging_grid")
+    def test_the_profile_read_converts_that_chunk_too(
+        self, mock_build_grid, mock_ml_cls, mock_waters_data
+    ):
+        # Reading the trace asks for no centroiding, so every chunk comes
+        # back the same way and the whole image can be converted.
+        grid = _chunked_grid({0: 1, 1: 2, 2: 0}, profile_functions={0, 1, 2})
+        reader, _ = _open_reader(
+            mock_ml_cls,
+            mock_build_grid,
+            mock_waters_data,
+            grid,
+            3,
+            types={0: FunctionType.MS, 1: FunctionType.MS, 2: FunctionType.LOCKMASS},
+            use_centroid=False,
+        )
+        assert len(list(reader.iter_spectra())) == 9
+        assert reader._ms_functions == [0, 1, 2]
+        assert reader._excluded_functions == {}
         reader.close()

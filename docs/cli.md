@@ -420,6 +420,16 @@ thyra synapt_run.raw output.zarr --waters-spectrum profile
     nothing the profile resolves, which is why only the MRT defaults to it;
     see [Supported Formats](supported-formats.md#waters-masslynx).
 
+!!! note "The other reason to pass `profile`"
+    A long imaging run outgrows one `_FUNC*.DAT` file, and MassLynx continues
+    it in a new *function*. It will not centroid the last of them, so a
+    centroid conversion leaves that chunk out and logs how many pixels
+    (16.6% of one Synapt G1 run) and this flag. Reading the trace converts
+    every chunk, because then they all come back the same way -- pass
+    `--streaming true` with it, since the profile store for that run is
+    estimated at 74 GB against 241 MB. See
+    [Which functions hold the image](supported-formats.md#which-functions-hold-the-image).
+
 ---
 
 ## Other

@@ -9,7 +9,7 @@ reconstructed from laser X/Y positions stored in each scan's metadata.
 import ctypes
 import logging
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Set, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
@@ -46,17 +46,34 @@ class WatersReader(BaseMSIReader):
     2. Opens the .raw directory and verifies it contains imaging data
     3. Classifies acquisition functions (MS, IMS, MRM, lockmass)
     4. Reconstructs the imaging pixel grid from laser coordinates
-    5. Keeps the MS1 functions only when the file also holds MS/MS ones
-    6. Iterates MS spectra yielding (coords, mzs, intensities) tuples
+    5. Works out which functions hold the image, from the laser positions
+    6. Iterates their spectra yielding (coords, mzs, intensities) tuples
 
-    Every MS function shares the one laser grid, so two functions yield
-    two spectra at the same pixel. Summing an MS1 and an MS2 spectrum into
-    one pixel would make a spectrum of nothing, which is why the level
-    filter in step 5 exists: an MSe or data-dependent acquisition converts
-    to its MS1 image, and the functions left out are recorded in the
-    Waters-specific metadata block. A file with no MS1 function converts
-    its MS/MS functions instead and says so through
-    :meth:`get_fragmentation`.
+    Step 5 exists because a Waters function is not necessarily one
+    acquisition function. MassLynx caps a ``_FUNC*.DAT`` file at about
+    1.6 GB and opens a new *function* when a long imaging run reaches it,
+    so one raster arrives as several functions that tile the stage: they
+    never share a pixel. It also names the last of them as the file's
+    lockmass function, and reports MS level 1 for the first chunk, 2 for
+    the middle ones and 0 for the last. None of that survived contact with
+    real files (see :doc:`the D7 entry </design-decisions>`), so the reader
+    decides from the laser positions instead, which are the same
+    measurement the pixel grid is built from:
+
+    * A function landing on pixels no earlier function covers **extends the
+      raster** and is converted, whatever level MassLynx reports for it --
+      including the chunk MassLynx calls the lockmass function, except while
+      the run is read as centroids, which that one function's spectra cannot
+      be (see :meth:`_raster_candidates`).
+    * Functions competing for the same pixels are a parallel acquisition --
+      MSe low and high energy, a data-dependent run, a co-acquired lockmass
+      reference. Summing an MS1 and an MS2 spectrum into one pixel would
+      make a spectrum of nothing, so among those the MS1 functions win when
+      the file has any, and the rest are recorded under
+      ``excluded_functions`` in the Waters-specific metadata block.
+
+    A file whose converted functions carry a precursor m/z holds fragment
+    spectra and says so through :meth:`get_fragmentation`.
     """
 
     def __init__(
@@ -111,9 +128,11 @@ class WatersReader(BaseMSIReader):
         self._imaging_grid: Optional[ImagingGrid] = None
         self._function_types: Optional[Dict[int, FunctionType]] = None
         self._ms_functions: Optional[List[int]] = None
-        #: MS functions left out of the conversion because the file also
-        #: holds MS1 ones: function index -> what they were.
+        #: Functions not converted: function index -> what they held and
+        #: why they stayed out.
         self._excluded_functions: Dict[int, Dict[str, Any]] = {}
+        #: Raster chunks MassLynx refuses to centroid: index -> pixels lost.
+        self._uncentroidable_functions: Dict[int, int] = {}
         self._common_mass_axis_cache: Optional[NDArray[np.float64]] = None
         self._use_centroid = use_centroid
         self._closed = False
@@ -179,9 +198,10 @@ class WatersReader(BaseMSIReader):
             logger.debug(f"Function {f}: {ft.name}")
 
         # Filter to MS functions only (skip lockmass, MRM, IMS, NOT_MS)
-        self._ms_functions = [
+        ms_functions = [
             f for f, ft in self._function_types.items() if ft == FunctionType.MS
         ]
+        self._ms_functions = ms_functions
 
         if not self._ms_functions:
             self._ml.close_file(self._handle)
@@ -196,9 +216,15 @@ class WatersReader(BaseMSIReader):
             self._ml, self._handle, self._function_types
         )
 
-        # One MS level per store: keep the MS1 functions when there are any
-        self._ms_functions = self._select_functions_by_ms_level(
-            self._ms_functions, self._imaging_grid
+        # Which functions hold the image: the raster chunks MassLynx named
+        # lockmass belong to it, the parallel functions do not. The first
+        # step also records the chunks that had to stay out, so it has to
+        # run before the second.
+        candidates = self._raster_candidates(
+            ms_functions, self._function_types, self._imaging_grid
+        )
+        self._ms_functions = self._select_converted_functions(
+            candidates, self._imaging_grid
         )
 
         # Verify the grid has more than one position (otherwise not really imaging)
@@ -218,7 +244,7 @@ class WatersReader(BaseMSIReader):
         )
 
     # ------------------------------------------------------------------
-    # MS level: which functions become the stored spectrum
+    # Which functions become the stored spectrum
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -229,6 +255,91 @@ class WatersReader(BaseMSIReader):
             for (f, _scan), info in sorted(grid.scan_map.items())
             if f == func and info.has_position
         ]
+
+    @classmethod
+    def _function_pixels(
+        cls, func: int, grid: "ImagingGrid"
+    ) -> Set[Tuple[int, int, int]]:
+        """The pixels one function's positioned scans land on."""
+        pixels = (
+            grid.get_coordinates(info) for info in cls._positioned_scans(func, grid)
+        )
+        return {c for c in pixels if c is not None}
+
+    @classmethod
+    def _comes_back_centroided(cls, func: int, grid: "ImagingGrid") -> bool:
+        """Whether MassLynx honours the centroid request for this function.
+
+        ``ScanInfo.isProfile`` is read after ``setCentroid``, so it reports
+        what ``getDataPoints`` will hand back rather than how the run was
+        acquired. It does not always agree with the request: the library's
+        centroider skips the function ``getLockmassFunction`` names, which
+        on a chunked imaging file is the last chunk of the raster.
+        """
+        scans = cls._positioned_scans(func, grid)
+        return bool(scans) and not scans[0].is_profile
+
+    def _raster_candidates(
+        self,
+        ms_functions: List[int],
+        function_types: Dict[int, FunctionType],
+        grid: "ImagingGrid",
+    ) -> List[int]:
+        """The MS functions, plus any lockmass function that extends the raster.
+
+        MassLynx names the last function of a chunked imaging file as the
+        file's lockmass function even though it is the tail of the raster.
+        A function it calls lockmass belongs to the image when it covers
+        pixels no MS function covers; a real reference function is acquired
+        alongside the image and so covers nothing new. Only ever widens a
+        file that already has an MS function, so a run with no MS function
+        at all is still refused.
+
+        The catch is that the same library will not centroid that function.
+        Rescuing it into a store of centroids would put a band of profile
+        rows across the top of the image -- measured at 3.3x the neighbouring
+        rows' TIC -- so while the run is being read as centroids it stays
+        out, and :attr:`_excluded_functions` records how many pixels that
+        costs. Reading the run as the profile trace converts the whole image.
+        """
+        covered: Set[Tuple[int, int, int]] = set()
+        for f in ms_functions:
+            covered |= self._function_pixels(f, grid)
+
+        extra, uncentroidable = [], []
+        for f, ft in sorted(function_types.items()):
+            if ft is not FunctionType.LOCKMASS:
+                continue
+            new_pixels = self._function_pixels(f, grid) - covered
+            if not new_pixels:
+                continue
+            if self._use_centroid and not self._comes_back_centroided(f, grid):
+                uncentroidable.append((f, len(new_pixels)))
+            else:
+                extra.append(f)
+
+        if uncentroidable:
+            lost = sum(n for _f, n in uncentroidable)
+            logger.warning(
+                "Function(s) %s hold %d pixels (%.1f%% of the image) that no "
+                "other function covers, but MassLynx names them the lockmass "
+                "function and will not centroid them. They stay out rather "
+                "than put profile rows in a table of centroids: pass "
+                "--waters-spectrum profile --streaming true to convert the "
+                "whole image.",
+                ", ".join(str(f) for f, _n in uncentroidable),
+                lost,
+                100.0 * lost / max(len(covered) + lost, 1),
+            )
+        if extra:
+            logger.warning(
+                "MassLynx names function(s) %s the lockmass function, but they "
+                "cover pixels no MS function covers, so they are the tail of a "
+                "raster MassLynx split across functions. Converting them too.",
+                ", ".join(str(f) for f in extra),
+            )
+        self._uncentroidable_functions = dict(uncentroidable)
+        return sorted(set(ms_functions) | set(extra))
 
     @classmethod
     def _function_ms_level(cls, func: int, grid: "ImagingGrid") -> int:
@@ -242,51 +353,95 @@ class WatersReader(BaseMSIReader):
         scans = cls._positioned_scans(func, grid)
         return max(1, int(scans[0].ms_level)) if scans else 1
 
-    def _select_functions_by_ms_level(
+    @classmethod
+    def _pixel_groups(
+        cls, ms_functions: List[int], grid: "ImagingGrid"
+    ) -> List[List[int]]:
+        """Group the functions that compete for the same pixels.
+
+        Functions in one group were acquired in parallel and only one of
+        them can be the pixel's spectrum. Separate groups tile the stage --
+        they are the chunks MassLynx makes when a raster outgrows one
+        ``_FUNC*.DAT`` file -- and every one of them is part of the image.
+        """
+        groups: List[Tuple[Set[Tuple[int, int, int]], List[int]]] = []
+        for f in ms_functions:
+            pixels = cls._function_pixels(f, grid)
+            for covered, members in groups:
+                if covered & pixels:
+                    covered |= pixels
+                    members.append(f)
+                    break
+            else:
+                groups.append((pixels, [f]))
+        return [members for _covered, members in groups]
+
+    def _select_converted_functions(
         self, ms_functions: List[int], grid: "ImagingGrid"
     ) -> List[int]:
-        """Keep the MS1 functions when the file has any, else all of them.
+        """Keep every raster chunk, and one MS level per pixel within each.
 
-        Records what was left out in :attr:`_excluded_functions` so the
-        store can say the acquisition fragmented something even though
-        the stored spectra are intact-ion spectra.
+        Chunks of one raster are all converted. Where functions do compete
+        for a pixel, the MS1 ones win when the group has any; the rest are
+        recorded in :attr:`_excluded_functions` so the store can say the
+        acquisition fragmented something even though the stored spectra are
+        intact-ion spectra.
         """
-        levels = {f: self._function_ms_level(f, grid) for f in ms_functions}
-        ms1 = [f for f in ms_functions if levels[f] == 1]
-        if not ms1 or len(ms1) == len(ms_functions):
-            self._excluded_functions = {}
-            if len(ms_functions) > 1:
-                logger.warning(
-                    "%d MS functions (%s) share one laser grid; their spectra "
-                    "are summed per pixel.",
-                    len(ms_functions),
-                    ", ".join(str(f) for f in ms_functions),
-                )
-            return list(ms_functions)
+        self._excluded_functions = {
+            f: {
+                **self._function_summary(f, grid),
+                "n_unique_pixels": n_pixels,
+                "reason": "MassLynx will not centroid this function",
+            }
+            for f, n_pixels in self._uncentroidable_functions.items()
+        }
+        kept: List[int] = []
+        for group in self._pixel_groups(ms_functions, grid):
+            kept.extend(self._select_within_group(group, grid))
+        return sorted(kept)
 
-        self._excluded_functions = {}
-        for f in ms_functions:
+    def _function_summary(self, func: int, grid: "ImagingGrid") -> Dict[str, Any]:
+        """What a function that was not converted held."""
+        precursors = self._function_precursors(func, grid)
+        return {
+            "ms_level": self._function_ms_level(func, grid),
+            "precursor_mz": (
+                precursors[0]
+                if len(precursors) == 1
+                else (precursors if precursors else None)
+            ),
+            "n_scans": len(self._positioned_scans(func, grid)),
+        }
+
+    def _select_within_group(self, group: List[int], grid: "ImagingGrid") -> List[int]:
+        """Which of a set of functions competing for one pixel set is stored."""
+        levels = {f: self._function_ms_level(f, grid) for f in group}
+        ms1 = [f for f in group if levels[f] == 1]
+        if not ms1 or len(ms1) == len(group):
+            if len(group) > 1:
+                logger.warning(
+                    "%d MS functions (%s) cover the same pixels; their spectra "
+                    "are summed per pixel.",
+                    len(group),
+                    ", ".join(str(f) for f in group),
+                )
+            return list(group)
+
+        for f in group:
             if levels[f] == 1:
                 continue
-            precursors = self._function_precursors(f, grid)
             self._excluded_functions[f] = {
-                "ms_level": levels[f],
-                "precursor_mz": (
-                    precursors[0]
-                    if len(precursors) == 1
-                    else (precursors if precursors else None)
-                ),
-                "n_scans": len(self._positioned_scans(f, grid)),
+                **self._function_summary(f, grid),
+                "reason": "covers the same pixels as an MS1 function",
             }
+        excluded = [f for f in group if levels[f] != 1]
         logger.warning(
-            "Functions %s are MS level %s and share the laser grid with the "
+            "Functions %s are MS level %s and cover the same pixels as the "
             "MS1 function(s) %s. Only the MS1 spectra are converted; the "
             "others are recorded in the Waters metadata block as "
             "'excluded_functions'.",
-            ", ".join(str(f) for f in self._excluded_functions),
-            "/".join(
-                sorted({str(v["ms_level"]) for v in self._excluded_functions.values()})
-            ),
+            ", ".join(str(f) for f in excluded),
+            "/".join(sorted({str(levels[f]) for f in excluded})),
             ", ".join(str(f) for f in ms1),
         )
         return ms1
@@ -304,32 +459,38 @@ class WatersReader(BaseMSIReader):
     def get_fragmentation(self) -> Optional[FragmentationSchedule]:
         """What the stored spectra are: MS1, or the fragment spectra of what.
 
-        MS level 1 whenever an MS1 function was converted, including the
-        MSe and data-dependent files whose MS/MS functions were left out
-        (those are in the Waters metadata block, not here, because this
-        describes the spectra in the store). When the file holds MS/MS
-        functions only, the schedule is their precursors: one isolation
-        window per function whose precursor is constant, and
-        ``constant_across_pixels`` false as soon as any function's
-        precursor changes from scan to scan.
+        A converted function holds fragment spectra when MassLynx reports a
+        precursor m/z for it. The reported MS level alone is not evidence:
+        on every real multi-function imaging file measured, the chunks of
+        one raster come back as level 1, then 2, then 0, with no precursor
+        anywhere (see the D7 entry of the decisions page). So an MSe or
+        data-dependent file, whose MS/MS functions were left out, reads as
+        MS1 here -- what they were is in the Waters metadata block, since
+        this describes the spectra in the store -- and so does a chunked
+        MS1 raster. A file whose converted functions do carry precursors
+        reports them: one isolation window per distinct precursor, and
+        ``constant_across_pixels`` false as soon as a function's precursor
+        changes from scan to scan.
         """
         _ml, _handle, grid, _types, ms_functions = self._require_initialized()
-        levels = {f: self._function_ms_level(f, grid) for f in ms_functions}
-        top = max(levels.values(), default=1)
-        if top <= 1:
+        precursors = {f: self._function_precursors(f, grid) for f in ms_functions}
+        fragment_functions = [f for f in ms_functions if precursors[f]]
+        if not fragment_functions:
             return FragmentationSchedule(ms_level=1, source=FRAGMENTATION_SOURCE)
 
-        windows: List[IsolationWindow] = []
+        windows: Dict[float, IsolationWindow] = {}
         constant = True
-        for f in ms_functions:
-            precursors = self._function_precursors(f, grid)
-            if len(precursors) != 1:
+        for f in fragment_functions:
+            if len(precursors[f]) != 1:
                 constant = False
                 continue
-            windows.append(self._isolation_window(f, precursors[0], grid))
+            target = precursors[f][0]
+            windows.setdefault(target, self._isolation_window(f, target, grid))
         return FragmentationSchedule(
-            ms_level=top,
-            windows=tuple(windows),
+            ms_level=max(
+                [2] + [self._function_ms_level(f, grid) for f in fragment_functions]
+            ),
+            windows=tuple(windows[target] for target in sorted(windows)),
             constant_across_pixels=constant,
             dissociation_accession=(
                 COLLISION_INDUCED_DISSOCIATION_ACCESSION if windows else None

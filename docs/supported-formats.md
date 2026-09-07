@@ -213,9 +213,9 @@ position log supplies the pixel grid. No SDK required.
 
 A `.raw` **directory** of `_FUNC*.DAT` files, read through the MassLynxRaw and
 MLReader native libraries (bundled for Windows and Linux). The pixel grid is
-reconstructed from the laser X/Y position recorded on each scan, and only MS
-functions are converted -- lockmass, MRM and ion-mobility functions are
-classified and skipped.
+reconstructed from the laser X/Y position recorded on each scan; MRM and
+ion-mobility functions are classified and skipped, and which of the rest hold
+the image is decided from those same positions (below).
 
 ### Which representation is read
 
@@ -282,15 +282,60 @@ at the cost of an axis that differs from run to run.
 (`profile spectrum` or `centroid spectrum`), `format_specific.spectrum_source`
 says which MassLynx representation it came from, and `format_specific.is_mrt`
 with `instrument_decided_by` record the instrument decision.
-**One MS level per store.** Every MS function shares the one laser grid, so
-a two-function acquisition (MSe low and high energy, or a data-dependent
-run) records an MS1 and an MS/MS spectrum at the same pixel. Thyra converts
-the MS1 function(s) only and lists the others, with their MS level and
-precursor m/z, under `excluded_functions` in the Waters-specific metadata
-block; summing an intact-ion and a fragment spectrum into one pixel would
-make a spectrum of nothing. A file with MS/MS functions only converts them
-and reports their precursors through `ms_analysis.fragmentation`, exactly as
-a Bruker MS/MS acquisition does (see [Design Decisions](design-decisions.md#d7-waters-the-summed-table-takes-ms-level-1-only)).
+### Which functions hold the image
+
+A Waters *function* is not necessarily one acquisition function. MassLynx
+caps a `_FUNC*.DAT` file at about 1.6 GB and opens a **new function** when a
+long imaging run reaches it, so one raster commonly arrives as several
+functions that tile the stage. It reports MS level 1 for the first of them,
+2 for the middle ones and 0 for the last, and `getLockmassFunction` names
+that last one as the file's lockmass function -- none of which is true. Nine
+real imaging runs from two instruments and five users were checked and every
+multi-function one was a chunked single-function raster; see the
+[D7 entry](design-decisions.md#d7-waters-which-functions-hold-the-image).
+
+Thyra therefore decides from the laser positions, the same measurement the
+pixel grid is built from:
+
+- A function landing on pixels no earlier function covers **extends the
+  raster** and is converted, whatever level MassLynx reports and whether or
+  not MassLynx calls it the lockmass function.
+- Functions **competing for the same pixels** were acquired in parallel:
+  MSe low and high energy, a data-dependent run, a co-acquired lockmass
+  reference. Only one of them can be the pixel's spectrum, and summing an
+  intact-ion and a fragment spectrum into one pixel would make a spectrum of
+  nothing, so the MS1 ones win where the file has any. The rest are listed,
+  with their MS level and precursor m/z, under `excluded_functions` in the
+  Waters-specific metadata block.
+
+`format_specific.function_types` keeps MassLynx's own classification next to
+`format_specific.ms_functions`, so a rescued chunk is visible in the store.
+
+**One catch.** The library will not centroid the function it names the
+lockmass function -- the request is honoured for every other function and
+ignored for that one, which returns its profile trace either way. Putting it
+into a store of centroids would lay a band of profile rows across the top of
+the image at about 3x the neighbouring TIC, so while a run is read as
+centroids that chunk stays out, and `excluded_functions` records its scan
+count, the pixels it would have added and the reason. `--waters-spectrum
+profile` converts every chunk, because then they all come back the same way.
+The log names the cost and the flags:
+
+```
+Function(s) 2 hold 1274 pixels (16.6% of the image) that no other function
+covers, but MassLynx names them the lockmass function and will not centroid
+them. They stay out rather than put profile rows in a table of centroids:
+pass --waters-spectrum profile --streaming true to convert the whole image.
+```
+
+Pass `--streaming true` with it: the profile store for that run is estimated
+at 74 GB against 241 MB for the centroid one, and `--streaming auto` does not
+notice, so the conversion otherwise runs out of memory.
+
+A file whose converted functions carry a precursor m/z holds fragment
+spectra and reports them through `ms_analysis.fragmentation`, exactly as a
+Bruker MS/MS acquisition does. A reported MS level with no precursor behind
+it does not: that is the chunk artefact above.
 
 ## PHI SmartSoft-TOF (ToF-SIMS)
 
