@@ -1,13 +1,17 @@
 """Common axis builder for creating unified mass axes."""
 
+from typing import Dict, Optional, Tuple
+
 import numpy as np
 
 from .mass_axis import (
+    BaseAxisGenerator,
     FTICRAxisGenerator,
     LinearAxisGenerator,
     LinearTOFAxisGenerator,
     OrbitrapAxisGenerator,
     ReflectorTOFAxisGenerator,
+    TOFAxisGenerator,
 )
 from .types import AxisType, MassAxis
 
@@ -55,6 +59,7 @@ class CommonAxisBuilder:
         axis_type: AxisType,
         reference_mz: float = 500.0,
         reference_width: float = 0.1,
+        tof_law: Optional[Tuple[float, float]] = None,
     ) -> MassAxis:
         """Create physics-based mass axis for specific analyzer types.
 
@@ -72,6 +77,9 @@ class CommonAxisBuilder:
             Reference m/z for width specification (default: 500.0)
         reference_width : float
             Mass width at reference m/z (default: 0.1)
+        tof_law : Optional[Tuple[float, float]]
+            ``(A, B)`` of the two-term width law; required for
+            ``AxisType.TOF`` and ignored otherwise.
 
         Returns
         -------
@@ -81,20 +89,25 @@ class CommonAxisBuilder:
         Raises
         ------
         ValueError
-            If axis_type is not supported
+            If axis_type is not supported, or is ``TOF`` without a law
         """
-        generator_map = {
-            AxisType.CONSTANT: LinearAxisGenerator(),
-            AxisType.LINEAR_TOF: LinearTOFAxisGenerator(),
-            AxisType.REFLECTOR_TOF: ReflectorTOFAxisGenerator(),
-            AxisType.ORBITRAP: OrbitrapAxisGenerator(),
-            AxisType.FTICR: FTICRAxisGenerator(),
-        }
+        if axis_type is AxisType.TOF:
+            if tof_law is None:
+                raise ValueError("AxisType.TOF needs tof_law=(A, B)")
+            generator: BaseAxisGenerator = TOFAxisGenerator(*tof_law)
+        else:
+            generator_map: Dict[AxisType, BaseAxisGenerator] = {
+                AxisType.CONSTANT: LinearAxisGenerator(),
+                AxisType.LINEAR_TOF: LinearTOFAxisGenerator(),
+                AxisType.REFLECTOR_TOF: ReflectorTOFAxisGenerator(),
+                AxisType.ORBITRAP: OrbitrapAxisGenerator(),
+                AxisType.FTICR: FTICRAxisGenerator(),
+            }
 
-        if axis_type not in generator_map:
-            raise ValueError(f"Unsupported axis type: {axis_type}")
+            if axis_type not in generator_map:
+                raise ValueError(f"Unsupported axis type: {axis_type}")
 
-        generator = generator_map[axis_type]
+            generator = generator_map[axis_type]
 
         return generator.generate_axis(
             min_mz, max_mz, num_bins, reference_mz, reference_width

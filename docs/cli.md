@@ -178,7 +178,10 @@ chooses an appropriate method and bin count.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--resample-method METHOD` | `auto` | `auto`, `nearest_neighbor`, or `tic_preserving` |
-| `--mass-axis-type TYPE` | `auto` | `auto`, `constant`, `linear_tof`, `reflector_tof`, `orbitrap`, `fticr` |
+| `--mass-axis-type TYPE` | `auto` | `auto`, `constant`, `linear_tof`, `reflector_tof`, `tof`, `orbitrap`, `fticr` |
+| `--tof-a FLOAT` | auto | `A` of the `tof` width law `sqrt(A m + B m^2)` mDa, in mDa<sup>2</sup>/Da; with `--tof-b`. Omitted, the detected instrument's pair applies (MRT centroid, timsTOF) |
+| `--tof-b FLOAT` | auto | `B` of the `tof` width law, dimensionless |
+| `--bins-per-fwhm FLOAT` | 3 | `tof` only: bins per peak width; mutually exclusive with `--resample-width-at-mz` |
 | `--resample-bins INTEGER` | auto | Number of bins (mutually exclusive with `--resample-width-at-mz`) |
 | `--resample-min-mz FLOAT` | auto | Minimum m/z value |
 | `--resample-max-mz FLOAT` | auto | Maximum m/z value |
@@ -359,14 +362,19 @@ This option only applies when converting Waters `.raw` directories.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--waters-spectrum {centroid,profile}` | `centroid` | What MassLynx hands back for one pixel: the vendor peak picker, or the sampled trace behind it |
+| `--waters-spectrum {centroid,profile}` | `profile` on a SELECT SERIES MRT, `centroid` on every other Waters instrument | What MassLynx hands back for one pixel: the vendor peak picker, or the sampled trace behind it |
 
 ### Examples
 
 ```bash
-# Keep near-isobars the vendor centroider merges
-thyra data.raw output.zarr --waters-spectrum profile \
-    --resample-width-at-mz 0.001 --resample-reference-mz 1000
+# An MRT run: the profile trace on a linear_tof axis at 1.3 mDa, no flags needed
+thyra mrt_run.raw output.zarr
+
+# The same run through the vendor peak picker instead (reflector_tof, 2 mDa)
+thyra mrt_run.raw output.zarr --waters-spectrum centroid
+
+# A Synapt run's profile trace; the bin width follows its own digitiser
+thyra synapt_run.raw output.zarr --waters-spectrum profile
 ```
 
 !!! note "When the profile is worth its size"
@@ -376,9 +384,11 @@ thyra data.raw output.zarr --waters-spectrum profile \
     m/z 760 and 830 -- including the <sup>13</sup>C<sub>2</sub> isotopologue of
     PC 34:1 [M+K]<sup>+</sup> against PC 34:0 [M+K]<sup>+</sup> -- came back as
     one centroid in 96-100% of the pixels that resolved them, 4-8 ppm from
-    either true mass. `--waters-spectrum profile` keeps them apart, for about
-    3.5 times the stored non-zeros and 2.3 times the store. It is not slower:
-    MassLynx centroids on demand, so a profile read skips that work.
+    either true mass. The profile keeps them apart, for about 3 times the
+    store, and is not slower: MassLynx centroids on demand, so a profile read
+    skips that work. On a Synapt G2-Si the centroider was found to merge
+    nothing the profile resolves, which is why only the MRT defaults to it;
+    see [Supported Formats](supported-formats.md#waters-masslynx).
 
 ---
 

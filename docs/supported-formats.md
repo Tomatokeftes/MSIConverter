@@ -210,6 +210,72 @@ reconstructed from the laser X/Y position recorded on each scan, and only MS
 functions are converted -- lockmass, MRM and ion-mobility functions are
 classified and skipped.
 
+### Which representation is read
+
+MassLynx can hand back either of two things for a profile-acquired pixel: the
+**vendor centroid** list, computed on demand by its peak picker, or the
+**profile trace** behind it -- the digitiser's samples, zero-suppressed to the
+clusters around each peak. Thyra reads `_extern.inf` and `_header.txt` to
+decide which one is the default, and logs the field it decided on:
+
+| Instrument | Identified by | Default | Method | Axis | Default width |
+|---|---|---|---|---|---|
+| SELECT SERIES MRT | `OpticMode = MRT`, or `$$ Instrument: MRT#`, or `Resolution` above 100,000 | **profile trace** | `tic_preserving` | `linear_tof` | 1.3 mDa at m/z 1000 |
+| SELECT SERIES MRT, `--waters-spectrum centroid` | as above | vendor centroid | `nearest_neighbor` | `tof` (measured width law, see [Resampling](resampling.md#the-two-term-tof-law)) | 3 bins per peak width |
+| every other Waters instrument | none of the above | vendor centroid | `nearest_neighbor` | `reflector_tof` | 2 mDa at m/z 1000 |
+
+`--waters-spectrum centroid|profile` overrides the default in either
+direction. A run that is not an MRT but is asked for its profile gets the
+profile treatment with a bin width taken from its own digitiser: 1.14 times
+the sample spacing predicted from `Lteff`, `Veff` and the ADC clock in
+`_extern.inf` (15.8 mDa on a Synapt G2-Si), so the store is not oversampled.
+
+**Why the MRT defaults to the profile.** Its multi-reflecting flight path
+gives a measured resolving power of 130,000 at m/z 300 rising to 190,000 at
+m/z 1000 (median 168,000), and at that resolution the vendor peak picker, not
+the analyser, is what limits the data. On a 13,398-pixel MALDI brain section,
+four separate 8-9 mDa doublets between m/z 760 and 830 -- including the
+<sup>13</sup>C<sub>2</sub> isotopologue of PC 34:1 [M+K]<sup>+</sup> at
+800.5477 against PC 34:0 [M+K]<sup>+</sup> at 800.5566 -- were resolved as two
+maxima in the profile in 19,227 pixels between them. The vendor returned
+**exactly one** centroid in 96-100% of those pixels, never two, landing 4-8 ppm
+from either true mass. No centroid-side setting recovers that: a finer axis
+just places the merged centroid more precisely.
+
+**Why the others do not.** The same test on a Synapt G2-Si MALDI imaging run
+(7,007 pixels, resolving power about 26,000) found the vendor centroider
+merging **none** of the pairs its profile resolves: it reported three or more
+peaks in 99.4-99.7% of the pixels where the profile showed two. At that
+resolving power the analyser is the limit and the peak picker keeps everything
+the trace has, so the profile would cost 2-3x the store for nothing. Both
+instruments sample the trace on the same `sqrt(m/z)` grid (measured
+`(m/z)^0.494` on the MRT, `(m/z)^0.498` on the Synapt), which is why the
+profile route uses `linear_tof` whichever instrument it is asked for on.
+
+**What the profile default costs.** On the reference run (13,398 pixels) the
+store is 289 MB against 52 MB for the centroid default, and it converts in
+15 s against 96 s, because MassLynx centroids on demand and a profile read
+skips that work. Two things make the profile store that size: it holds 4.5x
+the non-zeros (31.3M against 6.9M), and interpolated values are not the
+integer ADC counts the raw samples are, so they compress about half as well
+-- nearest-neighbour binning of the same trace onto the same axis gives
+138 MB. The profile is stored on a fixed, generated
+axis at about 1.14 times the digitiser's own sample spacing (1.3 mDa at m/z
+1000 against 1.14 mDa per sample), so every MRT run with the same acquisition
+mass range lands on the same bins -- the axis is built over the acquisition
+setting, not the span of stored values, exactly as the timsTOF route does.
+The accepted loss is one bin of smoothing: intensity is interpolated between
+samples, so a peak apex in the stored mean spectrum sits within about 2 ppm of
+the raw apex before any peak picking, and a centroider run on the stored
+profile recovers it. The raw digitiser grid itself is still available with
+`--no-resample`, where binning is the identity and the apex error is zero,
+at the cost of an axis that differs from run to run.
+
+`uns["essential_metadata"]["spectrum_type"]` records what was stored
+(`profile spectrum` or `centroid spectrum`), `format_specific.spectrum_source`
+says which MassLynx representation it came from, and `format_specific.is_mrt`
+with `instrument_decided_by` record the instrument decision.
+
 ## PHI SmartSoft-TOF (ToF-SIMS)
 
 A single `.raw` **file** from PHI (Physical Electronics) nanoTOF instruments.

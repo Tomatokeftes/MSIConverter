@@ -41,6 +41,7 @@ class TestRecognisedValues:
             ("constant", AxisType.CONSTANT),
             ("linear_tof", AxisType.LINEAR_TOF),
             ("reflector_tof", AxisType.REFLECTOR_TOF),
+            ("tof", AxisType.TOF),
             ("orbitrap", AxisType.ORBITRAP),
             ("fticr", AxisType.FTICR),
         ],
@@ -106,7 +107,7 @@ class TestUnrecognisedValues:
             "fticr ",
             "FTICR",
             "ft-icr",
-            "tof",
+            "TOF",
             "unknown",  # enum member exists but has no axis generator
             "typo",
         ],

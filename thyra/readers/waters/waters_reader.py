@@ -20,6 +20,7 @@ from ...core.base_reader import BaseMSIReader
 from ...core.registry import register_reader
 from ...metadata.extractors.waters_extractor import WatersMetadataExtractor
 from .imaging_grid import ImagingGrid, build_imaging_grid
+from .instrument import WatersInstrument, identify_waters_instrument
 from .masslynx_lib import FunctionType, MassLynxLib
 
 logger = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ class WatersReader(BaseMSIReader):
     def __init__(
         self,
         data_path: Path,
-        use_centroid: bool = True,
+        use_centroid: Optional[bool] = None,
         intensity_threshold: Optional[float] = None,
         **kwargs,
     ) -> None:
@@ -52,7 +53,11 @@ class WatersReader(BaseMSIReader):
         Args:
             data_path: Path to the Waters .raw directory.
             use_centroid: If True, request vendor centroiding from the DLL.
-                If False, read profile/raw data.
+                If False, read the profile trace. ``None`` (the default)
+                decides from the instrument: the profile trace on a SELECT
+                SERIES MRT, whose vendor peak picker merges near-isobars the
+                trace resolves, and the vendor centroid on every other
+                Waters instrument. See :mod:`thyra.readers.waters.instrument`.
             intensity_threshold: Minimum intensity value to include.
             **kwargs: Additional arguments passed to BaseMSIReader.
         """
@@ -60,6 +65,27 @@ class WatersReader(BaseMSIReader):
 
         # Validate the .raw directory structure
         self._validate_raw_directory()
+
+        # Which analyser wrote the run decides the default representation.
+        # Read from the side files, so it costs no native-library call and
+        # is known before the handle is opened.
+        self._instrument: WatersInstrument = identify_waters_instrument(self.data_path)
+        if use_centroid is None:
+            use_centroid = not self._instrument.is_mrt
+            logger.info(
+                "%s: reading the %s by default (%s; pass --waters-spectrum "
+                "to override)",
+                self.data_path.name,
+                "vendor centroid" if use_centroid else "profile trace",
+                self._instrument.decided_by,
+            )
+        else:
+            logger.info(
+                "%s: reading the %s as requested (%s)",
+                self.data_path.name,
+                "vendor centroid" if use_centroid else "profile trace",
+                self._instrument.name,
+            )
 
         # Lazy initialization fields
         self._ml: Optional[MassLynxLib] = None
@@ -197,6 +223,16 @@ class WatersReader(BaseMSIReader):
         """Waters MSI data is typically processed/centroided with varying m/z per pixel."""
         return False
 
+    @property
+    def instrument(self) -> WatersInstrument:
+        """What the run's own metadata says about the analyser."""
+        return self._instrument
+
+    @property
+    def use_centroid(self) -> bool:
+        """Whether spectra come from the vendor peak picker (else the profile trace)."""
+        return self._use_centroid
+
     def _create_metadata_extractor(self) -> MetadataExtractor:
         """Create Waters metadata extractor."""
         ml, handle, imaging_grid, function_types, ms_functions = (
@@ -209,6 +245,8 @@ class WatersReader(BaseMSIReader):
             imaging_grid=imaging_grid,
             function_types=function_types,
             ms_functions=ms_functions,
+            instrument=self._instrument,
+            use_centroid=self._use_centroid,
         )
 
     def get_common_mass_axis(self) -> NDArray[np.float64]:

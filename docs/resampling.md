@@ -107,7 +107,9 @@ catch-all default. This table is the actual observed behaviour of that chain:
 | solariX `.d` (native, peaks.sqlite) | FT-ICR | `nearest_neighbor` | `fticr` |
 | imzML declaring an Orbitrap analyzer or model | Orbitrap | `nearest_neighbor` | `orbitrap` |
 | PHI SmartSoft-TOF `.raw` | PHI SmartSoft-TOF (ToF-SIMS) | `nearest_neighbor` | `linear_tof` |
-| Waters MassLynx `.raw`, any representation | Waters MassLynx | `nearest_neighbor` | `reflector_tof` |
+| Waters MassLynx `.raw`, profile trace (the SELECT SERIES MRT default) | Waters MassLynx (profile trace) | `tic_preserving` | `linear_tof` |
+| Waters MassLynx `.raw`, SELECT SERIES MRT vendor centroid | Waters SELECT SERIES MRT (vendor centroid) | `nearest_neighbor` | `tof` |
+| Waters MassLynx `.raw`, vendor centroid or undeclared, other instruments | Waters MassLynx | `nearest_neighbor` | `reflector_tof` |
 | unknown vendor, profile (any density) | Unknown (default) | `nearest_neighbor` | `constant` |
 | unknown, centroid | ImzML Centroid | `nearest_neighbor` | `reflector_tof` |
 | no usable metadata | Unknown (default) | `nearest_neighbor` | `constant` |
@@ -128,9 +130,13 @@ catch-all default. This table is the actual observed behaviour of that chain:
 !!! info "`tic_preserving` is gated on the source and target axis laws matching"
     A detector may only ask for `tic_preserving` if it knows the spacing law
     of the grid the spectra *arrive* on, and that law is the one it is asking
-    the target axis to use. Only the Rapiflex route qualifies:
-    `RapiflexReader` lays every spectrum out with `np.linspace`, so the source
-    is uniform in m/z, and the axis it requests is `constant` -- the same law.
+    the target axis to use. Two routes qualify. `RapiflexReader` lays every
+    spectrum out with `np.linspace`, so the source is uniform in m/z, and the
+    axis it requests is `constant` -- the same law. The Waters profile trace
+    is the digitiser's own record, sampled at a fixed clock rate and so
+    spaced as `sqrt(m/z)` (measured `(m/z)^0.494` on a SELECT SERIES MRT and
+    `(m/z)^0.498` on a Synapt G2-Si), and the axis it requests is
+    `linear_tof` -- again the same law.
 
     Anything else is refused and gets `nearest_neighbor` instead, with a log
     line saying so. This is the rule SCiLS Lab applies: TIC-preserving
@@ -183,10 +189,11 @@ catch-all default. This table is the actual observed behaviour of that chain:
     `fticr`.
 
     Auto-selection cannot produce these pairings. `tic_preserving` is only
-    ever chosen alongside `constant`, and only on a source grid that is
-    itself uniform in m/z, which is what makes it exact; the detector chain
-    enforces that. You have to ask for the combination with two explicit
-    flags, and Thyra takes you at your word.
+    ever chosen alongside an axis whose law the source grid itself follows --
+    `constant` for the Rapiflex, `linear_tof` for the Waters profile trace --
+    which is what makes it exact; the detector chain enforces that. You have
+    to ask for a mismatched combination with two explicit flags, and Thyra
+    takes you at your word.
 
     If you want a non-uniform axis, use `nearest_neighbor`, which moves each
     peak into a single bin and is unaffected by bin width.
@@ -286,6 +293,7 @@ power instead of over-sampling the low end and under-sampling the high end.
 | `constant` | Constant (equidistant) | constant Da | Equidistant bins |
 | `linear_tof` | **Axial TOF** | `sqrt(m/z)` | Linear TOF: flight time `t ∝ sqrt(m/z)`, so equal time bins give `sqrt(m/z)` mass bins |
 | `reflector_tof` | **Orthogonal TOF** | `m/z` | Constant *relative* resolution `R = m/Δm`; bins are uniform in `ln(m/z)` |
+| `tof` | -- | `sqrt(A m + B m^2)` | A measured TOF peak width; `linear_tof` and `reflector_tof` are its two limits. See [The two-term TOF law](#the-two-term-tof-law) |
 | `orbitrap` | Orbitrap | `m/z^1.5` | Orbitrap frequency `f ∝ 1/sqrt(m/z)`, so equal frequency bins give `m/z^1.5` mass bins |
 | `fticr` | **MRMS** (Fourier-transform) | `m/z^2` | Cyclotron frequency `f ∝ 1/(m/z)`, so equal frequency bins give `m/z^2` mass bins |
 
@@ -299,6 +307,63 @@ FT-ICR type is now called MRMS. The laws are unchanged; only the labels moved.
 resolution means constant relative mass accuracy across the whole range, which
 is what most MS workflows assume.
 
+### The two-term TOF law
+
+A time-of-flight peak's width in flight time has a constant part (detector
+and digitiser response, pusher timing) and a part proportional to the flight
+time (energy spread, turnaround time), added in quadrature. In m/z:
+
+```
+FWHM(m) = sqrt(A * m + B * m^2)        m in Da, FWHM in mDa
+```
+
+`A` is in mDa<sup>2</sup>/Da and `B` is dimensionless. `linear_tof` is the
+`B = 0` limit (width grows as `sqrt(m)`), `reflector_tof` the `A = 0` limit
+(width grows as `m`, constant ppm, with `1/sqrt(B)` the resolving power). Real
+instruments sit between, and where they sit is measurable from a few hundred
+isolated peaks by least squares on `FWHM^2 = A m + B m^2`:
+
+| Instrument | `A` | `B` | `1/sqrt(B)` | Fitted from |
+|---|---|---|---|---|
+| SELECT SERIES MRT | 0.0185 | 9.1e-6 | 331,000 | 229 peaks, m/z 300-1000 (R<sup>2</sup> 0.36 on FWHM<sup>2</sup>: the peaks scatter, the trend does not) |
+| timsTOF fleX | 0.0877 | 8.74e-4 | 34,000 | 180 peaks, m/z 300-1000 (R<sup>2</sup> 0.89) |
+
+The MRT pair reproduces the measured 2.97 / 3.79 / 4.54 mDa at m/z 400 / 600 /
+800; a log-log fit of the same peaks gives an exponent of 0.67, between the
+0.5 and 1.0 the two single-term laws allow, which is why neither of them fits
+an MRT centroid list exactly. The timsTOF pair is within 10% of the
+`reflector_tof` shape over m/z 400-1000 (7% at 400, 3% at 600; the constant
+term shows below that and the gap reaches 10% at m/z 300), so nothing changes
+for timsTOF by default and the pair is opt-in.
+
+The axis lays bins at `FWHM(m) / k` for `k` bins per peak width (default 3).
+The cumulative bin count has a closed form, `(2/sqrt(B)) asinh(sqrt(B m / A))`,
+so the axis is a uniform grid in that variable and the count is exact.
+
+```bash
+# An MRT centroid conversion: this is the default, spelled out
+thyra mrt_run.raw out.zarr --waters-spectrum centroid \
+    --mass-axis-type tof --tof-a 0.0185 --tof-b 9.1e-6 --bins-per-fwhm 3
+
+# A timsTOF opting in to its measured pair (the default stays reflector_tof)
+thyra run.d out.zarr --mass-axis-type tof
+```
+
+`--mass-axis-type tof` without `--tof-a`/`--tof-b` takes the pair the detected
+instrument declares (MRT centroid, timsTOF) and is an error elsewhere.
+`--resample-width-at-mz` at `--resample-reference-mz` is accepted in place of
+`--bins-per-fwhm`: `k` is derived so that the bin at the reference m/z has
+that width, so the two parameterisations are interchangeable.
+
+**Centroid axes follow peak width; profile axes follow the sample grid.** The
+law describes how wide a peak is, which is what the bins of a *centroid* list
+should track. A *profile* trace is a set of samples on the digitiser's own
+grid, and its bins should track that grid instead -- the Waters profile
+default uses `linear_tof` because that is how its samples are spaced (see
+[Supported Formats](supported-formats.md#waters-masslynx)), not because of how
+wide its peaks are. The two-term law is never applied to profile data, nor to
+FT-ICR or Orbitrap data, whose widths are not time-of-flight quantities.
+
 ---
 
 ## Bin count
@@ -307,12 +372,27 @@ You can set the bin count directly, or specify a target bin **width at a
 reference m/z** and let Thyra derive the count from the axis physics. The two
 are mutually exclusive.
 
-When you specify neither, these defaults apply:
+When you specify neither, the detected instrument may declare a width; failing
+that, the axis type's default applies:
 
-| Axis type | Default width | At reference m/z |
+| Source | Default width | At reference m/z |
 |---|---|---|
-| `linear_tof` | 17 mDa | 300 |
-| everything else | 5 mDa | 1000 |
+| Waters SELECT SERIES MRT vendor centroid | `tof` law at 3 bins per FWHM (1.75 mDa) | 1000 |
+| Waters vendor centroid, other instruments | 2 mDa | 1000 |
+| Waters SELECT SERIES MRT profile trace | 1.3 mDa | 1000 |
+| Waters profile trace, other instruments | 1.14 x the run's predicted sample spacing | 1000 |
+| any other source, `linear_tof` | 17 mDa | 300 |
+| any other source, everything else | 5 mDa | 1000 |
+
+The Waters figures are measured, not conventional. 2 mDa is the coarsest
+centroid setting that clears two bins per measured peak width at m/z 800 on an
+MRT (2.8 bins per FWHM of 4.48 mDa; the earlier 5 mDa gave 1.1). 1.3 mDa is
+about 1.14 times the MRT digitiser's sample spacing at m/z 1000, pinned rather
+than derived so every MRT run with the same mass range shares one axis; see
+[Supported Formats](supported-formats.md#waters-masslynx). An instrument's
+width applies only on the fully automatic path -- set `--mass-axis-type` and
+the width defaults revert to the axis type's, since a width tuned for one law
+is not a sensible default for another.
 
 The 17 mDa / m/z 300 pairing for `linear_tof` was chosen to be close to the
 axis SCiLS Lab produces for FlexImaging data. Treat it as a working default
@@ -359,14 +439,20 @@ non-zero count does not depend on the bin width at all and only the index
 arrays lengthen: the tutorial store comes out at roughly 31 MB, and going from
 4,000 bins to 190,000 costs about +0.8% on disk.
 
-!!! warning "That only holds for `nearest_neighbor`"
-    `tic_preserving` interpolates, so it populates essentially every bin. The
-    matrix comes out 99.998% dense and the store becomes
-    `n_pixels x target_bins x ~7.5 bytes` -- independent of how sparse the
-    source was. Measured on this same 4,000-point source: at 190,000 bins it
-    costs 1.44 MB per pixel, so 400 pixels take 574 MB against 6.93 MB at
+!!! warning "That only holds for `nearest_neighbor`, and for zero-suppressed profiles"
+    `tic_preserving` interpolates, so on a continuous profile it populates
+    essentially every bin. The matrix comes out 99.998% dense and the store
+    becomes `n_pixels x target_bins x ~7.5 bytes` -- independent of how sparse
+    the source was. Measured on this same 4,000-point source: at 190,000 bins
+    it costs 1.44 MB per pixel, so 400 pixels take 574 MB against 6.93 MB at
     4,000 bins, an 82.9x blowup, and the 1,728-pixel tutorial dataset would
     take roughly 2.5 GB.
+
+    The exception is a source that stores explicit zeros around its peaks and
+    nothing in between, like the Waters profile trace. Interpolation between
+    two zeros is zero, so only the bins under the stored clusters are
+    populated -- and only those are evaluated, which is what keeps the MRT
+    default's conversion time in line with nearest-neighbour binning.
 
     On that path the default bin count is a decision rather than a detail.
 

@@ -41,6 +41,11 @@ class AxisType(Enum):
         LINEAR_TOF: Linear TOF -- spacing proportional to
             ``sqrt(m/z)``.
         REFLECTOR_TOF: Reflector TOF -- spacing proportional to ``m/z``.
+        TOF: General time-of-flight -- spacing proportional to a measured
+            peak width ``sqrt(A m + B m^2)``, of which ``LINEAR_TOF``
+            (``B = 0``) and ``REFLECTOR_TOF`` (``A = 0``) are the limits.
+            Needs the two coefficients; see
+            :mod:`thyra.resampling.mass_axis.tof_generator`.
         ORBITRAP: Orbitrap -- spacing proportional to ``m/z^(3/2)``.
         FTICR: FTICR -- spacing proportional to ``m/z^2``.
         UNKNOWN: Unknown analyser; falls back to constant spacing.
@@ -49,6 +54,7 @@ class AxisType(Enum):
     CONSTANT = "constant"
     LINEAR_TOF = "linear_tof"
     REFLECTOR_TOF = "reflector_tof"
+    TOF = "tof"
     ORBITRAP = "orbitrap"
     FTICR = "fticr"
     UNKNOWN = "unknown"
@@ -116,6 +122,13 @@ class ResamplingConfig:
             straight lines are drawn across regions where nothing was
             measured.  Only affects ``tic_preserving``; ``nearest_neighbor``
             never invents a bin.  See :mod:`thyra.resampling.gaps`.
+        tof_a: ``A`` of the two-term TOF width law ``FWHM(m) = sqrt(A m +
+            B m^2)`` (mDa^2/Da), for ``AxisType.TOF``.  ``None`` takes the
+            pair the detected instrument declares, if any.
+        tof_b: ``B`` of the same law (dimensionless).
+        bins_per_fwhm: Bins per peak width for ``AxisType.TOF``.  ``None``
+            means 3, or -- when ``mass_width_da`` is set -- whatever puts
+            a bin of that width at ``reference_mz``.
     """
 
     method: Optional[ResamplingMethod] = None
@@ -126,3 +139,6 @@ class ResamplingConfig:
     min_mz: Optional[float] = None
     max_mz: Optional[float] = None
     gap_tolerance_da: Optional[float] = None
+    tof_a: Optional[float] = None
+    tof_b: Optional[float] = None
+    bins_per_fwhm: Optional[float] = None

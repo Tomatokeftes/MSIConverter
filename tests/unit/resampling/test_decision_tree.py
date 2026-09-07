@@ -18,6 +18,7 @@ from thyra.resampling.instrument_detectors import (
     RapiflexDetector,
     TimsTOFDetector,
     WatersDetector,
+    WatersProfileDetector,
 )
 from thyra.resampling.types import AxisType, ResamplingMethod
 
@@ -186,6 +187,8 @@ class TestInstrumentDetectorChain:
             "FTICRDetector",
             "OrbitrapDetector",
             "PhiToFSIMSDetector",
+            "WatersProfileDetector",
+            "WatersMRTCentroidDetector",
             "WatersDetector",
             "CentroidImzMLDetector",
             "DefaultDetector",
@@ -317,18 +320,23 @@ class TestWatersDetector:
         )
 
     def test_does_not_declare_a_source_grid_law(self):
-        """MassLynx lays out the stored grid, not Thyra; no law is claimed.
+        """A centroid list has no grid; the trace's law lives on the profile detector.
 
-        Declaring one untested would open ``_gate_tic_preserving`` on data
-        whose grid Thyra has not actually identified.
+        Declaring one here would open ``_gate_tic_preserving`` on peak
+        lists, which have nothing to interpolate between.
         """
         assert self.detector.source_grid_law is None
 
-    @pytest.mark.parametrize(
-        "spectrum_type", [SpectrumType.PROFILE, SpectrumType.CENTROID, None]
-    )
-    def test_chain_answers_the_same_for_any_representation(self, spectrum_type):
-        """Profile, centroid, or undeclared: the pair is the instrument's."""
+    def test_centroid_width_is_two_mda(self):
+        """5 mDa gave 1.1 bins per FWHM at m/z 800 on the MRT; 2 mDa gives 2.8."""
+        characteristics = DataCharacteristics.from_metadata(self.WATERS_STAMP)
+        assert self.detector.get_reference_width(characteristics) == (0.002, 1000.0)
+
+    @pytest.mark.parametrize("spectrum_type", [SpectrumType.CENTROID, None])
+    def test_chain_bins_centroids_and_undeclared_by_nearest_neighbour(
+        self, spectrum_type
+    ):
+        """Centroid or undeclared: the vendor peak list, binned on reflector_tof."""
         chain = InstrumentDetectorChain()
         characteristics = DataCharacteristics.from_metadata(
             {
@@ -336,11 +344,23 @@ class TestWatersDetector:
                 "essential_metadata": {"spectrum_type": spectrum_type},
             }
         )
+        assert isinstance(chain.detect(characteristics), WatersDetector)
         assert chain.get_axis_type(characteristics) is AxisType.REFLECTOR_TOF
         assert (
             chain.get_resampling_method(characteristics)
             is ResamplingMethod.NEAREST_NEIGHBOR
         )
+        assert chain.get_reference_width(characteristics) == (0.002, 1000.0)
+
+    def test_chain_hands_the_profile_trace_to_the_profile_detector(self):
+        chain = InstrumentDetectorChain()
+        characteristics = DataCharacteristics.from_metadata(
+            {
+                **self.WATERS_STAMP,
+                "essential_metadata": {"spectrum_type": SpectrumType.PROFILE},
+            }
+        )
+        assert isinstance(chain.detect(characteristics), WatersProfileDetector)
 
     def test_beats_the_centroid_detector_in_the_chain(self):
         """A centroid Waters file is identified, not matched by accident."""
@@ -352,6 +372,116 @@ class TestWatersDetector:
             }
         )
         assert isinstance(chain.detect(characteristics), WatersDetector)
+
+
+class TestWatersProfileDetector:
+    """The profile trace: samples on the digitiser's sqrt(m/z) grid.
+
+    Measured as ``(m/z)^0.494`` on a SELECT SERIES MRT and ``(m/z)^0.498``
+    on a Synapt G2-Si, so the law is declared and ``tic_preserving`` clears
+    the gate onto a ``linear_tof`` axis. The bin width is pinned at 1.3 mDa
+    at m/z 1000 on an MRT (about 1.14 sample spacings) so every MRT run
+    with the same mass range shares one axis, and follows the run's own
+    predicted spacing on any other Waters instrument asked for its trace.
+    """
+
+    WATERS_PROFILE = {
+        "format_specific": {"format": "Waters MassLynx raw"},
+        "essential_metadata": {"spectrum_type": SpectrumType.PROFILE},
+    }
+
+    def setup_method(self):
+        self.detector = WatersProfileDetector()
+        self.chain = InstrumentDetectorChain()
+
+    def _characteristics(self, **format_specific):
+        return DataCharacteristics.from_metadata(
+            {
+                **self.WATERS_PROFILE,
+                "format_specific": {
+                    **self.WATERS_PROFILE["format_specific"],
+                    **format_specific,
+                },
+            }
+        )
+
+    def test_matches_the_profile_trace_only(self):
+        assert self.detector.matches(self._characteristics())
+        for spectrum_type in (SpectrumType.CENTROID, None):
+            characteristics = DataCharacteristics.from_metadata(
+                {
+                    "format_specific": {"format": "Waters MassLynx raw"},
+                    "essential_metadata": {"spectrum_type": spectrum_type},
+                }
+            )
+            assert not self.detector.matches(characteristics)
+
+    def test_does_not_match_other_profile_formats(self):
+        characteristics = DataCharacteristics.from_metadata(
+            {
+                "format_specific": {"format": "Rapiflex"},
+                "essential_metadata": {"spectrum_type": SpectrumType.PROFILE},
+            }
+        )
+        assert not self.detector.matches(characteristics)
+
+    def test_uses_linear_tof_and_tic_preserving(self):
+        assert self.detector.get_axis_type() is AxisType.LINEAR_TOF
+        assert self.detector.get_resampling_method() is ResamplingMethod.TIC_PRESERVING
+
+    def test_declares_the_measured_source_grid_law(self):
+        assert self.detector.source_grid_law is AxisType.LINEAR_TOF
+
+    def test_chain_clears_the_tic_preserving_gate(self):
+        """Source law equals target law, so the interpolating path is allowed."""
+        characteristics = self._characteristics()
+        assert (
+            self.chain.get_resampling_method(characteristics)
+            is ResamplingMethod.TIC_PRESERVING
+        )
+        assert self.chain.get_axis_type(characteristics) is AxisType.LINEAR_TOF
+
+    def test_mrt_width_is_pinned(self):
+        characteristics = self._characteristics(
+            is_mrt=True, profile_sample_spacing_da_at_1000=1.143e-3
+        )
+        assert characteristics.is_waters_mrt
+        assert self.detector.get_reference_width(characteristics) == (0.0013, 1000.0)
+        assert self.chain.get_reference_width(characteristics) == (0.0013, 1000.0)
+
+    def test_other_instruments_follow_their_own_sample_spacing(self):
+        """A Synapt G2-Si: 13.8 mDa per sample, times 1.14, up to 0.1 mDa."""
+        characteristics = self._characteristics(
+            is_mrt=False, profile_sample_spacing_da_at_1000=13.806e-3
+        )
+        width, reference = self.detector.get_reference_width(characteristics)
+        assert reference == 1000.0
+        assert width == pytest.approx(0.0158)
+
+    def test_unknown_spacing_falls_back_to_the_mrt_width_with_a_warning(self, caplog):
+        import logging
+
+        characteristics = self._characteristics(is_mrt=False)
+        with caplog.at_level(logging.WARNING):
+            width = self.detector.get_reference_width(characteristics)
+        assert width == (0.0013, 1000.0)
+        assert "predict its sample spacing" in caplog.text
+
+    def test_decision_tree_exposes_the_width(self):
+        tree = ResamplingDecisionTree()
+        assert tree.select_reference_width(None) is None
+        assert tree.select_reference_width({"essential_metadata": {}}) is None
+        assert tree.select_reference_width(
+            {
+                **self.WATERS_PROFILE,
+                "format_specific": {"format": "Waters MassLynx raw", "is_mrt": True},
+            }
+        ) == (0.0013, 1000.0)
+
+    def test_precedes_the_centroid_waters_detector(self):
+        assert isinstance(
+            self.chain.detect(self._characteristics()), WatersProfileDetector
+        )
 
 
 class TestAnalyzerFamilyReachability:

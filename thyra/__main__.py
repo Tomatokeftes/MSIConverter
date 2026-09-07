@@ -132,6 +132,39 @@ def _validate_resampling_params(
         )
 
 
+def _validate_tof_params(
+    tof_a: Optional[float],
+    tof_b: Optional[float],
+    bins_per_fwhm: Optional[float],
+    resample_width_at_mz: Optional[float],
+) -> None:
+    """Validate the two-term TOF width-law parameters.
+
+    ``A`` and ``B`` come as a pair, both non-negative and not both zero
+    (the law would have no width). ``--bins-per-fwhm`` and
+    ``--resample-width-at-mz`` are two spellings of the same quantity, so
+    only one may be given.
+    """
+    if (tof_a is None) != (tof_b is None):
+        raise click.BadParameter(
+            "--tof-a and --tof-b must be given together", param_hint="tof_a"
+        )
+    if tof_a is not None and tof_b is not None:
+        if tof_a < 0 or tof_b < 0 or (tof_a == 0 and tof_b == 0):
+            raise click.BadParameter(
+                "The TOF width law needs A >= 0 and B >= 0 with at least one "
+                "of them positive",
+                param_hint="tof_a",
+            )
+    _validate_positive_float(bins_per_fwhm, "bins_per_fwhm", "Bins per FWHM")
+    if bins_per_fwhm is not None and resample_width_at_mz is not None:
+        raise click.BadParameter(
+            "--bins-per-fwhm and --resample-width-at-mz are mutually exclusive: "
+            "both set the bin width of a 'tof' axis",
+            param_hint="bins_per_fwhm",
+        )
+
+
 def _validate_input_path(input: Path) -> None:
     """Validate input path and format requirements."""
     if not input.exists():
@@ -247,6 +280,9 @@ def _build_resampling_config(
     resample_width_at_mz: Optional[float],
     resample_reference_mz: float,
     resample_gap_tolerance: Optional[float] = None,
+    tof_a: Optional[float] = None,
+    tof_b: Optional[float] = None,
+    bins_per_fwhm: Optional[float] = None,
 ) -> dict:
     """Build resampling configuration dictionary."""
     return {
@@ -258,6 +294,9 @@ def _build_resampling_config(
         "width_at_mz": resample_width_at_mz,
         "reference_mz": resample_reference_mz,
         "gap_tolerance_da": resample_gap_tolerance,
+        "tof_a": tof_a,
+        "tof_b": tof_b,
+        "bins_per_fwhm": bins_per_fwhm,
     }
 
 
@@ -414,6 +453,9 @@ class GroupedCommand(click.Command):
             "--resample-width-at-mz",
             "--resample-reference-mz",
             "--resample-gap-tolerance",
+            "--tof-a",
+            "--tof-b",
+            "--bins-per-fwhm",
         ],
         "Performance": ["--streaming", "--sparse-format"],
         "imzML-specific": ["--spectrum-type"],
@@ -638,10 +680,38 @@ class GroupedCommand(click.Command):
 @click.option(
     "--mass-axis-type",
     type=click.Choice(
-        ["auto", "constant", "linear_tof", "reflector_tof", "orbitrap", "fticr"]
+        ["auto", "constant", "linear_tof", "reflector_tof", "tof", "orbitrap", "fticr"]
     ),
     default="auto",
-    help="Mass axis spacing type (default: auto-detect)",
+    help=(
+        "Mass axis spacing type (default: auto-detect). 'tof' lays bins at a "
+        "measured peak width sqrt(A m + B m^2) mDa, of which linear_tof "
+        "(B=0) and reflector_tof (A=0) are the limits; pass --tof-a/--tof-b "
+        "or let the instrument's own pair apply (SELECT SERIES MRT centroid, "
+        "timsTOF)."
+    ),
+)
+@click.option(
+    "--tof-a",
+    type=float,
+    default=None,
+    help="A of the 'tof' width law, in mDa^2/Da (MRT 0.0185, timsTOF 0.0877)",
+)
+@click.option(
+    "--tof-b",
+    type=float,
+    default=None,
+    help="B of the 'tof' width law, dimensionless (MRT 9.1e-6, timsTOF 8.74e-4)",
+)
+@click.option(
+    "--bins-per-fwhm",
+    type=float,
+    default=None,
+    help=(
+        "For the 'tof' axis: bins per peak width (default 3). Mutually "
+        "exclusive with --resample-width-at-mz, which fixes the same thing "
+        "at the reference m/z instead."
+    ),
 )
 @click.option(
     "--resample-bins",
@@ -728,11 +798,12 @@ class GroupedCommand(click.Command):
     type=click.Choice(["centroid", "profile"]),
     default=None,
     help=(
-        "What MassLynx hands back for one Waters .raw pixel: centroid "
-        "(the default) is the vendor peak picker, which reports one "
-        "centroid where the sampled trace has two maxima a few mDa "
-        "apart; profile is that sampled trace, which keeps them apart at "
-        "the cost of a larger store. Waters .raw only."
+        "What MassLynx hands back for one Waters .raw pixel: centroid is "
+        "the vendor peak picker, which reports one centroid where the "
+        "sampled trace has two maxima a few mDa apart; profile is that "
+        "sampled trace, which keeps them apart at the cost of a larger "
+        "store. The default is profile on a SELECT SERIES MRT and centroid "
+        "on every other Waters instrument. Waters .raw only."
     ),
 )
 # -- Other --
@@ -779,6 +850,9 @@ def main(
     resample_reference_mz: float,
     resample_gap_tolerance: Optional[float],
     mass_axis_type: str,
+    tof_a: Optional[float],
+    tof_b: Optional[float],
+    bins_per_fwhm: Optional[float],
     spectrum_type: str,
     sparse_format: str,
     include_optical: bool,
@@ -816,6 +890,7 @@ def main(
     _validate_positive_float(
         resample_gap_tolerance, "resample_gap_tolerance", "Gap tolerance"
     )
+    _validate_tof_params(tof_a, tof_b, bins_per_fwhm, resample_width_at_mz)
     _validate_positive_float(
         intensity_threshold, "intensity_threshold", "Intensity threshold"
     )
@@ -855,6 +930,9 @@ def main(
             resample_width_at_mz,
             resample_reference_mz,
             resample_gap_tolerance,
+            tof_a,
+            tof_b,
+            bins_per_fwhm,
         )
         if resample
         else None

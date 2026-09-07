@@ -18,6 +18,10 @@ from ...core.base_reader import BaseMSIReader
 from ...metadata.types import ComprehensiveMetadata, EssentialMetadata
 from ...resampling import ResamplingDecisionTree, ResamplingMethod
 from ...resampling.gaps import zero_across_gaps
+from ...resampling.mass_axis.tof_generator import (
+    DEFAULT_BINS_PER_FWHM,
+    TOFAxisGenerator,
+)
 from ...resampling.mobility_grid import (
     MOBILITY_CHANNELS,
     MobilityGrid,
@@ -25,7 +29,7 @@ from ...resampling.mobility_grid import (
     report_channel_width,
 )
 from ...resampling.tic import preserved_tic, rescale_to_preserved_tic
-from ...resampling.types import ResamplingConfig
+from ...resampling.types import AxisType, ResamplingConfig
 from ...utils.zarr_atomic_write import install_windows_atomic_write_retry
 from ._chunking import image_chunks, table_write_config
 
@@ -169,11 +173,16 @@ def _normalize_resampling_config(
         "constant": AxisType.CONSTANT,
         "linear_tof": AxisType.LINEAR_TOF,
         "reflector_tof": AxisType.REFLECTOR_TOF,
+        "tof": AxisType.TOF,
         "orbitrap": AxisType.ORBITRAP,
         "fticr": AxisType.FTICR,
     }
 
     reference_mz = config.get("reference_mz")
+
+    def _optional_float(key: str) -> Optional[float]:
+        value = config.get(key)
+        return None if value is None else float(value)
 
     return ResamplingConfig(
         method=_resolve_config_enum(config.get("method"), method_by_name, "method"),
@@ -188,6 +197,9 @@ def _normalize_resampling_config(
         min_mz=config.get("min_mz"),
         max_mz=config.get("max_mz"),
         gap_tolerance_da=config.get("gap_tolerance_da"),
+        tof_a=_optional_float("tof_a"),
+        tof_b=_optional_float("tof_b"),
+        bins_per_fwhm=_optional_float("bins_per_fwhm"),
     )
 
 
@@ -444,6 +456,211 @@ def _nn_accumulate(
     return nonzero_indices, nonzero_values.astype(np.float64)
 
 
+def _reference_params(converter: Any, axis_name: str) -> Tuple[float, float]:
+    """``(width_da, reference_mz)`` for the axis about to be built.
+
+    Precedence: the caller's ``--resample-width-at-mz`` /
+    ``--resample-reference-mz``; then the width the detected instrument
+    declared (``_detected_reference_width``, set on the auto path only);
+    then the per-axis-type default -- 17 mDa at m/z 300 for ``linear_tof``,
+    chosen to be close to the axis SCiLS Lab produces for FlexImaging data,
+    and 5 mDa at m/z 1000 for everything else.
+
+    Module-level so that ``_calculate_bins_from_width`` and
+    ``_get_reference_params`` cannot drift apart, and so that either can be
+    driven on a bare stub carrying only the three attributes.
+    """
+    if converter._width_at_mz is not None:
+        return converter._width_at_mz, converter._reference_mz
+    if axis_name == "tof":
+        # The law and the bins-per-FWHM fix the width everywhere; report
+        # the one realised at the reference m/z.
+        a, b, k = _tof_plan(converter)
+        reference_mz = float(converter._reference_mz)
+        return float(TOFAxisGenerator(a, b).bin_width_at(reference_mz, k)), reference_mz
+    detected = getattr(converter, "_detected_reference_width", None)
+    if detected is not None:
+        return float(detected[0]), float(detected[1])
+    if axis_name == "linear_tof":
+        return 0.017, 300.0
+    return 0.005, 1000.0
+
+
+def _tof_plan(converter: Any) -> Tuple[float, float, float]:
+    """``(A, B, bins_per_fwhm)`` for an ``AxisType.TOF`` axis.
+
+    The law is the caller's ``tof_a``/``tof_b`` pair, else the pair the
+    detected instrument declared (``_detected_tof_law``). ``bins_per_fwhm``
+    is derived from ``--resample-width-at-mz`` at the reference m/z when
+    that was given, so the two parameterisations are interchangeable;
+    otherwise it is the caller's ``--bins-per-fwhm``, else 3.
+    """
+    a = getattr(converter, "_tof_a", None)
+    b = getattr(converter, "_tof_b", None)
+    if a is None or b is None:
+        law = getattr(converter, "_detected_tof_law", None)
+        if law is None:
+            raise ValueError(
+                "A 'tof' mass axis needs the width law's coefficients: pass "
+                "--tof-a and --tof-b, or convert a run whose instrument "
+                "declares them (SELECT SERIES MRT centroid, timsTOF)."
+            )
+        a, b = law
+    generator = TOFAxisGenerator(float(a), float(b))
+    if converter._width_at_mz is not None:
+        k = generator.bins_per_fwhm_for(
+            float(converter._reference_mz), float(converter._width_at_mz)
+        )
+    else:
+        k = getattr(converter, "_bins_per_fwhm", None)
+        if k is None:
+            k = DEFAULT_BINS_PER_FWHM
+    return float(a), float(b), float(k)
+
+
+def _tic_support_bins(
+    axis: NDArray[np.float64],
+    mzs: NDArray[np.float64],
+    intensities: NDArray[np.float64],
+) -> NDArray[np.int_]:
+    """Axis indices at which the linear interpolant of a spectrum can be non-zero.
+
+    ``np.interp`` draws straight lines between consecutive source points, so
+    the interpolant is non-zero only on segments with a non-zero endpoint.
+    Consecutive non-zero samples form runs; each run's support is the open
+    interval from the sample before it to the sample after it (those two are
+    where the trace touches zero), closed at the spectrum's own ends where
+    there is no such neighbour. Runs are separated by at least one zero
+    sample, so their supports never overlap and the indices come out sorted.
+
+    A zero-suppressed profile -- Waters MassLynx stores samples in clusters
+    around each peak with an explicit zero at either edge -- has supports
+    covering a small fraction of a fine axis, which is what makes the sparse
+    evaluation cheap. A spectrum with no zeros in it is one run, and its
+    support is every axis point the dense evaluation would have populated.
+
+    Args:
+        axis: Target mass axis, ascending.
+        mzs: Source m/z values, ascending.
+        intensities: Source intensities, parallel to ``mzs``.
+
+    Returns:
+        Sorted, unique axis indices. Empty when nothing is non-zero.
+    """
+    nonzero = intensities != 0
+    if not nonzero.any():
+        return np.array([], dtype=np.int_)
+
+    last = mzs.size - 1
+    edges = np.diff(np.concatenate(([False], nonzero, [False])).astype(np.int8))
+    starts = np.flatnonzero(edges == 1)
+    ends = np.flatnonzero(edges == -1) - 1
+
+    # Open at a neighbouring zero sample (the interpolant is exactly zero
+    # there), closed at the spectrum's own first or last sample.
+    lo = np.where(
+        starts == 0,
+        np.searchsorted(axis, mzs[0], side="left"),
+        np.searchsorted(axis, mzs[np.maximum(starts - 1, 0)], side="right"),
+    )
+    hi = np.where(
+        ends == last,
+        np.searchsorted(axis, mzs[last], side="right"),
+        np.searchsorted(axis, mzs[np.minimum(ends + 1, last)], side="left"),
+    )
+
+    lengths = hi - lo
+    keep = lengths > 0
+    if not keep.any():
+        return np.array([], dtype=np.int_)
+    lo = lo[keep]
+    lengths = lengths[keep]
+    offsets = np.cumsum(lengths) - lengths
+    total = int(lengths.sum())
+    return np.repeat(lo - offsets, lengths) + np.arange(total, dtype=np.int_)
+
+
+def _tic_preserving_sparse(
+    axis: NDArray[np.float64],
+    mzs: NDArray[np.float64],
+    intensities: NDArray[np.float64],
+    gap_tolerance_da: Optional[float],
+) -> Tuple[NDArray[np.int_], NDArray[np.float64]]:
+    """TIC-preserving resampling, evaluated only where it can be non-zero.
+
+    This is the operator ``BaseSpatialDataConverter._tic_preserving_resample``
+    documents -- interpolate onto the axis, zero unsupported bins, rescale to
+    the preserved TIC -- restricted to the axis points
+    :func:`_tic_support_bins` reports. Every other axis point interpolates
+    to exactly zero, so scattering the result into a zero array reproduces
+    the dense evaluation bin for bin; the sole difference is the order in
+    which the rescale sums its terms.
+
+    Measured on a Waters SELECT SERIES MRT run (13,398 pixels, ~15,000
+    stored samples per strong pixel, 1.05M-bin axis): the dense form cost
+    570 s against 16 s for nearest-neighbour binning, almost all of it in
+    interpolating onto and then scanning a million bins per pixel of which
+    ~13,000 were ever non-zero.
+
+    Args:
+        axis: Target mass axis, ascending.
+        mzs: Source m/z values, any order.
+        intensities: Source intensities, parallel to ``mzs``.
+        gap_tolerance_da: See :func:`thyra.resampling.gaps.zero_across_gaps`.
+
+    Returns:
+        ``(bin_indices, intensities)`` holding only the non-zero bins,
+        indices ascending.
+    """
+    empty = (np.array([], dtype=np.int_), np.array([], dtype=np.float64))
+    if mzs.size == 0:
+        return empty
+
+    if np.all(mzs[:-1] <= mzs[1:]):
+        mzs_sorted = mzs
+        intensities_sorted = intensities
+    else:
+        order = np.argsort(mzs)
+        mzs_sorted = mzs[order]
+        intensities_sorted = intensities[order]
+
+    if mzs_sorted.size == 1:
+        # np.interp cannot interpolate a lone point onto a grid that does
+        # not contain it -- it would return all zeros and lose the peak.
+        # Place it in its nearest bin, as the nearest_neighbor path and
+        # TICPreservingStrategy both do.
+        target_tic = preserved_tic(
+            mzs_sorted, intensities_sorted, float(axis[0]), float(axis[-1])
+        )
+        if target_tic <= 0.0:
+            return empty
+        nearest = int(np.argmin(np.abs(axis - mzs_sorted[0])))
+        return (
+            np.array([nearest], dtype=np.int_),
+            np.array([target_tic], dtype=np.float64),
+        )
+
+    indices = _tic_support_bins(axis, mzs_sorted, intensities_sorted)
+    if indices.size == 0:
+        return empty
+
+    targets = axis[indices]
+    values = np.interp(targets, mzs_sorted, intensities_sorted, left=0.0, right=0.0)
+
+    # Discard bins no source point vouches for, before the rescale so the
+    # intensity returns to the bins that were measured rather than being
+    # deleted. No-op when no tolerance was configured.
+    zero_across_gaps(values, targets, mzs_sorted, gap_tolerance_da)
+
+    # Rescale to the required TIC -- the step that makes the method live up
+    # to its name. Reads only the axis endpoints and the sum of ``values``,
+    # so the subset evaluation rescales exactly as the dense one would.
+    rescale_to_preserved_tic(values, axis, mzs_sorted, intensities_sorted)
+
+    keep = values != 0
+    return indices[keep], values[keep]
+
+
 class _SharedAxisNNCache:
     """Precomputed nearest-neighbor mapping for one recurring m/z array.
 
@@ -677,6 +894,21 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 f"sparse_format must be 'csc' or 'csr', got '{sparse_format}'"
             )
 
+        # Metadata caches (populated lazily during conversion). These have
+        # to exist before _setup_resampling below: its strategy selection
+        # extracts the reader's metadata through them, and every extractor
+        # swallows failures at DEBUG. With the caches assigned after it,
+        # that first extraction hit AttributeError on every field, the
+        # decision tree saw an empty dict, and *every* reader's method was
+        # chosen by DefaultDetector -- nearest_neighbor -- while the axis
+        # type, resolved later on the properly cached metadata, came from
+        # the right detector. Nothing noticed while the detectors agreed;
+        # the Waters profile route is the first to ask for tic_preserving.
+        self._essential_metadata_cached: Optional[EssentialMetadata] = None
+        self._comprehensive_metadata_cached: Optional[ComprehensiveMetadata] = None
+        self._spectrum_metadata_cached: Optional[Dict[str, Any]] = None
+        self._resampling_metadata_cached: Optional[Dict[str, Any]] = None
+
         # Set up resampling if enabled
         if self._resampling_config:
             self._setup_resampling()
@@ -706,12 +938,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         # still have to be streamed into the store once it is written. See
         # optical_image.py and _stream_pending_optical_pixels().
         self._pending_optical_images: Dict[str, "StreamedOpticalImage"] = {}
-
-        # Metadata caches (populated lazily during conversion)
-        self._essential_metadata_cached: Optional[EssentialMetadata] = None
-        self._comprehensive_metadata_cached: Optional[ComprehensiveMetadata] = None
-        self._spectrum_metadata_cached: Optional[Dict[str, Any]] = None
-        self._resampling_metadata_cached: Optional[Dict[str, Any]] = None
 
     def _setup_resampling(self) -> None:
         """Set up resampling configuration and strategy."""
@@ -750,6 +976,15 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         self._max_mz = config.max_mz
         self._width_at_mz = config.mass_width_da
         self._reference_mz = config.reference_mz
+        # Filled by _resolve_resampling_plan when the detected instrument
+        # declares a bin width and the caller set none.
+        self._detected_reference_width: Optional[Tuple[float, float]] = None
+        # The two-term TOF width law (AxisType.TOF): the caller's pair, or
+        # the detected instrument's when the axis resolves to TOF without one.
+        self._tof_a = config.tof_a
+        self._tof_b = config.tof_b
+        self._bins_per_fwhm = config.bins_per_fwhm
+        self._detected_tof_law: Optional[Tuple[float, float]] = None
         self._gap_tolerance_da = config.gap_tolerance_da
         if self._gap_tolerance_da is not None:
             logger.info(
@@ -1811,20 +2046,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         else:
             axis_name = str(axis_type).split(".")[-1].lower()
 
-        if self._width_at_mz is None:
-            # Use axis-type-specific defaults for optimal resolution
-            if axis_name == "linear_tof":
-                # LINEAR_TOF (FlexImaging): Use SCiLS-like default ~17 mDa at m/z 300
-                # This matches typical MALDI-TOF resolution and gives ~30k bins
-                width_at_mz = 0.017  # 17.0 mDa in Da
-                reference_mz = 300.0
-            else:
-                # Default for other axis types: 5.0 mDa at m/z 1000
-                width_at_mz = 0.005  # 5.0 mDa in Da
-                reference_mz = 1000.0
-        else:
-            width_at_mz = self._width_at_mz
-            reference_mz = self._reference_mz
+        width_at_mz, reference_mz = _reference_params(self, axis_name)
 
         logger.info(
             f"Calculating bins for {width_at_mz*1000:.1f} mDa width at m/z {reference_mz:.1f}"
@@ -1836,6 +2058,18 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             # For logarithmic spacing: bins ≈ ln(max_mz/min_mz) * (reference_mz / width_at_mz)
             relative_resolution = reference_mz / width_at_mz
             bins = int(np.log(max_mz / min_mz) * relative_resolution)
+
+        elif axis_name == "tof":
+            # TOF: bin width = sqrt(A m + B m^2) / k. The generator carries
+            # the closed-form integral of 1 / width, so the count is exact.
+            a, b, k = _tof_plan(self)
+            bins = TOFAxisGenerator(a, b).bin_count(min_mz, max_mz, k)
+            logger.info(
+                "TOF width law A=%.4g mDa^2/Da, B=%.4g, %.2f bins per FWHM",
+                a,
+                b,
+                k,
+            )
 
         elif axis_name == "linear_tof":
             # LINEAR_TOF: bin width = k * sqrt(m/z), where k = width_at_mz / sqrt(reference_mz)
@@ -1881,23 +2115,14 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
     def _get_reference_params(self, axis_type) -> Tuple[float, float]:
         """Get reference width and m/z for the given axis type.
 
-        Returns axis-type-specific defaults if user didn't specify.
+        Explicit setting first, then the width the detected instrument
+        asked for, then the axis-type default; see :func:`_reference_params`.
         """
-        if self._width_at_mz is not None:
-            return self._width_at_mz, self._reference_mz
-
-        # Get axis name for default selection
         if hasattr(axis_type, "value"):
             axis_name = axis_type.value
         else:
             axis_name = str(axis_type).split(".")[-1].lower()
-
-        # Use axis-type-specific defaults
-        if axis_name == "linear_tof":
-            # LINEAR_TOF (FlexImaging): Use SCiLS-like default ~17 mDa at m/z 300
-            return 0.017, 300.0
-        # Default for other axis types: 5.0 mDa at m/z 1000
-        return 0.005, 1000.0
+        return _reference_params(self, axis_name)
 
     def _resolve_resampling_plan(
         self,
@@ -1917,12 +2142,38 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         min_mz = mass_range[0] if self._min_mz is None else self._min_mz
         max_mz = mass_range[1] if self._max_mz is None else self._max_mz
 
+        tree = ResamplingDecisionTree()
         if hasattr(self, "_manual_axis_type") and self._manual_axis_type is not None:
             axis_type = self._manual_axis_type
         else:
             metadata = self._get_cached_metadata_for_resampling()
-            tree = ResamplingDecisionTree()
             axis_type = tree.select_axis_type(metadata)
+            # A detector's width goes with the axis law it chose, so it is
+            # consulted only on the auto path and only when the caller has
+            # not set a width of their own.
+            if self._width_at_mz is None:
+                self._detected_reference_width = tree.select_reference_width(metadata)
+
+        # A TOF axis without the caller's own coefficients takes the pair
+        # the instrument declares -- on the auto path (an MRT centroid
+        # conversion) and when --mass-axis-type tof was asked for by name
+        # (a timsTOF opting in).
+        if axis_type is AxisType.TOF and (
+            getattr(self, "_tof_a", None) is None
+            or getattr(self, "_tof_b", None) is None
+        ):
+            self._detected_tof_law = tree.select_tof_law(
+                self._get_cached_metadata_for_resampling()
+            )
+        elif (
+            axis_type is not AxisType.TOF and getattr(self, "_tof_a", None) is not None
+        ):
+            logger.warning(
+                "--tof-a/--tof-b were given but the mass axis resolved to %s, "
+                "which does not use a width law; they are ignored. Pass "
+                "--mass-axis-type tof to use them.",
+                getattr(axis_type, "value", axis_type),
+            )
 
         if self._width_at_mz is not None or self._target_bins is None:
             target_bins = self._calculate_bins_from_width(min_mz, max_mz, axis_type)
@@ -1937,17 +2188,29 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
 
         min_mz, max_mz, axis_type, target_bins = self._resolve_resampling_plan()
 
+        # Determine reference parameters for physics generators
+        reference_width, reference_mz = self._get_reference_params(axis_type)
+
         # Kept for provenance: the processing step must declare what was
         # actually done, and with "auto" settings the requested config
-        # says nothing about the method and axis the decision tree
-        # resolved to.  See _processing_provenance().
+        # says nothing about the method, axis and bin width the decision
+        # tree resolved to.  See _processing_provenance().
         self._resolved_resampling_plan = {
             "method": getattr(self, "_resampling_method", None),
             "axis_type": axis_type,
             "target_bins": target_bins,
             "min_mz": min_mz,
             "max_mz": max_mz,
+            "mass_width_da": reference_width,
+            "reference_mz": reference_mz,
         }
+        tof_law: Optional[Tuple[float, float]] = None
+        if axis_type is AxisType.TOF:
+            a, b, k = _tof_plan(self)
+            tof_law = (a, b)
+            self._resolved_resampling_plan.update(
+                {"tof_a": a, "tof_b": b, "bins_per_fwhm": k}
+            )
 
         if hasattr(self, "_manual_axis_type") and self._manual_axis_type is not None:
             logger.info(f"Using manually specified axis type: {axis_type}")
@@ -1962,9 +2225,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         # Build the physics-based axis
         builder = CommonAxisBuilder()
 
-        # Determine reference parameters for physics generators
-        reference_width, reference_mz = self._get_reference_params(axis_type)
-
         if hasattr(axis_type, "value") and axis_type.value != "constant":
             # Use physics-based generator with reference parameters
             mass_axis = builder.build_physics_axis(
@@ -1974,6 +2234,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 axis_type=axis_type,
                 reference_mz=reference_mz,
                 reference_width=reference_width,
+                tof_law=tof_law,
             )
             logger.info(
                 f"Built physics-based {axis_type} mass axis with "
@@ -2221,14 +2482,15 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                     f"sum: {np.sum(resampled_intensities):.2e}"
                 )
             else:
-                # Dense path for other methods (TIC-preserving, etc.)
-                resampled_intensities = self._resample_spectrum(mzs, intensities)
-                # Use cached indices instead of creating new array every time
-                if self._cached_mass_axis_indices is None:
-                    raise RuntimeError("Cached mass axis indices are not initialized")
-                mz_indices = self._cached_mass_axis_indices
+                # TIC-preserving, in its sparse form: only the bins under
+                # the source's clusters are evaluated, which on a
+                # zero-suppressed profile is a small fraction of the axis.
+                mz_indices, resampled_intensities = (
+                    self._tic_preserving_resample_sparse(mzs, intensities)
+                )
                 logger.debug(
-                    f"Resampled: {len(resampled_intensities)} values, "
+                    f"Resampled (sparse, TIC-preserving): "
+                    f"{len(resampled_intensities)} non-zero bins, "
                     f"sum: {np.sum(resampled_intensities):.2e}"
                 )
 
@@ -2499,55 +2761,35 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             raise RuntimeError("Common mass axis is not initialized")
 
         axis = self._common_mass_axis
-        if mzs.size == 0:
-            return np.zeros(len(axis))
-
-        # OPTIMIZED: Check if already sorted to avoid unnecessary sorting
-        if np.all(mzs[:-1] <= mzs[1:]):
-            # Already sorted - use directly
-            mzs_sorted = mzs
-            intensities_sorted = intensities
-        else:
-            # Need to sort for interpolation
-            sort_indices = np.argsort(mzs)
-            mzs_sorted = mzs[sort_indices]
-            intensities_sorted = intensities[sort_indices]
-
-        if mzs_sorted.size == 1:
-            # np.interp cannot interpolate a lone point onto a grid that
-            # does not contain it -- it would return all zeros and lose the
-            # peak. Place it in its nearest bin, as the nearest_neighbor
-            # path and TICPreservingStrategy both do.
-            resampled = np.zeros(len(axis))
-            target_tic = preserved_tic(
-                mzs_sorted, intensities_sorted, float(axis[0]), float(axis[-1])
-            )
-            if target_tic > 0.0:
-                resampled[int(np.argmin(np.abs(axis - mzs_sorted[0])))] = target_tic
-            return resampled
-
-        # Interpolate onto the common mass axis (np.interp is highly optimized)
-        resampled = np.interp(
-            axis,
-            mzs_sorted,
-            intensities_sorted,
-            left=0,
-            right=0,
+        indices, values = _tic_preserving_sparse(
+            axis, mzs, intensities, getattr(self, "_gap_tolerance_da", None)
         )
+        resampled = np.zeros(len(axis))
+        resampled[indices] = values
+        return resampled
 
-        # Discard bins no source point vouches for, before the rescale so the
-        # intensity returns to the bins that were measured rather than being
-        # deleted. No-op when no tolerance was configured.
-        zero_across_gaps(
-            resampled,
-            axis,
-            mzs_sorted,
+    def _tic_preserving_resample_sparse(
+        self, mzs: NDArray[np.float64], intensities: NDArray[np.float64]
+    ) -> Tuple[NDArray[np.int_], NDArray[np.float64]]:
+        """The sparse form of :meth:`_tic_preserving_resample`.
+
+        Same operator, same numbers: only the axis points the interpolant
+        can be non-zero at are evaluated, and only the non-zero results are
+        returned, as ``(bin_indices, intensities)`` the way the
+        nearest-neighbour path does. On a zero-suppressed profile source --
+        a Waters MRT pixel stores ~15,000 samples in clusters around its
+        peaks, on a 1.05M-bin axis -- this is what turns a 570 s conversion
+        into one that is bounded by reading the file. See
+        :func:`_tic_preserving_sparse`.
+        """
+        if self._common_mass_axis is None:
+            raise RuntimeError("Common mass axis is not initialized")
+        return _tic_preserving_sparse(
+            self._common_mass_axis,
+            mzs,
+            intensities,
             getattr(self, "_gap_tolerance_da", None),
         )
-
-        # Rescale to the required TIC. This is the step that makes the
-        # method live up to its name.
-        return rescale_to_preserved_tic(resampled, axis, mzs_sorted, intensities_sorted)
 
     def _process_resampled_spectrum(
         self,

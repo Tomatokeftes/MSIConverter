@@ -392,6 +392,11 @@ def convert_msi(
             - tdf_spectrum: "vendor_centroid" | "scan_sum" - For Bruker
               TDF (TIMS) data, how a frame's mobility scans are collapsed
               into one spectrum per pixel (default "vendor_centroid").
+            - use_centroid: bool - For Waters .raw, whether MassLynx
+              hands back the vendor centroid (True) or the profile
+              trace (False). Default None: the profile trace on a
+              SELECT SERIES MRT, the vendor centroid on every other
+              Waters instrument. The CLI spells it --waters-spectrum.
         **kwargs: Forwarded to the converter. ``write_mobility_table``
             (default True) writes the mobility-resolved sibling table when
             the source shares one set of (m/z, mobility) features across
