@@ -187,6 +187,12 @@ print(f"Non-zero: {X.nnz:,} ({X.nnz / (X.shape[0] * X.shape[1]) * 100:.2f}%)")
     extracting ion images (column = one m/z across all pixels). If you need fast
     per-pixel access, convert with `--sparse-format csr`.
 
+    The stored matrix is canonical: within every column the row indices are in
+    ascending order, whatever order the source delivered its pixels in (a
+    multi-area Bruker acquisition comes back area by area, for instance). A
+    consumer can binary-search a column's indices directly, and scipy reports
+    `has_sorted_indices` as true without a `sort_indices()` pass.
+
 ### Ion Images
 
 To visualise the spatial distribution of a specific m/z value:

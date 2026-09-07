@@ -48,6 +48,70 @@ logger = logging.getLogger(__name__)
 # build, and 32 for an unchunked vectorised one.
 _INDEX_BUILD_CHUNK = 1_000_000
 
+# Entries loaded at once when the scattered columns have to be sorted (a
+# reader that hands its pixels over out of raster order). Bounds that pass
+# to a few hundred megabytes whatever the matrix size.
+_SORT_CHUNK_ENTRIES = 16_000_000
+
+
+def _sort_csc_columns(
+    indices: Any,
+    data: Any,
+    indptr: NDArray[np.int64],
+    n_rows: int,
+    chunk_entries: int = _SORT_CHUNK_ENTRIES,
+) -> None:
+    """Put each column's entries in ascending row order, in place, chunk by chunk.
+
+    The scatter writes a column's entries in the order the reader handed
+    its pixels over. A raster read makes that ascending and the matrix
+    canonical for free. Any other order -- a TDF acquisition of several
+    areas measured one after another, whose frames come back area by
+    area -- leaves the row indices within a column unsorted, which scipy
+    reports as non-canonical and which breaks every consumer that
+    binary-searches a column. The columns are already grouped, so this is
+    a sort *within* columns over a bounded slice of the arrays at a time.
+
+    Args:
+        indices: CSC row indices, one array-like (a memmap) of the
+            non-zero count.
+        data: CSC values, aligned with ``indices``.
+        indptr: Column pointers, ``n_cols + 1`` entries.
+        n_rows: Row count of the matrix; every row index is below it.
+        chunk_entries: Entries a chunk may hold. A column larger than
+            this is sorted on its own.
+    """
+    indptr = np.asarray(indptr, dtype=np.int64)
+    n_cols = int(indptr.size - 1)
+    logger.info(
+        "Rows arrived out of raster order; sorting %s columns in chunks",
+        f"{n_cols:,}",
+    )
+    start_col = 0
+    while start_col < n_cols:
+        # The largest column range whose entries fit the chunk budget,
+        # and at least one column even when that column alone exceeds it.
+        end_col = int(
+            np.searchsorted(indptr, indptr[start_col] + chunk_entries, side="right")
+        )
+        end_col = max(min(end_col - 1, n_cols), start_col + 1)
+        lo, hi = int(indptr[start_col]), int(indptr[end_col])
+        if hi > lo:
+            rows = np.asarray(indices[lo:hi]).astype(np.int64)
+            column = np.repeat(
+                np.arange(start_col, end_col, dtype=np.int64),
+                np.diff(indptr[start_col : end_col + 1]),
+            )
+            # One combined key, unique because a row occurs once per
+            # column, sorted stably: the columns are already in order, so
+            # the key is a sequence of nearly sorted runs that timsort
+            # merges in a fraction of a general sort's time (measured
+            # 0.5 s against 3.1 s for lexsort on 16M entries).
+            order = np.argsort(column * n_rows + rows, kind="stable")
+            indices[lo:hi] = rows[order]
+            data[lo:hi] = np.asarray(data[lo:hi])[order]
+        start_col = end_col
+
 
 class StreamingSpatialDataConverter(BaseSpatialDataConverter):
     """Memory-efficient streaming converter for MSI data to SpatialData format.
@@ -1100,6 +1164,10 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
            - Light pass: just resampling and counting, no disk I/O
         2. Allocate memory-mapped files for CSC arrays
         3. Main pass: Process spectra again and scatter directly to CSC
+           - If the reader handed its pixels over out of raster order,
+             sort each column's rows afterwards, in place on the memmap
+             (see :func:`_sort_csc_columns`), so the stored matrix is
+             canonical either way
         4. Write CSC arrays to Zarr
 
         This works because nearest-neighbor resampling is deterministic -
@@ -1164,9 +1232,11 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
 
             # Step 3: Main pass - process and scatter directly to CSC
             logger.info("Step 3/3: Processing spectra and scattering to CSC...")
-            self._scatter_spectra_direct(
+            rows_in_order = self._scatter_spectra_direct(
                 mm_indices, mm_data, indptr, n_x, n_y, row_of_grid, pixel_count
             )
+            if not rows_in_order:
+                _sort_csc_columns(mm_indices, mm_data, indptr, n_rows)
 
             # Write CSC arrays to Zarr
             logger.info("Writing CSC arrays to Zarr...")
@@ -1373,7 +1443,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         n_y: int,
         row_of_grid: NDArray[np.int64],
         pixel_count: int,
-    ) -> None:
+    ) -> bool:
         """Process spectra and scatter directly to CSC arrays.
 
         This is the main pass that processes spectra again (same resampling
@@ -1388,9 +1458,19 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             row_of_grid: Table row for each grid position, -1 for the
                 positions dropped as empty (from the pre-scan occupancy).
             pixel_count: Number of spectra to process
+
+        Returns:
+            Whether every scattered row came at or after the previous one,
+            which is to say whether the reader handed its pixels over in
+            raster order. Rows are numbered in raster order, so when it
+            did, every column's row indices are already ascending and the
+            matrix is canonical as scattered; when it did not, the caller
+            sorts the columns before writing them.
         """
         # Current write position for each column
         write_pos = indptr[:-1].copy()
+        rows_in_order = True
+        last_row = -1
 
         # Reset reader for second pass
         # For real readers (ImzML, Bruker), iter_spectra() is a generator factory
@@ -1425,6 +1505,10 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                     row_idx = int(row_of_grid[y * n_x + x])
 
                 if row_idx >= 0:
+                    if row_idx < last_row:
+                        rows_in_order = False
+                    last_row = row_idx
+
                     # Vectorized scatter
                     destinations = write_pos[mz_indices]
                     mm_indices[destinations] = row_idx
@@ -1445,6 +1529,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         mm_data.flush()
 
         logger.info("  Scatter complete, memmap flushed")
+        return rows_in_order
 
     def _allocate_csc_memmap_arrays(
         self, total_nnz: int, temp_dir: Path
