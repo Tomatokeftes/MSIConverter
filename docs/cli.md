@@ -133,6 +133,14 @@ thyra tims_data.d output.zarr --mobility-grid
 thyra tims_data.d output.zarr --mobility-grid --mobility-bins 512     --mobility-min 1.05 --mobility-max 1.25
 ```
 
+!!! warning "The grid table is built in memory, and a whole acquisition may not fit"
+    Unlike the summed table, which the streaming route scatters to disk, the
+    mobility grid table is accumulated in RAM. 400 frames of a measured timsTOF
+    acquisition peaked at 2.0 GB; its full 26,000 pixels project to about 109 GB.
+    The conversion projects that figure as it reads, warns past a quarter of the
+    machine's free memory and refuses past half of it. Convert one `--region` at
+    a time if a whole image will not fit.
+
 !!! note "A mobility-resolved table wants a coarser mass axis than the default"
     The table's features are `(m/z bin, mobility channel)` pairs, so the mass
     axis' width is multiplied by 256. A default resampled timsTOF axis is

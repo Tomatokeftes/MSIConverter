@@ -25,7 +25,9 @@ from thyra.converters.spatialdata.mobility_table import (
     MAX_GRID_VAR_ENTRIES,
     grid_refusal,
     grid_var_bound,
+    memory_refusal,
     mobility_grid_range,
+    projected_memory_gb,
     var_ceiling_refusal,
 )
 from thyra.core.base_extractor import MetadataExtractor
@@ -337,6 +339,19 @@ class TestVarCeiling:
         assert grid_var_bound(axis, grid) > MAX_GRID_VAR_ENTRIES
         assert grid_refusal(GridStubReader(), axis, grid) is None
 
+    def test_the_ceiling_cannot_protect_the_pass_which_is_why_memory_is_projected(
+        self,
+    ):
+        # The var ceiling sits past the concatenation, so on an image big
+        # enough for it to matter the memory is already committed. That is
+        # what the projection below exists for; this pins the reason.
+        import inspect
+
+        from thyra.converters.spatialdata import mobility_table as module
+
+        source = inspect.getsource(module._GridAccumulator.matrix)
+        assert source.index("np.concatenate") < source.index("var_ceiling_refusal")
+
     def test_the_count_is_what_is_refused_with_the_number_printed(self):
         assert var_ceiling_refusal(MAX_GRID_VAR_ENTRIES) is None
         refusal = var_ceiling_refusal(MAX_GRID_VAR_ENTRIES + 1)
@@ -344,6 +359,98 @@ class TestVarCeiling:
         assert f"{MAX_GRID_VAR_ENTRIES + 1:,}" in refusal
         assert f"{MAX_GRID_VAR_ENTRIES:,}" in refusal
         assert "--mobility-bins" in refusal
+
+
+class TestMemoryProjection:
+    """The stopgap guard on a route that holds its whole table in RAM."""
+
+    def test_nothing_is_projected_from_too_few_pixels(self):
+        assert projected_memory_gb(10_000_000, 4, 26_000) is None
+        assert memory_refusal(10_000_000, 4, 26_000, available_gb=1.0) is None
+
+    def test_nothing_is_projected_once_every_pixel_is_in(self):
+        # By then there is nothing left to warn about.
+        assert projected_memory_gb(10_000_000, 400, 400) is None
+
+    def test_the_projection_scales_the_pixels_read_to_the_whole_image(self):
+        # Measured shape: 20,455,979 non-zeros over 400 pixels of a real
+        # acquisition is 109 GB extrapolated to its 26,000.
+        gb = projected_memory_gb(20_455_979, 400, 26_000)
+        assert gb == pytest.approx(109.0, abs=1.0)
+
+    def test_a_table_that_fits_the_machine_is_not_refused(self):
+        assert memory_refusal(20_455_979, 400, 1_465, available_gb=64.0) is None
+
+    def test_a_table_that_does_not_fit_is_refused_by_the_numbers(self):
+        refusal = memory_refusal(20_455_979, 400, 26_000, available_gb=64.0)
+        assert refusal is not None
+        assert "1,329,638,635" in refusal and "26,000" in refusal
+        assert "109.0 GB" in refusal and "64.0 GB" in refusal
+        assert "--region" in refusal and "--mobility-bins" in refusal
+
+    def test_the_same_table_can_fit_one_machine_and_not_another(self):
+        # Which is why the guard is a fraction of what is free, not a
+        # fixed size: this is routine on a workstation and fatal on a
+        # laptop, and a constant would be wrong on one of them.
+        assert memory_refusal(20_455_979, 400, 1_465, available_gb=64.0) is None
+        assert memory_refusal(20_455_979, 400, 1_465, available_gb=8.0) is not None
+
+    def test_a_fixture_that_fits_is_built(self, monkeypatch):
+        import thyra.converters.spatialdata.mobility_table as module
+
+        monkeypatch.setattr(module, "_PROJECTION_MIN_PIXELS", 2)
+        monkeypatch.setattr(module, "available_memory_gb", lambda: 64.0)
+        assert self._build(module) is not None
+
+    def test_the_accumulator_stops_reading_when_it_refuses(self, monkeypatch, caplog):
+        import thyra.converters.spatialdata.mobility_table as module
+
+        monkeypatch.setattr(module, "_PROJECTION_MIN_PIXELS", 2)
+        # A machine with a few bytes free: the four-pixel fixture is then
+        # on course for more than half of it.
+        monkeypatch.setattr(module, "available_memory_gb", lambda: 1e-9)
+        with caplog.at_level("WARNING"):
+            assert self._build(module) is None
+        assert "on course for" in caplog.text
+        assert "--region" in caplog.text
+
+    def test_a_table_between_the_two_thresholds_warns_and_is_still_built(
+        self, monkeypatch, caplog
+    ):
+        import thyra.converters.spatialdata.mobility_table as module
+
+        monkeypatch.setattr(module, "_PROJECTION_MIN_PIXELS", 2)
+        monkeypatch.setattr(module, "available_memory_gb", lambda: 64.0)
+        # Between the two thresholds: said out loud, and still written.
+        monkeypatch.setattr(module, "GRID_MEMORY_WARN_FRACTION", 0.0)
+        monkeypatch.setattr(module, "GRID_MEMORY_REFUSE_FRACTION", 1e9)
+        with caplog.at_level("WARNING"):
+            assert self._build(module) is not None
+        assert "accumulates the whole table in RAM" in caplog.text
+
+    @staticmethod
+    def _build(module):
+        return module.build_mobility_table(
+            GridStubReader(),
+            _stub_obs(),
+            MASS_AXIS,
+            "stub_z0",
+            "stub_z0_pixels",
+            {},
+            grid=build_mobility_grid(1.1, 1.5),
+        )
+
+
+def _stub_obs():
+    import pandas as pd
+
+    return pd.DataFrame(
+        {
+            "x": [x for x, _y in PIXELS],
+            "y": [y for _x, y in PIXELS],
+        },
+        index=[str(i) for i in range(len(PIXELS))],
+    )
 
 
 # ----------------------------------------------------------------------

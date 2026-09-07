@@ -405,6 +405,23 @@ A grid is refused, at `INFO` or `WARNING` and never as an exception, when:
 | `--mobility-grid` was not given | binning is opt in: it costs a pass over the source and a much larger table |
 | the mobility axis carries no per-scan values | a reader opened without its vendor library cannot supply them, and the declared range is not a substitute |
 | the occupied `(m/z bin, channel)` pairs pass 20,000,000 | the count is printed; resample to fewer mass bins or ask for fewer channels |
+| the table is on course to need more than half the machine's free memory | see the note below; the projection and the free memory are both printed |
+
+!!! warning "This table is held in memory while it is built"
+    The summed MSI table is memory-bounded: the streaming route pre-scans the
+    source, counts, and scatters into a memmap, so it converts an acquisition
+    far larger than RAM. **The mobility grid table is not.** It accumulates its
+    `(pixel, m/z bin, channel)` triples in memory, so what it needs is linear in
+    the table's non-zeros: measured, 400 frames of a timsTOF acquisition peaked
+    at 2.0 GB, and the same acquisition's full 26,000 pixels projects to about
+    109 GB.
+
+    So the conversion projects that number from the pixels it has read, warns
+    past a quarter of the machine's free memory and **refuses past half of it**,
+    early, with the figures printed -- rather than letting the run reach the
+    ceiling below and die there. Convert one `--region` at a time, resample to
+    fewer mass bins, or ask for fewer channels. A memmap-scattered route that
+    removes the limit is the next piece of work on this table.
 
 The size ceiling is on the pairs that carry signal, not on the pairs the grid
 spans. The two differ by an order of magnitude -- 200 frames of a measured

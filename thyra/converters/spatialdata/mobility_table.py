@@ -274,6 +274,36 @@ def _feature_var(
 #: would turn away conversions that fit ninefold over.
 MAX_GRID_VAR_ENTRIES = 20_000_000
 
+#: Fractions of the memory free when the pass started that a grid table may
+#: be projected to need: warn past the first, refuse past the second.
+#: **This is a stopgap.** The summed table is memory-bounded -- the
+#: streaming route pre-scans, counts and scatters into a memmap -- while
+#: this accumulator holds its triples in RAM, so its memory is linear in
+#: the table's non-zeros with nothing else bounding it. The var ceiling
+#: above cannot help: it is checked after the triples have been
+#: concatenated, by which point the memory is already committed. Until this
+#: route grows a pre-scan of its own, the projection below is what stops a
+#: whole acquisition from taking the machine down instead of the user
+#: finding out the hard way. Fractions rather than a fixed size because the
+#: same table is routine on a workstation and fatal on a laptop.
+GRID_MEMORY_WARN_FRACTION = 0.25
+GRID_MEMORY_REFUSE_FRACTION = 0.5
+
+#: What to assume is free when the machine will not say (no ``psutil``, or
+#: it raised). Deliberately generous: a guess must not be what refuses a
+#: conversion that would have fitted.
+_ASSUMED_AVAILABLE_GB = 8.0
+
+#: Peak bytes per stored non-zero, over the accumulation and the sparse
+#: assembly together. Measured 2026-09-07: 20,455,979 non-zeros peaked at
+#: 1.82 GB above baseline, so 24 bytes of buffered triple carries about
+#: another 65 of concatenation, COO-to-CSC and the var frame built from it.
+_PEAK_BYTES_PER_NONZERO = 88
+
+#: Pixels to accumulate before the projection is trusted, so a refusal is
+#: never extrapolated from a handful of unrepresentative frames.
+_PROJECTION_MIN_PIXELS = 64
+
 
 def grid_var_bound(common_mass_axis: NDArray[np.float64], grid: MobilityGrid) -> int:
     """Every ``(m/z bin, channel)`` pair the grid spans: the size to beat.
@@ -295,6 +325,57 @@ def var_ceiling_refusal(n_features: int) -> Optional[str]:
         f"above the var ceiling of {MAX_GRID_VAR_ENTRIES:,}; resample to "
         f"fewer mass bins or ask for fewer mobility channels "
         f"(--mobility-bins)"
+    )
+
+
+def available_memory_gb() -> float:
+    """Memory free right now, in gibibytes, or a generous assumption."""
+    try:
+        import psutil
+
+        return float(psutil.virtual_memory().available) / 1024**3
+    except Exception as e:  # pragma: no cover - platform-defined
+        logger.debug("Could not read available memory: %s", e)
+        return _ASSUMED_AVAILABLE_GB
+
+
+def projected_memory_gb(n_nonzeros: int, n_pixels: int, n_obs: int) -> Optional[float]:
+    """What the finished table will need, from the pixels read so far.
+
+    Non-zeros per pixel is near enough constant across an image, which is
+    what makes the extrapolation honest. ``None`` until enough pixels have
+    been read for it to mean anything.
+    """
+    if n_pixels < _PROJECTION_MIN_PIXELS or n_pixels >= n_obs or n_pixels <= 0:
+        return None
+    projected = n_nonzeros / n_pixels * n_obs
+    return projected * _PEAK_BYTES_PER_NONZERO / 1024**3
+
+
+def memory_refusal(
+    n_nonzeros: int, n_pixels: int, n_obs: int, available_gb: Optional[float] = None
+) -> Optional[str]:
+    """Why a grid table this large must not be accumulated, or ``None``.
+
+    Projects the memory the finished table needs and refuses while it is
+    still hypothetical, rather than after it has been allocated -- which is
+    the one thing the var ceiling cannot do, sitting as it does past the
+    concatenation.
+    """
+    gb = projected_memory_gb(n_nonzeros, n_pixels, n_obs)
+    if gb is None:
+        return None
+    free = available_memory_gb() if available_gb is None else float(available_gb)
+    if gb <= free * GRID_MEMORY_REFUSE_FRACTION:
+        return None
+    projected = int(n_nonzeros / n_pixels * n_obs)
+    return (
+        f"the table is on course for {projected:,} non-zeros over {n_obs:,} "
+        f"pixels, which needs about {gb:.1f} GB -- more than half the "
+        f"{free:.1f} GB free on this machine. This route holds the whole "
+        f"table in RAM rather than scattering it to disk the way the summed "
+        f"table does. Convert one --region at a time, resample to fewer mass "
+        f"bins, or ask for fewer mobility channels (--mobility-bins)"
     )
 
 
@@ -339,10 +420,12 @@ class _GridAccumulator:
         axis: NDArray[np.float64],
         row_for: RowLookup,
         grid: MobilityGrid,
+        n_obs: int,
     ) -> None:
         self._axis = axis
         self._row_for = row_for
         self._grid = grid
+        self._n_obs = int(n_obs)
         self._rows: List[NDArray[np.int64]] = []
         self._keys: List[NDArray[np.int64]] = []
         self._data: List[NDArray[np.float64]] = []
@@ -350,6 +433,15 @@ class _GridAccumulator:
         self.n_skipped = 0
         self.n_dropped = 0
         self.n_points = 0
+        self.n_nonzeros = 0
+        #: Set once the projected table stops fitting in memory; the caller
+        #: stops reading and writes no table.
+        self.refusal: Optional[str] = None
+        # Read once, not per pixel: the projection is checked every
+        # _PROJECTION_MIN_PIXELS pixels and asking the OS how much memory
+        # is free is a syscall.
+        self._available_gb: Optional[float] = None
+        self._warned_memory = False
 
     def add(
         self,
@@ -387,6 +479,41 @@ class _GridAccumulator:
         self._rows.append(np.full(keys.size, row, dtype=np.int64))
         self._keys.append(keys)
         self._data.append(values)
+        self.n_nonzeros += int(keys.size)
+        if self.refusal is None and self.n_pixels % _PROJECTION_MIN_PIXELS == 0:
+            self._check_memory()
+
+    def _check_memory(self) -> None:
+        """Project the finished table's memory; warn once, then refuse.
+
+        The warning is the point: on a machine that can take the table it
+        is the only notice the user gets that this route holds the whole
+        thing in RAM, and it arrives early enough to stop the run.
+        """
+        gb = projected_memory_gb(self.n_nonzeros, self.n_pixels, self._n_obs)
+        if gb is None:
+            return
+        if self._available_gb is None:
+            self._available_gb = available_memory_gb()
+        free = self._available_gb
+        if gb > free * GRID_MEMORY_REFUSE_FRACTION:
+            self.refusal = memory_refusal(
+                self.n_nonzeros, self.n_pixels, self._n_obs, available_gb=free
+            )
+            return
+        if not self._warned_memory and gb > free * GRID_MEMORY_WARN_FRACTION:
+            self._warned_memory = True
+            logger.warning(
+                "The mobility grid table is on course for about %.1f GB of "
+                "memory (%s free): this route accumulates the whole table in "
+                "RAM rather than scattering it to disk the way the summed "
+                "table does. It will be refused past %.1f GB. Convert one "
+                "--region at a time, or resample to fewer mass bins, if this "
+                "machine cannot take it.",
+                gb,
+                f"{free:.1f} GB",
+                free * GRID_MEMORY_REFUSE_FRACTION,
+            )
 
     def _cells(
         self,
@@ -488,9 +615,19 @@ def _build_from_grid(
 ) -> Optional[Tuple[sparse.csc_matrix, pd.DataFrame]]:
     """Bin every pixel's point cloud onto the grid; ``(matrix, var)`` or ``None``."""
     axis = np.asarray(common_mass_axis, dtype=np.float64)
-    accumulator = _GridAccumulator(axis, row_for, grid)
+    accumulator = _GridAccumulator(axis, row_for, grid, n_obs)
     for coords, mzs, mobility, intensities in reader.iter_mobility_spectra():
         accumulator.add(coords, mzs, mobility, intensities)
+        if accumulator.refusal is not None:
+            # Stop reading rather than finish a pass whose result cannot be
+            # held. Nothing is written and the summed table is untouched.
+            logger.warning(
+                "No mobility-resolved table: %s (projected after %d of %d " "pixels)",
+                accumulator.refusal,
+                accumulator.n_pixels,
+                n_obs,
+            )
+            return None
     accumulated = accumulator.matrix(n_obs)
     if accumulated is None:
         return None
