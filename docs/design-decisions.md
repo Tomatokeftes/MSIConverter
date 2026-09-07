@@ -34,7 +34,8 @@ already what the code does.
 | Bruker TSF (TIMS off) | a vendor line spectrum, plus a raw digitizer trace | the line spectrum | the trace is a continuum with a baseline, not a peak list |
 | Bruker solariX | centroided peak lists in `peaks.sqlite`; raw transients | the peak lists | the only sparse record; transients need an FT |
 | Bruker rapifleX | profile spectra | the profile, resampled | nothing else exists; the resampler conserves current |
-| Waters | vendor centroid or profile continuum from MassLynx | the centroid (profile on request) | same shape as TSF |
+| Waters SELECT SERIES MRT | a zero-suppressed digitiser trace, plus a vendor centroid on demand | the trace, onto a digitiser-matched axis | the picker merges 8 to 9 mDa doublets the trace resolves; see [Supported Formats](supported-formats.md#waters-masslynx) |
+| every other Waters instrument | the same trace, plus a vendor centroid on demand | the centroid (profile on request) | measured on a Synapt G2-Si, the picker keeps everything the trace resolves, so the trace would cost 2 to 3 times the store for nothing |
 | imzML, mzPeak, PHI | whatever was exported | as exported | the export already made the choice |
 
 The line between TDF and TSF is the whole decision, so it was measured
@@ -68,8 +69,12 @@ peak *heights*, and `Frames.SummedIntensities` is the sum of those heights.
 The trace has a baseline of 18 on every sample, peaks 15 to 150 samples
 wide, and a total 3.4 to 3.7 times the line sum. Summing it would import a
 baseline and change the meaning of intensity from height to area. That is a
-different kind of data, and the same kind Waters offers as "profile", so TSF
-and Waters stay on the vendor's picked spectrum.
+different kind of data, so TSF stays on the vendor's line spectrum. The
+Waters trace is not the same kind: it is zero-suppressed, so it carries no
+baseline, and it is the digitiser's record. Which side of the rule a Waters
+instrument falls on is therefore decided by whether its peak picker has been
+shown to lose what the trace keeps, which is the MRT measurement in the
+next row of the table.
 
 **Why `scan_sum` is the TDF default.** Thyra's one invariant everywhere
 else is that ion current is conserved: the resampler is TIC-preserving and
@@ -98,6 +103,13 @@ vendor calls TIC.
   is a continuum with a baseline, and its line intensities are heights by
   Bruker's own definition. The rule is about sparse records, not about
   reading the largest array available.
+- *Then Waters should stay on its centroid, as this page first said.* The
+  first version of this table put every Waters instrument on the centroid
+  and called its profile "the same kind of data" as the TSF trace. That was
+  wrong on both counts, and the correction came from the measurements
+  behind the MRT profile default rather than from this page: the Waters
+  trace has no baseline, and on the MRT the picker merges near-isobars the
+  trace resolves. The rule did not change; the row did.
 
 **Known limits.** The summed table holds about three times the points per
 pixel on a short-ramp slide, half again on a long-ramp one. Measured on
