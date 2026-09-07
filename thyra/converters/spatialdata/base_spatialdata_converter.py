@@ -196,14 +196,14 @@ SPATIALDATA_AVAILABLE = False
 _import_error_msg = None
 try:
     import geopandas as gpd
-    import tifffile
-    import xarray as xr
     import zarr
     from anndata import AnnData
     from shapely.geometry import box
     from spatialdata import SpatialData
     from spatialdata.models import Image2DModel, ShapesModel, TableModel
     from spatialdata.transformations import Affine, Identity, Scale, Sequence
+
+    from .optical_image import OpticalTiffSource, StreamedOpticalImage
 
     SPATIALDATA_AVAILABLE = True
 except (ImportError, NotImplementedError) as e:
@@ -222,6 +222,8 @@ except (ImportError, NotImplementedError) as e:
     Scale = None
     box = None
     gpd = None
+    OpticalTiffSource = None  # type: ignore[misc]
+    StreamedOpticalImage = None  # type: ignore[misc]
 
 
 def _calc_optical_scale_factors(
@@ -700,6 +702,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         # Primary optical image filename from .mis <ImageFile> and its dimensions
         self._primary_optical_filename: Optional[str] = None
         self._primary_optical_dims: Optional[Tuple[int, int]] = None  # (width, height)
+        # Optical images declared to SpatialData as placeholders whose pixels
+        # still have to be streamed into the store once it is written. See
+        # optical_image.py and _stream_pending_optical_pixels().
+        self._pending_optical_images: Dict[str, "StreamedOpticalImage"] = {}
 
         # Metadata caches (populated lazily during conversion)
         self._essential_metadata_cached: Optional[EssentialMetadata] = None
@@ -3236,132 +3242,145 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
 
         logger.info(f"Loading optical image: {tiff_path.name} as '{image_name}'")
 
-        # Read TIFF using tifffile (handles large files efficiently)
-        with tifffile.TiffFile(tiff_path) as tif:
-            # Read the first page/frame
-            img_data = tif.pages[0].asarray()
+        # Only the page header is read here. The pixels never enter this
+        # process whole: the element is declared to SpatialData as a lazy
+        # placeholder with the final shape, dtype, chunking and pyramid,
+        # and _stream_pending_optical_pixels() fills it in bands once the
+        # store exists. See optical_image.py for why (the whole-page route
+        # cost ~5x the decoded image in transient memory).
+        # probe raises for a layout or sample format it cannot read; the
+        # per-image guard in _add_optical_images turns that into the same
+        # "skip with a warning" the whole-page decode used to give.
+        source = OpticalTiffSource.probe(tiff_path)
+        n_channels, y_size, x_size = source.shape
 
-            # Get image dimensions
-            if img_data.ndim == 2:
-                # Grayscale: (y, x) -> (c, y, x)
-                img_data = img_data[np.newaxis, :, :]
-                n_channels = 1
-            elif img_data.ndim == 3:
-                # RGB/RGBA: (y, x, c) -> (c, y, x)
-                img_data = np.moveaxis(img_data, -1, 0)
-                n_channels = img_data.shape[0]
-            else:
-                logger.warning(
-                    f"Unexpected image dimensions {img_data.ndim} for {tiff_path.name}"
+        # Determine transform.  Two cases:
+        #
+        # 1. apply_optical_alignment=True (default): "global" is
+        #    optical-image pixel space.  Primary image is Identity;
+        #    non-primary images Scale to match primary dims.
+        #
+        # 2. apply_optical_alignment=False (e.g. Ousia wizard):
+        #    "global" is MSI micrometer space.  Map the primary
+        #    image's pixel coordinates into MSI um using the inverse
+        #    of the tic-to-image affine, then scale by pixel_size_um.
+        #    This way the optical image lands alongside the MSI in
+        #    the same um frame and downstream registration steps
+        #    map both together.
+        um_mode = (
+            not self._apply_optical_alignment and self._tic_to_image_matrix is not None
+        )
+        is_primary = self._is_primary_optical(tiff_path)
+        if is_primary:
+            self._primary_optical_dims = (x_size, y_size)
+            if um_mode:
+                transform = self._build_optical_to_um_transform()
+                logger.info(
+                    f"  Primary image -> um via inverse alignment: {x_size}x{y_size}"
                 )
-                return
-
-            y_size, x_size = img_data.shape[1], img_data.shape[2]
-
-            # Create xarray DataArray
-            optical_image = xr.DataArray(
-                img_data,
-                dims=("c", "y", "x"),
-                coords={
-                    "c": np.arange(n_channels),
-                    "y": np.arange(y_size),
-                    "x": np.arange(x_size),
-                },
-                attrs={
-                    "source_file": tiff_path.name,
-                    "original_path": str(tiff_path),
-                },
-            )
-
-            # Determine transform.  Two cases:
-            #
-            # 1. apply_optical_alignment=True (default): "global" is
-            #    optical-image pixel space.  Primary image is Identity;
-            #    non-primary images Scale to match primary dims.
-            #
-            # 2. apply_optical_alignment=False (e.g. Ousia wizard):
-            #    "global" is MSI micrometer space.  Map the primary
-            #    image's pixel coordinates into MSI um using the inverse
-            #    of the tic-to-image affine, then scale by pixel_size_um.
-            #    This way the optical image lands alongside the MSI in
-            #    the same um frame and downstream registration steps
-            #    map both together.
-            is_primary = self._is_primary_optical(tiff_path)
-            if is_primary:
-                self._primary_optical_dims = (x_size, y_size)
-                if (
-                    not self._apply_optical_alignment
-                    and self._tic_to_image_matrix is not None
-                ):
-                    transform = self._build_optical_to_um_transform()
-                    logger.info(
-                        f"  Primary image -> um via inverse alignment: "
-                        f"{x_size}x{y_size}"
-                    )
-                else:
-                    transform = Identity()
-                    logger.info(f"  Primary alignment image: {x_size}x{y_size}")
-            elif self._primary_optical_dims is not None:
-                # Non-primary: first scale to match primary, then if
-                # we're in um-mode, chain through the same um affine.
-                base = self._compute_optical_scale_transform(x_size, y_size)
-                if (
-                    not self._apply_optical_alignment
-                    and self._tic_to_image_matrix is not None
-                ):
-                    transform = Sequence([base, self._build_optical_to_um_transform()])
-                else:
-                    transform = base
             else:
                 transform = Identity()
+                logger.info(f"  Primary alignment image: {x_size}x{y_size}")
+        elif self._primary_optical_dims is not None:
+            # Non-primary: first scale to match primary, then if
+            # we're in um-mode, chain through the same um affine.
+            base = self._compute_optical_scale_transform(x_size, y_size)
+            if um_mode:
+                transform = Sequence([base, self._build_optical_to_um_transform()])
+            else:
+                transform = base
+        else:
+            transform = Identity()
 
-            # Multi-scale pyramid + chunked layout.
-            #
-            # Without scale_factors, Image2DModel.parse writes a
-            # single-scale image and any downstream viewer has to read
-            # full-resolution tiles at every zoom level.  For a typical
-            # FlexImaging brightfield (10k x 10k+ pixels) that is the
-            # difference between an instant first paint and a multi-
-            # second stall every time the user pans or zooms.
-            #
-            # We mirror what spatialdata-io's xenium reader does for
-            # its morphology images: scale_factors=[2, 2, 2, 2] gives
-            # the viewer five pyramid levels.  Here we adapt the level
-            # count to the image's smallest spatial dimension so tiny
-            # images don't waste levels and huge ones get enough to
-            # keep the coarsest level fast (< ~1000 px short side).
-            #
-            # chunks=(1, 4096, 4096) stores each channel as 4k x 4k
-            # blocks so a viewer's 512 x 512 tile read decompresses
-            # at most one chunk per request.
-            smallest = min(y_size, x_size)
-            scale_factors = _calc_optical_scale_factors(smallest)
-            parse_kwargs: Dict[str, Any] = {
-                "transformations": {
-                    self.dataset_id: transform,
-                    "global": transform,
-                },
-                "chunks": image_chunks(
-                    2
-                ),  # (1, 4096, 4096); sharding seam, see _chunking
-            }
-            if scale_factors:
-                parse_kwargs["scale_factors"] = scale_factors
+        # Multi-scale pyramid + chunked layout.
+        #
+        # Without scale_factors a single-scale image is written and any
+        # downstream viewer has to read full-resolution tiles at every
+        # zoom level.  For a typical FlexImaging brightfield (10k x 10k+
+        # pixels) that is the difference between an instant first paint
+        # and a multi-second stall every time the user pans or zooms.
+        #
+        # We mirror what spatialdata-io's xenium reader does for its
+        # morphology images: scale_factors=[2, 2, 2, 2] gives the viewer
+        # five pyramid levels.  Here we adapt the level count to the
+        # image's smallest spatial dimension so tiny images don't waste
+        # levels and huge ones get enough to keep the coarsest level
+        # fast (< ~1000 px short side).
+        #
+        # chunks=(1, 4096, 4096) stores each channel as 4k x 4k blocks
+        # so a viewer's 512 x 512 tile read decompresses at most one
+        # chunk per request.
+        smallest = min(y_size, x_size)
+        scale_factors = _calc_optical_scale_factors(smallest)
+        streamed = StreamedOpticalImage(
+            source=source,
+            name=image_name,
+            chunks=image_chunks(2),  # (1, 4096, 4096); sharding seam, see _chunking
+            scale_factors=scale_factors,
+            transformations={
+                self.dataset_id: transform,
+                "global": transform,
+            },
+            attrs={
+                "source_file": tiff_path.name,
+                "original_path": str(tiff_path),
+            },
+        )
+        # Keyed by element name, as the images dict is: a second file that
+        # maps to the same name replaces the first, the way the dict
+        # assignment always did, only now with a warning.
+        earlier = self._pending_optical_images.get(image_name)
+        if earlier is not None:
+            logger.warning(
+                f"Optical image '{image_name}' from {earlier.source.path.name} "
+                f"is replaced by {tiff_path.name}, which maps to the same name"
+            )
+        data_structures["images"][image_name] = streamed.placeholder()
+        self._pending_optical_images[image_name] = streamed
 
-            data_structures["images"][image_name] = Image2DModel.parse(
-                optical_image,
-                **parse_kwargs,
-            )
+        pyramid_desc = (
+            f", {len(scale_factors)} pyramid level{'s' if len(scale_factors) != 1 else ''}"
+            if scale_factors
+            else " (no pyramid; image small enough)"
+        )
+        logger.info(
+            f"Added optical image '{image_name}': {x_size}x{y_size} "
+            f"({n_channels} channel{'s' if n_channels > 1 else ''}){pyramid_desc}"
+            "; pixels stream in once the store is written"
+        )
 
-            pyramid_desc = (
-                f", {len(scale_factors)} pyramid level{'s' if len(scale_factors) != 1 else ''}"
-                if scale_factors
-                else " (no pyramid; image small enough)"
-            )
-            logger.info(
-                f"Added optical image '{image_name}': {x_size}x{y_size} "
-                f"({n_channels} channel{'s' if n_channels > 1 else ''}){pyramid_desc}"
-            )
+    def _stream_pending_optical_pixels(self) -> int:
+        """Fill every optical image declared so far with its pixels.
+
+        Call once the SpatialData write that carried the placeholders has
+        returned and before metadata is consolidated. Each image streams
+        from its TIFF in bands and builds its pyramid level by level on
+        disk, so memory stays bounded by one band, not by the image.
+
+        A TIFF whose pixels cannot be read is dropped from the store with a
+        warning and the conversion goes on without it -- the tolerance the
+        whole-page decode had, when the same failure happened before
+        anything was written. Only a failure to drop the element propagates,
+        because an image with metadata and no pixels is a corrupt store.
+
+        Returns:
+            The number of images whose pixels are now in the store.
+        """
+        pending, self._pending_optical_images = self._pending_optical_images, {}
+        streamed = 0
+        for image in pending.values():
+            logger.info(f"Streaming optical image pixels: '{image.name}'")
+            try:
+                image.stream_pixels(self.output_path)
+            except Exception as e:  # mirrors the per-image guard in _add_optical_images
+                logger.warning(
+                    f"Failed to load optical image {image.source.path.name}: {e}; "
+                    f"dropping '{image.name}' from the store"
+                )
+                image.discard(self.output_path)
+                continue
+            streamed += 1
+        return streamed
 
     def _generate_optical_image_name(self, tiff_path: Path) -> str:
         """Generate a clean name for an optical image layer.
@@ -3420,6 +3439,9 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             # file per KB -- and the write dominates conversion wall-clock.
             with _suppress_upstream_warnings(), table_write_config():
                 sdata.write(str(self.output_path))
+                # The optical images above are placeholders; their pixels
+                # stream into the store now that it exists.
+                self._stream_pending_optical_pixels()
                 zarr.consolidate_metadata(str(self.output_path))
             logger.info(f"Successfully saved SpatialData to {self.output_path}")
             # The sibling tables were written from their memmaps; nothing
