@@ -266,6 +266,7 @@ def _build_reader_options(
     intensity_threshold: Optional[float],
     spectrum_type: str = "auto",
     tdf_spectrum: Optional[str] = None,
+    waters_spectrum: Optional[str] = None,
 ) -> dict[str, bool | float | str]:
     """Build reader options dictionary from CLI parameters.
 
@@ -274,6 +275,9 @@ def _build_reader_options(
     mean detect, and ``"auto"`` is not a representation. ``tdf_spectrum`` is
     likewise only forwarded when given: it is a Bruker TDF option, and a
     reader for any other format would reject an unexpected keyword.
+    ``waters_spectrum`` is the same for Waters .raw, and is spelled as a
+    representation rather than as ``use_centroid`` because that is what a
+    caller is choosing; the reader keyword it sets is the negation.
     """
     options: dict[str, bool | float | str] = {
         "use_recalibrated_state": use_recalibrated
@@ -284,6 +288,8 @@ def _build_reader_options(
         options["spectrum_type"] = spectrum_type
     if tdf_spectrum is not None:
         options["tdf_spectrum"] = tdf_spectrum
+    if waters_spectrum is not None:
+        options["use_centroid"] = waters_spectrum == "centroid"
     return options
 
 
@@ -418,6 +424,7 @@ class GroupedCommand(click.Command):
             "--intensity-threshold",
             "--tdf-spectrum",
         ],
+        "Waters-specific": ["--waters-spectrum"],
         "Other": ["--dataset-id", "--handle-3d", "--z-spacing"],
         "General": ["--version", "--help"],
     }
@@ -715,6 +722,19 @@ class GroupedCommand(click.Command):
         "sums every scan and keeps all of the ion current. TDF only."
     ),
 )
+# -- Waters-specific --
+@click.option(
+    "--waters-spectrum",
+    type=click.Choice(["centroid", "profile"]),
+    default=None,
+    help=(
+        "What MassLynx hands back for one Waters .raw pixel: centroid "
+        "(the default) is the vendor peak picker, which reports one "
+        "centroid where the sampled trace has two maxima a few mDa "
+        "apart; profile is that sampled trace, which keeps them apart at "
+        "the cost of a larger store. Waters .raw only."
+    ),
+)
 # -- Other --
 @click.option(
     "--dataset-id",
@@ -771,6 +791,7 @@ def main(
     msms_table: bool,
     intensity_threshold: Optional[float],
     tdf_spectrum: Optional[str],
+    waters_spectrum: Optional[str],
     streaming: str,
     region: Optional[str],
 ):
@@ -841,7 +862,11 @@ def main(
 
     # Build reader options for format-specific settings
     reader_options = _build_reader_options(
-        use_recalibrated, intensity_threshold, spectrum_type, tdf_spectrum
+        use_recalibrated,
+        intensity_threshold,
+        spectrum_type,
+        tdf_spectrum,
+        waters_spectrum,
     )
 
     # Perform conversion

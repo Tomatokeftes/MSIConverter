@@ -14,8 +14,8 @@ thyra [OPTIONS] INPUT OUTPUT
 !!! tip "Grouped help"
     `thyra --help` lists every option under a category heading -- Conversion,
     Logging, Resampling (advanced), Performance, imzML-specific,
-    Bruker-specific, Other, and a General section holding `--version` and
-    `--help` -- in the same order as the sections on this page.
+    Bruker-specific, Waters-specific, Other, and a General section holding
+    `--version` and `--help` -- in the same order as the sections on this page.
 
 ---
 
@@ -350,6 +350,35 @@ thyra tims_data.d output.zarr --tdf-spectrum scan_sum
     **before** writing to zarr. This reduces file size but is irreversible.
     Use with care -- inspect the data with `-v DEBUG` first to choose an
     appropriate threshold.
+
+---
+
+## Waters-Specific
+
+This option only applies when converting Waters `.raw` directories.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--waters-spectrum {centroid,profile}` | `centroid` | What MassLynx hands back for one pixel: the vendor peak picker, or the sampled trace behind it |
+
+### Examples
+
+```bash
+# Keep near-isobars the vendor centroider merges
+thyra data.raw output.zarr --waters-spectrum profile \
+    --resample-width-at-mz 0.001 --resample-reference-mz 1000
+```
+
+!!! note "When the profile is worth its size"
+    MassLynx centroiding reports a single peak wherever the sampled trace has
+    two maxima a few mDa apart, and puts it partway between them. On a
+    SELECT SERIES MRT brain section, four separate 8-9 mDa doublets between
+    m/z 760 and 830 -- including the <sup>13</sup>C<sub>2</sub> isotopologue of
+    PC 34:1 [M+K]<sup>+</sup> against PC 34:0 [M+K]<sup>+</sup> -- came back as
+    one centroid in 96-100% of the pixels that resolved them, 4-8 ppm from
+    either true mass. `--waters-spectrum profile` keeps them apart, for about
+    3.5 times the stored non-zeros and 2.3 times the store. It is not slower:
+    MassLynx centroids on demand, so a profile read skips that work.
 
 ---
 
