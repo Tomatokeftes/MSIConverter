@@ -86,6 +86,12 @@ class ScanInfoData:
     rt: float
     laser_x_pos: float  # in mm from DLL
     laser_y_pos: float  # in mm from DLL
+    #: The quadrupole isolation window and collision energy of an MS/MS
+    #: scan, as MassLynx reports them; 0.0 when the scan is MS1. Defaulted
+    #: so a scan record built without them (older callers, tests) is intact.
+    quad_isolation_start: float = 0.0
+    quad_isolation_end: float = 0.0
+    collision_energy: float = 0.0
 
     @property
     def has_position(self) -> bool:
@@ -375,6 +381,9 @@ class MassLynxLib:
             rt=info.rt,
             laser_x_pos=info.laserXPos,
             laser_y_pos=info.laserYPos,
+            quad_isolation_start=info.quadIsolationStart,
+            quad_isolation_end=info.quadIsolationEnd,
+            collision_energy=info.collisionEnergy,
         )
 
     def read_spectrum(

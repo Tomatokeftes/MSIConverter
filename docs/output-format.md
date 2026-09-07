@@ -289,9 +289,10 @@ integer index in both directions.
 The m/z binning is the converter's own nearest-bin rule, coarsened, so under a
 lossless summed spectrum (`--tdf-spectrum scan_sum`) the heatmap summed over
 mobility, `counts.sum(axis=1)`, equals `uns["average_spectrum"]` coarsened to
-`mz_edges`. Under the default `vendor_centroid` it does not: the centroid keeps
-80 to 90 percent of the ion current and merges bins, while the heatmap is
-built from every raw point. On a Bruker source the heatmap costs one extra
+`mz_edges`. Under `vendor_centroid` it does not: the centroid keeps only the current
+inside the peaks its picker assigns (87 to 96 percent on the acquisitions
+measured, see [Design Decisions](design-decisions.md#d1-which-spectrum-a-reader-takes))
+and merges bins, while the heatmap is built from every raw point. On a Bruker source the heatmap costs one extra
 library call per frame (about a millisecond); `--no-mobility-heatmap` skips
 it.
 
@@ -516,8 +517,9 @@ Exactly, because `--msms-table` selects `--tdf-spectrum scan_sum` for the
 summed table (at `WARNING`, as `--mobility-grid` does, and never over an
 explicit `--tdf-spectrum`): the split is built from the raw scans, and only
 a summed spectrum built from the same scans can add back up to it. The
-vendor centroid keeps 80 to 90 percent of the raw ion current and the two
-tables of one store would genuinely not agree.
+vendor centroid keeps only the current inside the peaks it picks (87 to
+96 percent on the acquisitions measured) and the two tables of one store
+would genuinely not agree.
 
 ```python
 msms = sdata.tables["msi_z0_msms"]
@@ -579,7 +581,8 @@ ion current the split holds: `current_ratio` over the whole image, and
 `current_ratio_pixel_min` / `_max` across pixels. Under
 `--tdf-spectrum scan_sum`, which the table selects, it is exactly `1.0`.
 Under an explicit `--tdf-spectrum vendor_centroid` it is **above** 1 -- the
-vendor peak picker discards single counts while the split reads raw scans,
+vendor peak picker drops the index bins it assigns to no peak while the
+split reads raw scans,
 which on a real acquisition is about 1.5% overall and up to 1.14x on a
 single pixel. The two tables genuinely do not add up in that mode, and this
 block is where the store says so. It is written on every route, including

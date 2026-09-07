@@ -88,6 +88,7 @@ nav:
   - imzML Parser Notes: imzml-parser-notes.md
   - PHI ToF-SIMS Notes: phi-tofsims-notes.md
   - solariX Notes: solarix-notes.md
+  - Design Decisions: design-decisions.md
   - API Reference: api.md
   - Contributing: contributing.md
   - Code of Conduct: code-of-conduct.md

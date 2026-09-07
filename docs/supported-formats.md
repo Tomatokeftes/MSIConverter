@@ -114,8 +114,11 @@ instead (below). Two collapses are available through `--tdf-spectrum`:
 
 - `vendor_centroid` (default): Bruker's frame-level peak picker over the full
   ramp, the same one behind the TSF line spectrum and SCiLS Lab's import. It
-  merges neighbouring digitizer bins and drops single-count noise, which on
-  real imaging frames keeps roughly 80 to 90 percent of the raw ion current.
+  reports peak areas, merges neighbouring digitizer bins, and drops every
+  index bin its picker assigns to no peak, which on measured imaging
+  acquisitions keeps 87 to 96 percent of the raw ion current. Bruker's own
+  per-frame total (`Frames.SummedIntensities`) is the scan sum, not this.
+  See [Design Decisions](design-decisions.md#d1-which-spectrum-a-reader-takes).
 - `scan_sum`: every scan summed per digitizer index. Lossless, three to four
   times as many points per frame, and exactly the mobility marginal of the
   per-scan data.
@@ -275,6 +278,15 @@ at the cost of an axis that differs from run to run.
 (`profile spectrum` or `centroid spectrum`), `format_specific.spectrum_source`
 says which MassLynx representation it came from, and `format_specific.is_mrt`
 with `instrument_decided_by` record the instrument decision.
+**One MS level per store.** Every MS function shares the one laser grid, so
+a two-function acquisition (MSe low and high energy, or a data-dependent
+run) records an MS1 and an MS/MS spectrum at the same pixel. Thyra converts
+the MS1 function(s) only and lists the others, with their MS level and
+precursor m/z, under `excluded_functions` in the Waters-specific metadata
+block; summing an intact-ion and a fragment spectrum into one pixel would
+make a spectrum of nothing. A file with MS/MS functions only converts them
+and reports their precursors through `ms_analysis.fragmentation`, exactly as
+a Bruker MS/MS acquisition does (see [Design Decisions](design-decisions.md#d7-waters-the-summed-table-takes-ms-level-1-only)).
 
 ## PHI SmartSoft-TOF (ToF-SIMS)
 

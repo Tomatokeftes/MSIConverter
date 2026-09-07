@@ -14,16 +14,20 @@ correct ways to do that (see :data:`TDF_SPECTRUM_MODES`):
     (``tims_extract_centroided_spectrum_for_frame_v2``) over scans
     ``0..NumScans``. This is the same peak picker behind the TSF line
     spectrum (``tsf_read_line_spectrum_v2``) and behind SCiLS Lab's import,
-    so TSF and TDF stores from the same instrument family agree. It merges
-    neighbouring digitizer bins and discards single-count noise, which on
-    real imaging frames keeps roughly 80-90% of the raw ion current.
+    so TSF and TDF stores from the same instrument family agree. It reports
+    peak areas, merges neighbouring digitizer bins and drops every index
+    bin its picker assigns to no peak, which on measured imaging
+    acquisitions keeps 87-96% of the raw ion current. Bruker's own
+    ``Frames.SummedIntensities`` is the scan sum, not the centroid total.
 
 ``scan_sum``
     The lossless alternative: every ``(index, scan)`` pair of the frame is
     read with ``tims_read_scans_v2`` and intensities are summed per
-    digitizer index. Keeps 100% of the ion current, yields three to four
-    times as many points per frame, and is the only mode whose result is
-    exactly the mobility marginal of the per-scan data.
+    digitizer index. Keeps 100% of the ion current, yields 1.5 to 3 times as
+    many points per frame, equals Bruker's own quasi-profile export
+    (``tims_extract_profile_for_frame``) and ``Frames.SummedIntensities``
+    exactly, and is the only mode whose result is the mobility marginal
+    of the per-scan data.
 
 Frame ids are the 1-based ``Frames.Id`` of the SQLite database throughout;
 the SDK takes them as-is.

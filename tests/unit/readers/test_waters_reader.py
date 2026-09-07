@@ -457,3 +457,132 @@ class TestWatersReaderProperties:
         r = repr(reader)
         assert "grid=3x2" in r
         reader.close()
+
+
+def _two_function_grid(levels, precursors=None):
+    """A 3x1 grid where every function records a scan at each of 3 pixels.
+
+    ``levels`` maps function index -> MS level; ``precursors`` maps function
+    index -> a precursor m/z per scan (a constant, or a list per scan).
+    """
+    precursors = precursors or {}
+    positions = [(0.1, 0.05), (0.2, 0.05), (0.3, 0.05)]
+    scan_map = {}
+    for func, level in levels.items():
+        per_scan = precursors.get(func, 0.0)
+        for scan, (x_mm, y_mm) in enumerate(positions):
+            mz = per_scan[scan] if isinstance(per_scan, list) else per_scan
+            info = _make_scan_info(x_mm, y_mm, ms_level=level)
+            scan_map[(func, scan)] = ScanInfoData(
+                **{**info.__dict__, "precursor_mz": mz, "collision_energy": 25.0}
+            )
+    return ImagingGrid(
+        x_index_map={100.0: 0, 200.0: 1, 300.0: 2},
+        y_index_map={50.0: 0},
+        pixel_count_x=3,
+        pixel_count_y=1,
+        pixel_size_x=100.0,
+        pixel_size_y=100.0,
+        lateral_width=200.0,
+        lateral_height=0.0,
+        scan_map=scan_map,
+    )
+
+
+def _open_reader(mock_ml_cls, mock_build_grid, mock_waters_data, grid, n_funcs):
+    mock_ml = MagicMock()
+    mock_ml_cls.get_instance.return_value = mock_ml
+    mock_ml.is_imaging_file.return_value = True
+    mock_ml.get_number_of_functions.return_value = n_funcs
+    mock_ml.classify_function.return_value = FunctionType.MS
+    mock_ml.get_number_of_scans_in_function.return_value = 3
+    mock_ml.read_spectrum.return_value = (
+        np.array([100.0, 200.0]),
+        np.array([1.0, 2.0]),
+    )
+    mock_build_grid.return_value = grid
+    return WatersReader(mock_waters_data), mock_ml
+
+
+class TestWatersReaderMsLevels:
+    """One MS level per store: MS1 wins, MS/MS is recorded, not summed in."""
+
+    @patch("thyra.readers.waters.waters_reader.MassLynxLib")
+    @patch("thyra.readers.waters.waters_reader.build_imaging_grid")
+    def test_ms1_and_msms_functions_convert_the_ms1_only(
+        self, mock_build_grid, mock_ml_cls, mock_waters_data
+    ):
+        grid = _two_function_grid({0: 1, 1: 2}, {1: 500.25})
+        reader, mock_ml = _open_reader(
+            mock_ml_cls, mock_build_grid, mock_waters_data, grid, 2
+        )
+        spectra = list(reader.iter_spectra())
+
+        # Three pixels, one spectrum each, all read from function 0
+        assert len(spectra) == 3
+        assert {c for c, _, _ in spectra} == {(0, 0, 0), (1, 0, 0), (2, 0, 0)}
+        assert {call.args[1] for call in mock_ml.read_spectrum.call_args_list} == {0}
+
+        schedule = reader.get_fragmentation()
+        assert schedule.ms_level == 1 and not schedule.is_msms
+
+        excluded = reader._excluded_functions
+        assert set(excluded) == {1}
+        assert excluded[1]["ms_level"] == 2
+        assert excluded[1]["precursor_mz"] == pytest.approx(500.25)
+        assert excluded[1]["n_scans"] == 3
+
+        block = reader._create_metadata_extractor()._extract_waters_specific()
+        assert block["ms_functions"] == [0]
+        assert block["excluded_functions"]["1"]["precursor_mz"] == pytest.approx(500.25)
+        reader.close()
+
+    @patch("thyra.readers.waters.waters_reader.MassLynxLib")
+    @patch("thyra.readers.waters.waters_reader.build_imaging_grid")
+    def test_msms_only_file_converts_and_reports_its_precursor(
+        self, mock_build_grid, mock_ml_cls, mock_waters_data
+    ):
+        grid = _two_function_grid({0: 2}, {0: 760.585})
+        reader, _ = _open_reader(
+            mock_ml_cls, mock_build_grid, mock_waters_data, grid, 1
+        )
+        assert len(list(reader.iter_spectra())) == 3
+        assert reader._excluded_functions == {}
+
+        schedule = reader.get_fragmentation()
+        assert schedule.ms_level == 2 and schedule.constant_across_pixels
+        assert len(schedule.windows) == 1
+        assert schedule.windows[0].target == pytest.approx(760.585)
+        assert schedule.windows[0].collision_energy == pytest.approx(25.0)
+        assert not schedule.merges_precursors
+        reader.close()
+
+    @patch("thyra.readers.waters.waters_reader.MassLynxLib")
+    @patch("thyra.readers.waters.waters_reader.build_imaging_grid")
+    def test_data_dependent_precursors_are_not_a_constant_schedule(
+        self, mock_build_grid, mock_ml_cls, mock_waters_data
+    ):
+        grid = _two_function_grid({0: 2}, {0: [500.0, 600.0, 700.0]})
+        reader, _ = _open_reader(
+            mock_ml_cls, mock_build_grid, mock_waters_data, grid, 1
+        )
+        schedule = reader.get_fragmentation()
+        assert schedule.ms_level == 2
+        assert not schedule.constant_across_pixels
+        assert schedule.windows == ()
+        reader.close()
+
+    @patch("thyra.readers.waters.waters_reader.MassLynxLib")
+    @patch("thyra.readers.waters.waters_reader.build_imaging_grid")
+    def test_two_ms1_functions_are_both_kept(
+        self, mock_build_grid, mock_ml_cls, mock_waters_data
+    ):
+        grid = _two_function_grid({0: 1, 1: 1})
+        reader, mock_ml = _open_reader(
+            mock_ml_cls, mock_build_grid, mock_waters_data, grid, 2
+        )
+        spectra = list(reader.iter_spectra())
+        assert len(spectra) == 6
+        assert {call.args[1] for call in mock_ml.read_spectrum.call_args_list} == {0, 1}
+        assert reader.get_fragmentation().ms_level == 1
+        reader.close()

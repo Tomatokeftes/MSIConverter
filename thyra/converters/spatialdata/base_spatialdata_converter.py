@@ -1665,8 +1665,9 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         binned the same way, differing only in whether mobility was kept.
         Under ``--tdf-spectrum scan_sum`` that holds exactly; under the
         vendor centroid it cannot, because the centroid is a peak-picked
-        spectrum over the same ramp and keeps 80-90% of the ion current
-        while the grid reads raw scans. A store whose two tables disagree
+        spectrum over the same ramp and keeps only the current inside the
+        peaks it picks (87-96% on measured acquisitions) while the grid
+        reads raw scans. A store whose two tables disagree
         must say by how much rather than leave a reader to find it by
         subtraction.
 
@@ -1791,7 +1792,8 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         The two tables agree exactly under ``--tdf-spectrum scan_sum``,
         which writing this table now selects; under an explicit
         ``vendor_centroid`` they do not, because the vendor peak picker
-        drops single counts while the split reads raw scans, so the
+        drops the index bins it assigns to no peak while the split reads
+        raw scans, so the
         demultiplexed table holds *more*. That is not a defect, but a
         store whose two tables disagree must say so rather than leave a
         reader to find it by subtraction. ``row_totals`` stands in for the

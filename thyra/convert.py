@@ -132,11 +132,12 @@ def _force_scan_sum(reader_class: Any, options: Dict[str, Any], what: str) -> No
     is built from the raw scans, so it reproduces the summed table (the
     grid's marginal over channels, the split's blocks added back up) only
     when that table was built from the same scans. The vendor centroid is
-    a peak-picked spectrum over the same ramp and keeps 80-90% of the ion
-    current, so with it the two tables of one store genuinely do not add
-    up.
+    a peak-picked spectrum over the same ramp and keeps only the current
+    inside the peaks it picks (87-96% on measured acquisitions), so with
+    it the two tables of one store genuinely do not add up.
 
-    The switch moves the stored TIC by 13-21%, which reads as a bug if it
+    The switch moves the stored TIC by 4-14% on measured acquisitions,
+    which reads as a bug if it
     happens quietly, so it is said at WARNING -- and never applied over an
     explicit ``--tdf-spectrum``, which is the caller saying they want the
     other one and will live with the mismatch, which the sibling's
