@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v3.20.0 (2026-09-07)
+
+### Documentation
+
+- **decisions**: The grid at the default axis, the cold share, and the indexed mapping
+  ([`67e9ba3`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/67e9ba30f32296b8ca79bb01a77a97da806975b7))
+
+### Features
+
+- **converters**: Map a frame's unique m/z once and gather by its inverse
+  ([`7749ba1`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/7749ba1803561354c938a5761ad7234e7bc3ac7a))
+
+
 ## v3.19.2 (2026-09-07)
 
 ### Bug Fixes
