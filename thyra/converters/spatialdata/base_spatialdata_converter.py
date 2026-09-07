@@ -1904,9 +1904,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         if abs(float(block["current_ratio"]) - 1.0) > _MARGINAL_TOLERANCE:
             logger.info(
                 "The demultiplexed table holds %.4fx the summed table's ion "
-                "current (per pixel %.4f to %.4f). They agree exactly only "
-                "under --tdf-spectrum scan_sum; the vendor centroid discards "
-                "counts the raw scans keep.",
+                "current (per pixel %.4f to %.4f). Above 1 under an explicit "
+                "--tdf-spectrum vendor_centroid, which discards counts the "
+                "raw scans keep; below 1 when the schedule's windows do not "
+                "cover every scan that carries current.",
                 block["current_ratio"],
                 block["current_ratio_pixel_min"],
                 block["current_ratio_pixel_max"],

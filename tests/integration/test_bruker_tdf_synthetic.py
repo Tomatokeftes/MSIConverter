@@ -9,6 +9,12 @@ A second group runs only against a real acquisition named by
 ``THYRA_BRUKER_TDF_DATASET`` and checks the reader against the database's own
 per-frame ``SummedIntensities``, and the stored mass-mobility heatmap against
 the stored mean spectrum.
+
+A third runs against a real *PASEF* acquisition named by
+``THYRA_BRUKER_PASEF_DATASET`` -- a ``.d`` whose ``PasefFrameMsMsInfo``
+schedules at least three precursors -- and checks the demultiplexed table
+on both write routes, plus how it aligns with a copy of itself whose
+schedule is one window shorter.
 """
 
 from __future__ import annotations
@@ -938,3 +944,312 @@ class TestRealAcquisition:
 
         ratio = grid.X.nnz / summed.X.nnz
         assert 1.2 <= ratio <= 5, f"unexpected non-zero ratio {ratio:.2f}"
+
+
+# ----------------------------------------------------------------------
+# The demultiplexed table on a real PASEF acquisition, and across two
+# stores whose schedules differ in shape
+# ----------------------------------------------------------------------
+
+PASEF_DATASET = os.environ.get("THYRA_BRUKER_PASEF_DATASET")
+
+#: Frames each conversion below covers. Enough pixels that every scheduled
+#: window still carries signal, few enough that three conversions of an
+#: arbitrarily large acquisition stay quick.
+_PASEF_FRAMES = 64
+
+#: What the CLI passes when nothing overrides it. Without it a TDF's raw
+#: axis is the union of the digitizer indices the frames happen to hold,
+#: which is not the same axis for two different pixel sets -- and a shared
+#: axis is what makes a feature label mean the same bin in both stores.
+_CLI_RESAMPLING = {"method": "auto", "axis_type": "auto", "reference_mz": 1000.0}
+
+
+def _flat_copy(source: Path, target: Path, n_frames: int) -> Path:
+    """A copy of a ``.d``'s top-level files, capped to ``n_frames`` pixels.
+
+    Only ``analysis.tdf`` is copied; every other file is hard-linked, so
+    capping a large acquisition costs nothing. The method subdirectory is
+    left behind on purpose: the SDK opens the database and its binary
+    without it, and its nested backups are deep enough to pass the Windows
+    path limit once a pytest temporary directory is prefixed to them.
+    """
+    target.mkdir(parents=True)
+    for entry in source.iterdir():
+        if not entry.is_file():
+            continue
+        if entry.name == "analysis.tdf":
+            shutil.copy2(entry, target / entry.name)
+            continue
+        try:
+            os.link(entry, target / entry.name)
+        except OSError:
+            shutil.copy2(entry, target / entry.name)
+    with sqlite3.connect(target / "analysis.tdf") as conn:
+        conn.execute(
+            "DELETE FROM MaldiFrameInfo WHERE Frame NOT IN "
+            "(SELECT Frame FROM MaldiFrameInfo ORDER BY Frame LIMIT ?)",
+            (int(n_frames),),
+        )
+    return target
+
+
+def _drop_lowest_window(source: Path) -> float:
+    """Delete the lowest-m/z isolation window, from every frame; return its m/z.
+
+    From *every* frame, so the schedule stays constant across pixels and
+    what changes is only its shape: one window fewer, and every remaining
+    precursor one rank lower than it is in the full acquisition.
+    """
+    with sqlite3.connect(source / "analysis.tdf") as conn:
+        mz = conn.execute("SELECT MIN(IsolationMz) FROM PasefFrameMsMsInfo").fetchone()[
+            0
+        ]
+        conn.execute("DELETE FROM PasefFrameMsMsInfo WHERE IsolationMz = ?", (mz,))
+        remaining = conn.execute(
+            "SELECT COUNT(DISTINCT IsolationMz) FROM PasefFrameMsMsInfo"
+        ).fetchone()
+    assert remaining[0] >= 2, "the reduced schedule must still hold two precursors"
+    return float(mz)
+
+
+def _convert_pasef(source: Path, out: Path, streaming: bool) -> Path:
+    """The acquisition converted the way the CLI converts it by default."""
+    from thyra.convert import convert_msi
+
+    assert convert_msi(
+        str(source),
+        str(out),
+        dataset_id="real",
+        include_optical=False,
+        streaming=streaming,
+        resampling_config=dict(_CLI_RESAMPLING),
+    )
+    return out
+
+
+@pytest.fixture(scope="module")
+def pasef_stores(tmp_path_factory):
+    """The three conversions the PASEF class runs on, built once.
+
+    The full acquisition on both write routes, and the same frames with one
+    isolation window deleted from every one of them.
+    """
+    pytest.importorskip("spatialdata")
+    source = Path(PASEF_DATASET)  # type: ignore[arg-type]
+    _open("scan_sum", source).close()
+    root = tmp_path_factory.mktemp("pasef")
+    full = _flat_copy(source, root / "full.d", _PASEF_FRAMES)
+    reduced = _flat_copy(source, root / "reduced.d", _PASEF_FRAMES)
+    return {
+        "dropped_mz": _drop_lowest_window(reduced),
+        "streaming": _convert_pasef(full, root / "streaming.zarr", True),
+        "buffered": _convert_pasef(full, root / "buffered.zarr", False),
+        "reduced": _convert_pasef(reduced, root / "reduced.zarr", True),
+    }
+
+
+@pytest.mark.skipif(
+    not PASEF_DATASET,
+    reason="Set THYRA_BRUKER_PASEF_DATASET to a Bruker PASEF .d directory to run",
+)
+class TestRealPasefAcquisition:
+    """The demultiplexed table on a real scheduled PASEF acquisition.
+
+    Two questions the synthetic fixture cannot answer. First, whether the
+    two write routes agree on real frames: the streaming one feeds the
+    accumulator from the summed table's own passes, the buffered one drives
+    it over ``iter_precursor_spectra``, and a difference between them would
+    be a difference in what the store holds. Second, whether two stores
+    whose schedules differ in *shape* align -- the copy below has one
+    isolation window deleted from every frame, which moves every remaining
+    precursor one rank down, so a positional feature label would
+    concatenate unrelated precursors onto each other without an error.
+    """
+
+    @staticmethod
+    def _msms(store: Path):
+        return _read_table(store, "real_z0_msms")
+
+    def test_both_routes_write_the_same_demultiplexed_table(self, pasef_stores):
+        """The route is a performance choice; it must not be a data choice."""
+        streaming = self._msms(pasef_stores["streaming"])
+        buffered = self._msms(pasef_stores["buffered"])
+
+        assert streaming.shape == buffered.shape
+        assert list(streaming.var.index) == list(buffered.var.index)
+        assert list(streaming.obs.index) == list(buffered.obs.index)
+        for column in ("precursor_mz", "mz", "precursor_index", "mz_index"):
+            np.testing.assert_array_equal(
+                streaming.var[column].to_numpy(),
+                buffered.var[column].to_numpy(),
+                err_msg=column,
+            )
+        np.testing.assert_array_equal(_rows(streaming), _rows(buffered))
+
+    def test_the_split_adds_back_up_to_the_summed_table_exactly(self, pasef_stores):
+        """Under the default ``scan_sum`` the two tables hold one ion current."""
+        for route in ("streaming", "buffered"):
+            summed = _read_table(pasef_stores[route], "real_z0")
+            msms = self._msms(pasef_stores[route])
+            block = msms.uns["demultiplexed_current"]
+
+            assert block["summed_table"] == "real_z0"
+            for key in (
+                "current_ratio",
+                "current_ratio_pixel_min",
+                "current_ratio_pixel_max",
+            ):
+                assert float(block[key]) == pytest.approx(1.0, abs=1e-12), (route, key)
+            per_pixel = np.asarray(msms.X.sum(axis=1)).ravel()
+            np.testing.assert_allclose(
+                per_pixel, np.asarray(summed.X.sum(axis=1)).ravel(), rtol=1e-12
+            )
+            assert per_pixel.sum() > 0
+
+    def test_the_precursor_axis_is_the_databases_own_window_list(self, pasef_stores):
+        summed = _read_table(pasef_stores["streaming"], "real_z0")
+        schedule = summed.uns["msms_schedule"]
+        con = sqlite3.connect(
+            f"file:{(Path(PASEF_DATASET) / 'analysis.tdf').as_posix()}"
+            "?mode=ro&immutable=1",
+            uri=True,
+        )
+        targets = [
+            row[0]
+            for row in con.execute(
+                "SELECT DISTINCT IsolationMz FROM PasefFrameMsMsInfo "
+                "ORDER BY IsolationMz"
+            )
+        ]
+        con.close()
+
+        assert schedule["resolved_table"] == "real_z0_msms"
+        assert int(schedule["n_windows"]) == len(targets)
+        np.testing.assert_allclose(
+            np.asarray(schedule["isolation_window_target"], dtype=float), targets
+        )
+        var = self._msms(pasef_stores["streaming"]).var
+        assert var["precursor_index"].nunique() == len(targets)
+        assert np.all(np.diff(var["precursor_index"].to_numpy()) >= 0)
+        assert np.all(np.isfinite(var["precursor_mobility"].to_numpy()))
+
+    def test_one_window_fewer_still_aligns_on_the_labels(self, pasef_stores):
+        """The alignment the labels exist for, on a schedule of another shape."""
+        import anndata
+
+        full = self._msms(pasef_stores["streaming"])
+        reduced = self._msms(pasef_stores["reduced"])
+        dropped = pasef_stores["dropped_mz"]
+
+        # The premise: the reduced store gives every precursor a lower rank.
+        assert reduced.var["precursor_index"].nunique() == (
+            full.var["precursor_index"].nunique() - 1
+        )
+        assert not np.any(np.isclose(reduced.var["precursor_mz"].to_numpy(), dropped))
+        second = sorted(set(full.var["precursor_mz"]))[1]
+        rank_in = {
+            "full": full.var.loc[
+                full.var["precursor_mz"] == second, "precursor_index"
+            ].iloc[0],
+            "reduced": reduced.var.loc[
+                reduced.var["precursor_mz"] == second, "precursor_index"
+            ].iloc[0],
+        }
+        assert (int(rank_in["full"]), int(rank_in["reduced"])) == (1, 0)
+
+        # Every label both stores carry still names the same precursor and
+        # the same bin of the shared mass axis.
+        shared = full.var.index.intersection(reduced.var.index)
+        assert shared.size > 0
+        for column in ("precursor_mz", "mz", "mz_index"):
+            np.testing.assert_array_equal(
+                full.var.loc[shared, column].to_numpy(),
+                reduced.var.loc[shared, column].to_numpy(),
+                err_msg=column,
+            )
+
+        joined = anndata.concat(
+            {"full": full, "reduced": reduced},
+            axis=0,
+            join="inner",
+            label="sample",
+            index_unique="-",
+            merge="unique",
+        )
+        assert joined.n_obs == full.n_obs + reduced.n_obs
+        assert list(joined.var.index) == list(shared)
+        # anndata itself finds that the rank disagrees and drops it, while
+        # the columns intrinsic to the precursor survive.
+        assert "precursor_mz" in joined.var.columns
+        assert "mz_index" in joined.var.columns
+        assert "precursor_index" not in joined.var.columns
+        assert not np.any(np.isclose(joined.var["precursor_mz"].to_numpy(), dropped))
+
+    def test_the_dropped_precursor_is_absent_rather_than_reassigned(self, pasef_stores):
+        import anndata
+
+        full = self._msms(pasef_stores["streaming"])
+        reduced = self._msms(pasef_stores["reduced"])
+        labels = full.var.index[
+            np.isclose(full.var["precursor_mz"].to_numpy(), pasef_stores["dropped_mz"])
+        ]
+
+        joined = anndata.concat(
+            {"full": full, "reduced": reduced},
+            axis=0,
+            join="outer",
+            label="sample",
+            index_unique="-",
+        )
+        rows = (joined.obs["sample"] == "reduced").to_numpy()
+        block = joined[rows, joined.var.index.isin(labels)].X
+
+        assert labels.size > 0
+        assert (
+            np.abs(block.toarray() if hasattr(block, "toarray") else block).sum() == 0
+        )
+
+    def test_a_rank_named_label_would_have_merged_two_precursors(self, pasef_stores):
+        """Why the label is named after the precursor's m/z, on real data."""
+        import pandas as pd
+
+        def ranked(table):
+            return pd.Series(
+                table.var["precursor_mz"].to_numpy(),
+                index=[
+                    f"p{p}_mz{m}"
+                    for p, m in zip(table.var["precursor_index"], table.var["mz_index"])
+                ],
+            )
+
+        left = ranked(self._msms(pasef_stores["streaming"]))
+        right = ranked(self._msms(pasef_stores["reduced"]))
+        shared = left.index.intersection(right.index)
+
+        assert shared.size > 0
+        collisions = int(
+            (left.loc[shared].to_numpy() != right.loc[shared].to_numpy()).sum()
+        )
+        assert (
+            collisions == shared.size
+        ), "every shared rank label must name two different precursors here"
+
+    def test_the_removed_windows_current_is_exactly_the_deficit(self, pasef_stores):
+        """What ``demultiplexed_current`` measures, checked by arithmetic.
+
+        The reduced copy's summed table is untouched -- the frames are the
+        same -- so the split now misses exactly the ion current of the
+        window that was deleted from the schedule, and the ratio says so.
+        """
+        full = self._msms(pasef_stores["streaming"])
+        reduced = self._msms(pasef_stores["reduced"])
+        block = np.isclose(
+            full.var["precursor_mz"].to_numpy(), pasef_stores["dropped_mz"]
+        )
+
+        share = float(full.X[:, block].sum()) / float(full.X.sum())
+        assert 0.0 < share < 1.0
+        assert float(
+            reduced.uns["demultiplexed_current"]["current_ratio"]
+        ) == pytest.approx(1.0 - share, rel=1e-9)

@@ -255,12 +255,39 @@ class TestRefusals:
         assert "single precursor" in demultiplex_refusal(schedule)
         assert _build(_reader(schedule=schedule)) is None
 
+    def test_a_source_that_records_no_precursor_at_all(self):
+        """Not "one precursor": none, which is a different thing to say.
+
+        A diaPASEF acquisition puts its windows in ``DiaFrameMsMsWindows``,
+        which the TDF reader does not read, so the schedule it builds is
+        MS/MS with an empty window list. Measured on a real one (32 DIA
+        windows, 1786 survey and 28566 fragment frames): before the
+        conditions were ordered as they are now, this reported "isolates a
+        single precursor" about a run that isolates 32.
+        """
+        schedule = FragmentationSchedule(ms_level=2, windows=())
+        assert "no precursor" in demultiplex_refusal(schedule)
+
     def test_a_schedule_that_varies_per_pixel(self):
         schedule = FragmentationSchedule(
             ms_level=2, windows=WINDOWS, constant_across_pixels=False
         )
         assert "not constant across pixels" in demultiplex_refusal(schedule)
         assert _build(_reader(schedule=schedule)) is None
+
+    def test_survey_and_fragment_frames_are_refused_as_non_constant(self):
+        """The mixed-``MsMsType`` case, which has no schedule per pixel.
+
+        The reader sets ``constant_across_pixels`` false as soon as a file
+        holds survey frames as well as fragment ones, whatever the
+        precursor tables say -- and that fact outranks the window count,
+        which for such a file says nothing about the method.
+        """
+        schedule = FragmentationSchedule(
+            ms_level=2, windows=(), constant_across_pixels=False
+        )
+        assert "not constant across pixels" in demultiplex_refusal(schedule)
+        assert _build(_reader(schedule=schedule, spectra=[])) is None
 
     def test_overlapping_windows(self):
         overlapping = (
@@ -337,3 +364,204 @@ class TestIsomerPrecursors:
         assert list(table.var["precursor_mz"].unique()) == [313.275, 936.578]
         assert table.var["precursor_mz"].is_monotonic_increasing
         assert table.var.index.is_unique
+
+
+class TestAlignmentAcrossScheduleShapes:
+    """Two samples whose schedules differ in length must still align.
+
+    The synthetic form of the check run on real data: a copy of an
+    acquisition with one isolation window removed from every frame gives
+    every remaining precursor a lower rank than it has in the full one, so
+    a positional label would concatenate the wrong precursors onto each
+    other -- silently, since a rank collides with a rank. The labels are
+    named after the precursor's m/z precisely so that cannot happen.
+    """
+
+    FULL = (
+        IsolationWindow(313.275, 0.5, 0.5, 34.3, scan_begin=150, scan_end=200),
+        IsolationWindow(500.0, 0.5, 0.5, 40.0, scan_begin=90, scan_end=140),
+        IsolationWindow(936.578, 0.5, 0.5, 49.6, scan_begin=20, scan_end=60),
+    )
+    FULL_SPECTRA = [
+        ((0, 0, 0), 0, [100.0, 300.0], [10.0, 20.0]),
+        ((0, 0, 0), 1, [200.0, 400.0], [30.0, 40.0]),
+        ((0, 0, 0), 2, [200.0], [50.0]),
+        ((1, 0, 0), 1, [400.0], [60.0]),
+    ]
+    #: The same acquisition with the lowest-m/z window gone: the reader
+    #: reports two windows, so what was window 1 is now window 0.
+    REDUCED_SPECTRA = [
+        (coords, window - 1, mzs, intensities)
+        for coords, window, mzs, intensities in FULL_SPECTRA
+        if window > 0
+    ]
+
+    def _full(self):
+        schedule = FragmentationSchedule(ms_level=2, windows=self.FULL)
+        return _build(_reader(schedule=schedule, spectra=self.FULL_SPECTRA))
+
+    def _reduced(self):
+        schedule = FragmentationSchedule(ms_level=2, windows=self.FULL[1:])
+        return _build(_reader(schedule=schedule, spectra=self.REDUCED_SPECTRA))
+
+    def test_the_remaining_precursors_all_shift_one_rank_down(self):
+        """The premise: what makes a positional label wrong here."""
+        full, reduced = self._full().var, self._reduced().var
+
+        assert full.loc[full["precursor_mz"] == 500.0, "precursor_index"].unique() == [
+            1
+        ]
+        assert reduced.loc[
+            reduced["precursor_mz"] == 500.0, "precursor_index"
+        ].unique() == [0]
+        assert 313.275 not in set(reduced["precursor_mz"])
+
+    def test_every_shared_label_still_names_the_same_precursor_and_bin(self):
+        full, reduced = self._full().var, self._reduced().var
+        shared = full.index.intersection(reduced.index)
+
+        assert list(shared) == ["p500_mz1", "p500_mz3", "p936.578_mz1"]
+        np.testing.assert_array_equal(
+            full.loc[shared, "precursor_mz"].to_numpy(),
+            reduced.loc[shared, "precursor_mz"].to_numpy(),
+        )
+        np.testing.assert_array_equal(
+            full.loc[shared, "mz_index"].to_numpy(),
+            reduced.loc[shared, "mz_index"].to_numpy(),
+        )
+
+    def test_concat_merges_no_two_precursors_and_drops_the_rank(self):
+        """`merge="unique"` is anndata itself finding the rank disagrees."""
+        import anndata
+
+        full, reduced = self._full(), self._reduced()
+        joined = anndata.concat(
+            {"full": full, "reduced": reduced},
+            axis=0,
+            join="inner",
+            label="sample",
+            index_unique="-",
+            merge="unique",
+        )
+
+        assert list(joined.var.index) == ["p500_mz1", "p500_mz3", "p936.578_mz1"]
+        # The intrinsic columns survive because both stores agree on them;
+        # precursor_index does not, because the rank means different things.
+        assert "precursor_mz" in joined.var.columns
+        assert "mz_index" in joined.var.columns
+        assert "precursor_index" not in joined.var.columns
+        np.testing.assert_array_equal(
+            joined.var["precursor_mz"].to_numpy(), [500.0, 500.0, 936.578]
+        )
+
+    def test_the_dropped_precursor_is_absent_rather_than_reassigned(self):
+        import anndata
+
+        full, reduced = self._full(), self._reduced()
+        joined = anndata.concat(
+            {"full": full, "reduced": reduced},
+            axis=0,
+            join="outer",
+            label="sample",
+            index_unique="-",
+        )
+        dropped = [label for label in full.var.index if label.startswith("p313.275_")]
+        rows = (joined.obs["sample"] == "reduced").to_numpy()
+        block = joined[rows, joined.var.index.isin(dropped)]
+
+        assert dropped == ["p313.275_mz0", "p313.275_mz2"]
+        assert np.abs(_dense(block)).sum() == 0.0
+
+    def test_a_rank_named_label_would_have_merged_two_precursors(self):
+        """Why the label is not `p{rank}_mz{i}`, stated as an assertion."""
+        full, reduced = self._full().var, self._reduced().var
+
+        def ranked(var):
+            return pd.Series(
+                var["precursor_mz"].to_numpy(),
+                index=[
+                    f"p{p}_mz{m}"
+                    for p, m in zip(var["precursor_index"], var["mz_index"])
+                ],
+            )
+
+        left, right = ranked(full), ranked(reduced)
+        shared = left.index.intersection(right.index)
+
+        assert list(shared) == ["p1_mz1"]
+        # The same label, two unrelated precursors: 500.0 in one sample and
+        # 936.578 in the other would have been summed into one column.
+        assert left.loc["p1_mz1"] == 500.0
+        assert right.loc["p1_mz1"] == 936.578
+
+
+class TestTwoUnrelatedSchedules:
+    """Two acquisitions with nothing in common must concatenate to nothing shared.
+
+    The negative-mode counterpart of a targeted run isolates a different
+    list of precursors from the positive-mode one, so no column of either
+    store describes anything in the other. Measured on the two real pairs
+    (13 windows over m/z 50-1200 against 15 over 50-1000): **zero** shared
+    labels, but 5,262 shared *rank*-named ones, every one of which names
+    two different precursors -- and that collision survives the two runs
+    having different mass axes, because both axes start at m/z 50 and the
+    low bins line up.
+    """
+
+    NEGATIVE = (
+        IsolationWindow(519.182, scan_begin=20, scan_end=60),
+        IsolationWindow(720.469, scan_begin=90, scan_end=140),
+    )
+    SPECTRA = [
+        ((0, 0, 0), 0, [100.0, 300.0], [10.0, 20.0]),
+        ((0, 0, 0), 1, [200.0], [30.0]),
+    ]
+
+    def _other(self):
+        schedule = FragmentationSchedule(ms_level=2, windows=self.NEGATIVE)
+        return _build(_reader(schedule=schedule, spectra=self.SPECTRA))
+
+    def test_no_label_is_shared(self):
+        one, other = _build().var, self._other().var
+
+        assert set(one["precursor_mz"]).isdisjoint(set(other["precursor_mz"]))
+        assert one.index.intersection(other.index).empty
+
+    def test_a_rank_named_label_would_have_shared_several(self):
+        """The same columns under a positional name, to show what is avoided."""
+        one, other = _build().var, self._other().var
+
+        def ranked(var):
+            return pd.Series(
+                var["precursor_mz"].to_numpy(),
+                index=[
+                    f"p{p}_mz{m}"
+                    for p, m in zip(var["precursor_index"], var["mz_index"])
+                ],
+            )
+
+        left, right = ranked(one), ranked(other)
+        shared = left.index.intersection(right.index)
+
+        assert shared.size > 0
+        assert all(
+            left.loc[label] != right.loc[label] for label in shared
+        ), "a rank label must name two different precursors here"
+
+    def test_an_outer_concat_keeps_them_apart(self):
+        import anndata
+
+        one, other = _build(), self._other()
+        joined = anndata.concat(
+            {"one": one, "other": other},
+            axis=0,
+            join="outer",
+            label="sample",
+            index_unique="-",
+        )
+
+        assert joined.n_vars == one.n_vars + other.n_vars
+        # Every column belongs to exactly one sample, so nothing was summed.
+        rows = (joined.obs["sample"] == "one").to_numpy()
+        for mask, table in ((rows, one), (~rows, other)):
+            assert _dense(joined[mask]).sum() == pytest.approx(_dense(table).sum())
