@@ -101,18 +101,31 @@ def demultiplex_refusal(schedule: Optional[FragmentationSchedule]) -> Optional[s
     split an approximation rather than a filter, so the answer is to
     refuse and say which one failed -- never to apportion ion current
     between precursors that cannot be told apart.
+
+    The conditions are asked in order of how much they say about the
+    acquisition, not in order of how cheap they are to check. A schedule
+    that varies is a fact about the method; an empty or one-entry window
+    list is a fact about what the source recorded, and reporting either of
+    those first would describe a run whose precursors Thyra simply cannot
+    read -- a diaPASEF file with survey and fragment frames interleaved,
+    say -- as one that isolated a single precursor.
     """
     if schedule is None or not schedule.is_msms:
         return "the acquisition is not MS/MS"
-    if len(schedule.windows) < 2:
-        return (
-            "the acquisition isolates a single precursor, so the summed table "
-            "is already its fragment spectrum"
-        )
     if not schedule.constant_across_pixels:
         return (
             "the precursor schedule is not constant across pixels, so the "
             "precursors are not a global feature axis"
+        )
+    if not schedule.windows:
+        return (
+            "the source records no precursor for the fragment frames, so "
+            "there is nothing to separate them by"
+        )
+    if len(schedule.windows) < 2:
+        return (
+            "the acquisition isolates a single precursor, so the summed table "
+            "is already its fragment spectrum"
         )
     if windows_overlap(schedule.windows):
         return (
