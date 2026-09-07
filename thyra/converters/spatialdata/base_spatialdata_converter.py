@@ -492,8 +492,8 @@ def _tof_plan(converter: Any) -> Tuple[float, float, float]:
     The law is the caller's ``tof_a``/``tof_b`` pair, else the pair the
     detected instrument declared (``_detected_tof_law``). ``bins_per_fwhm``
     is derived from ``--resample-width-at-mz`` at the reference m/z when
-    that was given, so the two parameterisations are interchangeable;
-    otherwise it is the caller's ``--bins-per-fwhm``, else 3.
+    that was given, so the width flag means the same thing on every axis
+    type; otherwise it is the API's ``bins_per_fwhm``, else 3.
     """
     a = getattr(converter, "_tof_a", None)
     b = getattr(converter, "_tof_b", None)
@@ -502,8 +502,8 @@ def _tof_plan(converter: Any) -> Tuple[float, float, float]:
         if law is None:
             raise ValueError(
                 "A 'tof' mass axis needs the width law's coefficients: pass "
-                "--tof-a and --tof-b, or convert a run whose instrument "
-                "declares them (SELECT SERIES MRT centroid, timsTOF)."
+                "--tof-law A B, or convert a run whose instrument declares "
+                "them (SELECT SERIES MRT centroid, timsTOF)."
             )
         a, b = law
     generator = TOFAxisGenerator(float(a), float(b))
@@ -2169,9 +2169,9 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             axis_type is not AxisType.TOF and getattr(self, "_tof_a", None) is not None
         ):
             logger.warning(
-                "--tof-a/--tof-b were given but the mass axis resolved to %s, "
-                "which does not use a width law; they are ignored. Pass "
-                "--mass-axis-type tof to use them.",
+                "--tof-law was given but the mass axis resolved to %s, which "
+                "does not use a width law; it is ignored. Pass "
+                "--mass-axis-type tof to use it.",
                 getattr(axis_type, "value", axis_type),
             )
 

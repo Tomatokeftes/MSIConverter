@@ -341,19 +341,26 @@ The cumulative bin count has a closed form, `(2/sqrt(B)) asinh(sqrt(B m / A))`,
 so the axis is a uniform grid in that variable and the count is exact.
 
 ```bash
-# An MRT centroid conversion: this is the default, spelled out
-thyra mrt_run.raw out.zarr --waters-spectrum centroid \
-    --mass-axis-type tof --tof-a 0.0185 --tof-b 9.1e-6 --bins-per-fwhm 3
+# An MRT centroid conversion: this is the default, no flags needed
+thyra mrt_run.raw out.zarr --waters-spectrum centroid
 
 # A timsTOF opting in to its measured pair (the default stays reflector_tof)
 thyra run.d out.zarr --mass-axis-type tof
+
+# A TOF instrument Thyra has no pair for, fitted from its own peaks
+thyra run.imzML out.zarr --mass-axis-type tof --tof-law 0.0185 9.1e-6
+
+# Finer bins: the width at the reference m/z sets k, as on any other axis
+thyra run.d out.zarr --mass-axis-type tof \
+    --resample-width-at-mz 0.005 --resample-reference-mz 1000
 ```
 
-`--mass-axis-type tof` without `--tof-a`/`--tof-b` takes the pair the detected
-instrument declares (MRT centroid, timsTOF) and is an error elsewhere.
-`--resample-width-at-mz` at `--resample-reference-mz` is accepted in place of
-`--bins-per-fwhm`: `k` is derived so that the bin at the reference m/z has
-that width, so the two parameterisations are interchangeable.
+`--mass-axis-type tof` takes the pair the detected instrument declares (MRT
+centroid, timsTOF); `--tof-law A B` supplies one for an instrument that has
+none, and it is an error to have neither. There is no separate flag for the
+bins per peak width: `--resample-width-at-mz` at `--resample-reference-mz`
+fixes it, since `k` is whatever puts a bin of that width at the reference m/z.
+The Python API's `ResamplingConfig` also accepts `bins_per_fwhm` directly.
 
 **Centroid axes follow peak width; profile axes follow the sample grid.** The
 law describes how wide a peak is, which is what the bins of a *centroid* list

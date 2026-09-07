@@ -6,7 +6,7 @@ import os  # noqa: E402
 import sqlite3  # noqa: E402
 import warnings  # noqa: E402
 from pathlib import Path  # noqa: E402
-from typing import Literal, Optional  # noqa: E402
+from typing import Literal, Optional, Tuple  # noqa: E402
 
 import click  # noqa: E402
 
@@ -132,36 +132,22 @@ def _validate_resampling_params(
         )
 
 
-def _validate_tof_params(
-    tof_a: Optional[float],
-    tof_b: Optional[float],
-    bins_per_fwhm: Optional[float],
-    resample_width_at_mz: Optional[float],
-) -> None:
-    """Validate the two-term TOF width-law parameters.
+def _validate_tof_law(tof_law: Optional[Tuple[float, float]]) -> None:
+    """Validate ``--tof-law A B``: both non-negative, not both zero.
 
-    ``A`` and ``B`` come as a pair, both non-negative and not both zero
-    (the law would have no width). ``--bins-per-fwhm`` and
-    ``--resample-width-at-mz`` are two spellings of the same quantity, so
-    only one may be given.
+    A pair with no width would lay no axis. The bin width itself is not a
+    separate flag: ``--resample-width-at-mz`` at ``--resample-reference-mz``
+    fixes the bins per peak width for a ``tof`` axis exactly as it fixes the
+    width of any other, and 3 bins per peak width is the default.
     """
-    if (tof_a is None) != (tof_b is None):
+    if tof_law is None:
+        return
+    a, b = tof_law
+    if a < 0 or b < 0 or (a == 0 and b == 0):
         raise click.BadParameter(
-            "--tof-a and --tof-b must be given together", param_hint="tof_a"
-        )
-    if tof_a is not None and tof_b is not None:
-        if tof_a < 0 or tof_b < 0 or (tof_a == 0 and tof_b == 0):
-            raise click.BadParameter(
-                "The TOF width law needs A >= 0 and B >= 0 with at least one "
-                "of them positive",
-                param_hint="tof_a",
-            )
-    _validate_positive_float(bins_per_fwhm, "bins_per_fwhm", "Bins per FWHM")
-    if bins_per_fwhm is not None and resample_width_at_mz is not None:
-        raise click.BadParameter(
-            "--bins-per-fwhm and --resample-width-at-mz are mutually exclusive: "
-            "both set the bin width of a 'tof' axis",
-            param_hint="bins_per_fwhm",
+            "The TOF width law needs A >= 0 and B >= 0 with at least one of "
+            "them positive",
+            param_hint="tof_law",
         )
 
 
@@ -280,11 +266,15 @@ def _build_resampling_config(
     resample_width_at_mz: Optional[float],
     resample_reference_mz: float,
     resample_gap_tolerance: Optional[float] = None,
-    tof_a: Optional[float] = None,
-    tof_b: Optional[float] = None,
-    bins_per_fwhm: Optional[float] = None,
+    tof_law: Optional[Tuple[float, float]] = None,
 ) -> dict:
-    """Build resampling configuration dictionary."""
+    """Build resampling configuration dictionary.
+
+    ``tof_law`` is the CLI's one spelling of the two-term width law; the
+    config carries it as the ``tof_a`` / ``tof_b`` pair the Python API
+    takes. ``bins_per_fwhm`` is API-only: on the command line the width at
+    the reference m/z says the same thing.
+    """
     return {
         "method": resample_method,
         "axis_type": mass_axis_type,
@@ -294,9 +284,8 @@ def _build_resampling_config(
         "width_at_mz": resample_width_at_mz,
         "reference_mz": resample_reference_mz,
         "gap_tolerance_da": resample_gap_tolerance,
-        "tof_a": tof_a,
-        "tof_b": tof_b,
-        "bins_per_fwhm": bins_per_fwhm,
+        "tof_a": None if tof_law is None else tof_law[0],
+        "tof_b": None if tof_law is None else tof_law[1],
     }
 
 
@@ -453,9 +442,7 @@ class GroupedCommand(click.Command):
             "--resample-width-at-mz",
             "--resample-reference-mz",
             "--resample-gap-tolerance",
-            "--tof-a",
-            "--tof-b",
-            "--bins-per-fwhm",
+            "--tof-law",
         ],
         "Performance": ["--streaming", "--sparse-format"],
         "imzML-specific": ["--spectrum-type"],
@@ -686,31 +673,22 @@ class GroupedCommand(click.Command):
     help=(
         "Mass axis spacing type (default: auto-detect). 'tof' lays bins at a "
         "measured peak width sqrt(A m + B m^2) mDa, of which linear_tof "
-        "(B=0) and reflector_tof (A=0) are the limits; pass --tof-a/--tof-b "
-        "or let the instrument's own pair apply (SELECT SERIES MRT centroid, "
-        "timsTOF)."
+        "(B=0) and reflector_tof (A=0) are the limits; the instrument's own "
+        "pair applies (SELECT SERIES MRT centroid, timsTOF) unless --tof-law "
+        "gives one."
     ),
 )
 @click.option(
-    "--tof-a",
+    "--tof-law",
     type=float,
+    nargs=2,
     default=None,
-    help="A of the 'tof' width law, in mDa^2/Da (MRT 0.0185, timsTOF 0.0877)",
-)
-@click.option(
-    "--tof-b",
-    type=float,
-    default=None,
-    help="B of the 'tof' width law, dimensionless (MRT 9.1e-6, timsTOF 8.74e-4)",
-)
-@click.option(
-    "--bins-per-fwhm",
-    type=float,
-    default=None,
+    metavar="A B",
     help=(
-        "For the 'tof' axis: bins per peak width (default 3). Mutually "
-        "exclusive with --resample-width-at-mz, which fixes the same thing "
-        "at the reference m/z instead."
+        "Coefficients of the 'tof' width law, A in mDa^2/Da and B "
+        "dimensionless (MRT 0.0185 9.1e-6, timsTOF 0.0877 8.74e-4). Only "
+        "needed for an instrument Thyra has no pair for. Bins per peak "
+        "width default to 3; --resample-width-at-mz sets them otherwise."
     ),
 )
 @click.option(
@@ -850,9 +828,7 @@ def main(
     resample_reference_mz: float,
     resample_gap_tolerance: Optional[float],
     mass_axis_type: str,
-    tof_a: Optional[float],
-    tof_b: Optional[float],
-    bins_per_fwhm: Optional[float],
+    tof_law: Optional[Tuple[float, float]],
     spectrum_type: str,
     sparse_format: str,
     include_optical: bool,
@@ -890,7 +866,7 @@ def main(
     _validate_positive_float(
         resample_gap_tolerance, "resample_gap_tolerance", "Gap tolerance"
     )
-    _validate_tof_params(tof_a, tof_b, bins_per_fwhm, resample_width_at_mz)
+    _validate_tof_law(tof_law)
     _validate_positive_float(
         intensity_threshold, "intensity_threshold", "Intensity threshold"
     )
@@ -930,9 +906,7 @@ def main(
             resample_width_at_mz,
             resample_reference_mz,
             resample_gap_tolerance,
-            tof_a,
-            tof_b,
-            bins_per_fwhm,
+            tof_law,
         )
         if resample
         else None

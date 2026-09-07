@@ -173,15 +173,14 @@ thyra tims_data.d output.zarr --mobility-grid --mobility-bins 512     --mobility
 
 These options control how spectra are mapped onto a common mass axis. In most
 cases the defaults work well -- Thyra auto-detects the instrument type and
-chooses an appropriate method and bin count.
+chooses an appropriate method, axis law and bin width. **Start with no flags**;
+the table after this one says when each option is actually needed.
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--resample-method METHOD` | `auto` | `auto`, `nearest_neighbor`, or `tic_preserving` |
 | `--mass-axis-type TYPE` | `auto` | `auto`, `constant`, `linear_tof`, `reflector_tof`, `tof`, `orbitrap`, `fticr` |
-| `--tof-a FLOAT` | auto | `A` of the `tof` width law `sqrt(A m + B m^2)` mDa, in mDa<sup>2</sup>/Da; with `--tof-b`. Omitted, the detected instrument's pair applies (MRT centroid, timsTOF) |
-| `--tof-b FLOAT` | auto | `B` of the `tof` width law, dimensionless |
-| `--bins-per-fwhm FLOAT` | 3 | `tof` only: bins per peak width; mutually exclusive with `--resample-width-at-mz` |
+| `--tof-law A B` | auto | Coefficients of the `tof` width law `sqrt(A m + B m^2)` mDa (`A` in mDa<sup>2</sup>/Da, `B` dimensionless). Only for an instrument Thyra has no pair for; an MRT centroid run or a timsTOF supplies its own |
 | `--resample-bins INTEGER` | auto | Number of bins (mutually exclusive with `--resample-width-at-mz`) |
 | `--resample-min-mz FLOAT` | auto | Minimum m/z value |
 | `--resample-max-mz FLOAT` | auto | Maximum m/z value |
@@ -189,18 +188,41 @@ chooses an appropriate method and bin count.
 | `--resample-reference-mz FLOAT` | `1000.0` | Reference m/z for width specification |
 | `--resample-gap-tolerance FLOAT` | none | `tic_preserving` only: discard target bins farther than this many Da from any measured m/z, instead of interpolating across the gap |
 
+### Which of these you actually need
+
+Every instrument Thyra recognises gets a measured default: the method, the
+axis law and the bin width all come from the detector that matched the file
+(see [Resampling](resampling.md#which-detector-wins)). The flags exist for the
+cases the defaults cannot know about.
+
+| You want to | Use | Leave alone |
+|---|---|---|
+| Convert a file from a recognised instrument | nothing | everything here |
+| A finer or coarser axis than the default | `--resample-width-at-mz` (with `--resample-reference-mz`) | `--mass-axis-type`: the law stays the instrument's, only the width moves |
+| A fixed number of bins instead of a width | `--resample-bins` | |
+| A narrower mass window | `--resample-min-mz` / `--resample-max-mz` | |
+| An axis law for an instrument Thyra could not identify | `--mass-axis-type` | Note that a manual axis type also resets the width to the axis type's own default (5 mDa at m/z 1000; 17 mDa at 300 for `linear_tof`), since a width tuned for one law is not a default for another |
+| The measured `tof` law on a timsTOF, or on a new TOF you have fitted | `--mass-axis-type tof`, plus `--tof-law A B` only when Thyra has no pair for the instrument | |
+| Force interpolation on data Thyra would bin | `--resample-method tic_preserving`, and `--resample-gap-tolerance` if the m/z arrays are sparse | |
+| The raw m/z values, no common axis | `--no-resample` | |
+
+The bin width of a `tof` axis is set the same way as any other: the width at
+the reference m/z. Thyra derives the bins per peak width from it (3 by
+default), so there is no separate flag for that quantity.
+
 !!! info "Choosing a resampling method"
     - **`nearest_neighbor`** -- Each target bin takes the nearest original m/z
       value. Correct for **centroid** data, where peaks are discrete masses.
     - **`tic_preserving`** -- Linear interpolation, rescaled so the total ion
       current is unchanged. Correct for **profile** data on a target axis
-      whose bin widths scale the same way the source points are spaced --
-      pair it only with `constant` unless you know otherwise.
-    - **`auto`** -- Picks `tic_preserving` only for Bruker flexImaging /
-      Rapiflex data, whose source grid is uniform in m/z, and
-      `nearest_neighbor` for everything else -- including profile data from
-      an instrument Thyra cannot identify, because the interpolating method
-      is only exact when the two axis laws match. See
+      whose bin widths scale the same way the source points are spaced.
+    - **`auto`** -- Picks `tic_preserving` only where the source grid's law
+      is known and the target axis follows it: Bruker flexImaging / Rapiflex
+      data (uniform in m/z, onto `constant`) and the Waters profile trace
+      (uniform in flight time, onto `linear_tof`). Everything else gets
+      `nearest_neighbor` -- including profile data from an instrument Thyra
+      cannot identify, because the interpolating method is only exact when
+      the two axis laws match. See
       [Resampling](resampling.md#which-detector-wins) for the full decision
       table.
 
@@ -210,6 +232,7 @@ chooses an appropriate method and bin count.
     - **`constant`** -- Uniform bin width (Da). Suitable for MALDI-TOF in linear mode.
     - **`linear_tof`** -- Width scales as sqrt(m/z). Matches TOF resolution.
     - **`reflector_tof`** -- Width scales linearly with m/z (constant relative resolution). Matches reflector TOF.
+    - **`tof`** -- Width follows a measured peak-width law `sqrt(A m + B m^2)`, of which the two above are the limits. See [the two-term TOF law](resampling.md#the-two-term-tof-law).
     - **`orbitrap`** -- Width scales as m/z^(3/2). Matches Orbitrap resolution.
     - **`fticr`** -- Width scales as m/z^2. Matches FTICR resolution.
     - **`auto`** -- Detected from instrument metadata.

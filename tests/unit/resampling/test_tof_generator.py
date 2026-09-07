@@ -188,7 +188,7 @@ class TestConverterPlan:
         assert width == pytest.approx(tof_fwhm_mda(1000.0, MRT_A, MRT_B) * 1e-3 / 3.0)
 
     def test_no_law_anywhere_is_an_error(self):
-        with pytest.raises(ValueError, match="--tof-a and --tof-b"):
+        with pytest.raises(ValueError, match="--tof-law A B"):
             _tof_plan(self._stub())
 
     def test_bin_count_goes_through_the_generator(self):
