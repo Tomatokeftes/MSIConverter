@@ -26,6 +26,12 @@ from numpy.typing import NDArray
 Coords = Tuple[int, int, int]
 Spectrum = Tuple[NDArray[np.float64], NDArray[np.float64]]
 MobilityPoints = Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+IndexedMobilityPoints = Tuple[
+    NDArray[np.float64],
+    NDArray[np.int64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+]
 PrecursorSpectrum = Tuple[int, NDArray[np.float64], NDArray[np.float64]]
 
 
@@ -49,6 +55,24 @@ class FrameScans(Protocol):
 
     def mobility_points(self) -> Optional[MobilityPoints]:
         """``(mzs, mobility, intensities)`` as ``iter_mobility_spectra`` yields, or ``None``."""
+
+    def mobility_points_indexed(self) -> Optional[IndexedMobilityPoints]:
+        """The same points with the m/z left factored, or ``None`` for no points.
+
+        ``(unique_mz, inverse, mobility, intensities)`` where
+        ``unique_mz[inverse]`` is exactly the ``mzs`` of
+        :meth:`mobility_points`, element for element, and the three other
+        arrays are that method's own. A digitizer reports the points of
+        one frame at far fewer distinct m/z values than it reports
+        points, so a consumer that has to map m/z onto an axis can map
+        ``unique_mz`` once and gather by ``inverse`` for the same bins.
+
+        ``None`` exactly where :meth:`mobility_points` returns ``None``:
+        the frame holds no points. A record whose points do not factor
+        this way does not offer the method at all -- consumers reach for
+        it with :func:`getattr` and fall back to the flat view -- so
+        ``None`` never means "ask the other way".
+        """
 
     def precursor_spectra(self) -> List[PrecursorSpectrum]:
         """``[(window_index, mzs, intensities), ...]`` as ``iter_precursor_spectra`` yields.

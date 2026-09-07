@@ -88,6 +88,22 @@ class _Frame:
         return _precursors(self._p)
 
 
+class _IndexedFrame(_Frame):
+    """A record that offers the indexed view, as the Bruker TDF record does.
+
+    Its flat view raises, so a sink reached through it would fail the
+    conversion: whatever the store holds came through the indexed view.
+    """
+
+    def mobility_points(self):
+        raise AssertionError("the indexed view was offered and not taken")
+
+    def mobility_points_indexed(self):
+        mzs, mobility, intensities = _cloud(self._p)
+        unique, inverse = np.unique(mzs, return_inverse=True)
+        return unique, np.asarray(inverse).ravel(), mobility, intensities
+
+
 class _StubExtractor(MetadataExtractor):
     def __init__(self):
         super().__init__(data_source=None)
@@ -198,6 +214,15 @@ class UnfusedStubReader(FusedStubReader):
     frame_scans = False
 
 
+class IndexedStubReader(FusedStubReader):
+    """The same source whose records hand their points over indexed."""
+
+    def iter_frame_scans(self, batch_size: Optional[int] = None) -> Generator:
+        self.frame_passes += 1
+        for p, (x, y) in enumerate(PIXELS):
+            yield _IndexedFrame(p, (x, y, 0))
+
+
 RESAMPLED = {
     "method": "nearest_neighbor",
     "axis_type": "constant",
@@ -276,6 +301,32 @@ class TestFusedPasses:
         # Heatmap + discovery fused into one, then the grid's scatter.
         assert unfused.mobility_passes == 2
         assert unfused.precursor_passes == 2
+
+    def test_the_indexed_view_gives_the_same_store(self, tmp_path):
+        # The record offering (unique m/z, inverse) instead of the points'
+        # m/z changes how many binary searches the mapping does, nothing
+        # else. Its flat view raises, so the conversion completing is
+        # itself the proof that the indexed one was preferred.
+        a = _read(_convert(FusedStubReader(), tmp_path / "flat.zarr"))
+        b = _read(_convert(IndexedStubReader(), tmp_path / "indexed.zarr"))
+
+        assert set(a.tables) == set(b.tables)
+        for key in a.tables:
+            ta, tb = a.tables[key], b.tables[key]
+            np.testing.assert_array_equal(_dense(ta), _dense(tb))
+            assert list(ta.var.index) == list(tb.var.index)
+            assert list(ta.obs.index) == list(tb.obs.index)
+        np.testing.assert_array_equal(
+            np.asarray(a.tables["stub_z0"].uns["mobility_heatmap"]["counts"]),
+            np.asarray(b.tables["stub_z0"].uns["mobility_heatmap"]["counts"]),
+        )
+
+    def test_a_record_without_the_indexed_view_still_converts(self, tmp_path):
+        # The fallback is not incidental: a record that cannot factor its
+        # m/z (every source but the TDF one) offers no such method.
+        assert not hasattr(_Frame(0, (0, 0, 0)), "mobility_points_indexed")
+        sdata = _read(_convert(FusedStubReader(), tmp_path / "flat_only.zarr"))
+        assert "mobility_heatmap" in sdata.tables["stub_z0"].uns
 
     def test_the_marginals_are_exact_either_way(self, tmp_path):
         for reader, name in ((FusedStubReader(), "f"), (UnfusedStubReader(), "u")):

@@ -15,11 +15,15 @@ frame with the row the frame is getting; everything the sinks see goes
 through the same mapping and the same accumulators the standalone passes
 use (``map_points_to_axis``, ``GridDiscovery``, ``MsmsAccumulator``), so
 the tables come out identical to the ones the standalone passes build.
+A record that offers its points indexed by their distinct m/z values is
+mapped by ``map_indexed_points_to_axis`` instead, which is that same
+mapping evaluated once per distinct value and gathered rather than a
+second mapping.
 """
 
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
@@ -28,12 +32,18 @@ from ...core.frames import FrameScans
 from .mobility_heatmap import (
     MobilityHeatmap,
     finish_mobility_heatmap,
+    map_indexed_points_to_axis,
     map_points_to_axis,
 )
 from .mobility_table import GridDiscovery, GridScatter, _report_discovery
 from .msms_table import MsmsAccumulator
 
 logger = logging.getLogger(__name__)
+
+#: One frame's points on the mass axis: ``(bins, mobility, intensities,
+#: n_dropped)``, what both mapping functions return and what every
+#: mobility sink's ``add_mapped`` takes.
+MappedPoints = Tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.float64], int]
 
 
 class SiblingPasses:
@@ -82,6 +92,33 @@ class SiblingPasses:
         """Whether there is nothing left to feed."""
         return not (self.wants_mobility or self.wants_precursors)
 
+    # -- the mapping -----------------------------------------------------
+
+    def _mapped_points(self, frame: FrameScans) -> Optional[MappedPoints]:
+        """One frame's points on the mass axis, through the cheapest view it offers.
+
+        A record that hands its points over indexed
+        (:meth:`~thyra.core.frames.FrameScans.mobility_points_indexed`,
+        which the Bruker TDF record does because it reads digitizer
+        indices anyway) is mapped by its distinct m/z values and
+        gathered; any other record is mapped point by point. The bins,
+        the mask and the drop count are the same either way -- the
+        mapping is elementwise in the m/z -- so which view a record
+        offers cannot change what a sink sees.
+
+        ``None`` when the frame holds no points.
+        """
+        indexed = getattr(frame, "mobility_points_indexed", None)
+        if indexed is not None:
+            points = indexed()
+            return (
+                None
+                if points is None
+                else map_indexed_points_to_axis(self.axis, *points)
+            )
+        flat = frame.mobility_points()
+        return None if flat is None else map_points_to_axis(self.axis, *flat)
+
     # -- pass 1 ----------------------------------------------------------
 
     def count(self, frame: FrameScans, row: Optional[int]) -> None:
@@ -94,9 +131,8 @@ class SiblingPasses:
         every pixel with points and takes the frame either way.
         """
         if self.wants_mobility:
-            points = frame.mobility_points()
-            if points is not None:
-                mapped = map_points_to_axis(self.axis, *points)
+            mapped = self._mapped_points(frame)
+            if mapped is not None:
                 if self.heatmap is not None:
                     self.heatmap.add_mapped(frame.coords, *mapped)
                 if self.discovery is not None:
@@ -147,11 +183,9 @@ class SiblingPasses:
         if row is None:
             return
         if self.grid_scatter is not None:
-            points = frame.mobility_points()
-            if points is not None:
-                self.grid_scatter.add_mapped_row(
-                    row, *map_points_to_axis(self.axis, *points)
-                )
+            mapped = self._mapped_points(frame)
+            if mapped is not None:
+                self.grid_scatter.add_mapped_row(row, *mapped)
         if self.msms is not None and self.msms.has_rows:
             self.msms.scatter(row, frame.precursor_spectra())
 
