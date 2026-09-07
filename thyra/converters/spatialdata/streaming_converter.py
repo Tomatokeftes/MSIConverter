@@ -1973,11 +1973,12 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 sdata.write_element(element_names, overwrite=True)
 
         # The optical images were declared as placeholders; their pixels
-        # stream into the store now that the elements exist. Also outside
-        # any try/except: a metadata-only image group is a corrupt store.
-        self._stream_pending_optical_pixels()
+        # stream into the store now that the elements exist. An unreadable
+        # TIFF is dropped from the store with a warning in there; anything
+        # else propagates, since a half-written image group is a corrupt
+        # store.
+        n_optical = self._stream_pending_optical_pixels()
 
-        n_optical = len(data_structures["images"]) - 1
         logger.info(
             f"  Wrote TIC image '{tic_name}' ({x_size}x{y_size}), "
             f"{kept_grid.size:,} pixel shapes, and {n_optical} optical image(s)"

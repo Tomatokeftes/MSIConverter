@@ -135,18 +135,23 @@ dependencies = [
     # resolves 2.12.x and the JSON-sync test pins the emission against it.
     "pydantic>=2.7, <3",              # tested 2.12.5
     # Imported directly, not merely re-exported through spatialdata: tifffile by
-    # converters/spatialdata/base_spatialdata_converter.py, xarray by that module
-    # and the 2D, 3D and streaming converters. Both arrive transitively today
+    # converters/spatialdata/optical_image.py, xarray by that module and the
+    # base, 2D, 3D and streaming converters. Both arrive transitively today
     # (spatialdata requires xarray >=2024.10.0 outright; tifffile comes in behind
     # scikit-image and dask-image), so this is the same undeclared-direct-import
     # defect as click above -- but a quieter one. Their imports sit inside the
     # SPATIALDATA_AVAILABLE try/except, so losing either degrades instead of
     # crashing: every converter is replaced by a dummy and the run reports
     # "SpatialData dependencies not available" rather than naming the real cause.
-    # Floors only, and deliberately so. They restate what the existing requirers
-    # already demand, which makes the direct dependency honest without asserting
-    # an upper bound nothing here has tested; the resolved set does not move.
-    "tifffile>=2022.8.12",
+    # Floors only, and deliberately so; no upper bound nothing here has tested.
+    # The tifffile floor is load-bearing: optical_image.py streams TIFF row bands
+    # through tifffile's zarr adapter (``TiffPage.aszarr()``), which speaks zarr
+    # format 3 only from 2026.5.2 on; an older tifffile hands zarr 3 a store it
+    # cannot open and every optical image would be dropped. tifffile's own
+    # metadata asks for zarr >= 3.2 there, but the adapter works on the 3.1.6
+    # this project pins (exercised by tests/unit/converters/
+    # test_optical_image_streaming.py and on real FlexImaging exports).
+    "tifffile>=2026.5.2",             # tested 2026.8.23
     "xarray>=2024.10.0",
 ]
 

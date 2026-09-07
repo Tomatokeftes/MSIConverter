@@ -683,7 +683,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         # Optical images declared to SpatialData as placeholders whose pixels
         # still have to be streamed into the store once it is written. See
         # optical_image.py and _stream_pending_optical_pixels().
-        self._pending_optical_images: List["StreamedOpticalImage"] = []
+        self._pending_optical_images: Dict[str, "StreamedOpticalImage"] = {}
 
         # Metadata caches (populated lazily during conversion)
         self._essential_metadata_cached: Optional[EssentialMetadata] = None
@@ -3048,10 +3048,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         # and _stream_pending_optical_pixels() fills it in bands once the
         # store exists. See optical_image.py for why (the whole-page route
         # cost ~5x the decoded image in transient memory).
+        # probe raises for a layout or sample format it cannot read; the
+        # per-image guard in _add_optical_images turns that into the same
+        # "skip with a warning" the whole-page decode used to give.
         source = OpticalTiffSource.probe(tiff_path)
-        if source is None:
-            logger.warning(f"Unexpected image dimensions for {tiff_path.name}")
-            return
         n_channels, y_size, x_size = source.shape
 
         # Determine transform.  Two cases:
@@ -3067,13 +3067,13 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         #    This way the optical image lands alongside the MSI in
         #    the same um frame and downstream registration steps
         #    map both together.
+        um_mode = (
+            not self._apply_optical_alignment and self._tic_to_image_matrix is not None
+        )
         is_primary = self._is_primary_optical(tiff_path)
         if is_primary:
             self._primary_optical_dims = (x_size, y_size)
-            if (
-                not self._apply_optical_alignment
-                and self._tic_to_image_matrix is not None
-            ):
+            if um_mode:
                 transform = self._build_optical_to_um_transform()
                 logger.info(
                     f"  Primary image -> um via inverse alignment: {x_size}x{y_size}"
@@ -3085,10 +3085,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             # Non-primary: first scale to match primary, then if
             # we're in um-mode, chain through the same um affine.
             base = self._compute_optical_scale_transform(x_size, y_size)
-            if (
-                not self._apply_optical_alignment
-                and self._tic_to_image_matrix is not None
-            ):
+            if um_mode:
                 transform = Sequence([base, self._build_optical_to_um_transform()])
             else:
                 transform = base
@@ -3129,8 +3126,17 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 "original_path": str(tiff_path),
             },
         )
+        # Keyed by element name, as the images dict is: a second file that
+        # maps to the same name replaces the first, the way the dict
+        # assignment always did, only now with a warning.
+        earlier = self._pending_optical_images.get(image_name)
+        if earlier is not None:
+            logger.warning(
+                f"Optical image '{image_name}' from {earlier.source.path.name} "
+                f"is replaced by {tiff_path.name}, which maps to the same name"
+            )
         data_structures["images"][image_name] = streamed.placeholder()
-        self._pending_optical_images.append(streamed)
+        self._pending_optical_images[image_name] = streamed
 
         pyramid_desc = (
             f", {len(scale_factors)} pyramid level{'s' if len(scale_factors) != 1 else ''}"
@@ -3143,20 +3149,38 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             "; pixels stream in once the store is written"
         )
 
-    def _stream_pending_optical_pixels(self) -> None:
+    def _stream_pending_optical_pixels(self) -> int:
         """Fill every optical image declared so far with its pixels.
 
         Call once the SpatialData write that carried the placeholders has
         returned and before metadata is consolidated. Each image streams
         from its TIFF in bands and builds its pyramid level by level on
-        disk, so memory stays bounded by one band, not by the image. A
-        failure propagates: an image with metadata and no pixels is a
-        corrupt store, never a successful conversion.
+        disk, so memory stays bounded by one band, not by the image.
+
+        A TIFF whose pixels cannot be read is dropped from the store with a
+        warning and the conversion goes on without it -- the tolerance the
+        whole-page decode had, when the same failure happened before
+        anything was written. Only a failure to drop the element propagates,
+        because an image with metadata and no pixels is a corrupt store.
+
+        Returns:
+            The number of images whose pixels are now in the store.
         """
-        pending, self._pending_optical_images = self._pending_optical_images, []
-        for image in pending:
+        pending, self._pending_optical_images = self._pending_optical_images, {}
+        streamed = 0
+        for image in pending.values():
             logger.info(f"Streaming optical image pixels: '{image.name}'")
-            image.stream_pixels(self.output_path)
+            try:
+                image.stream_pixels(self.output_path)
+            except Exception as e:  # mirrors the per-image guard in _add_optical_images
+                logger.warning(
+                    f"Failed to load optical image {image.source.path.name}: {e}; "
+                    f"dropping '{image.name}' from the store"
+                )
+                image.discard(self.output_path)
+                continue
+            streamed += 1
+        return streamed
 
     def _generate_optical_image_name(self, tiff_path: Path) -> str:
         """Generate a clean name for an optical image layer.
