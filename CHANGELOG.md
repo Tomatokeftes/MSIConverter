@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v3.18.0 (2026-09-07)
+
+### Features
+
+- **waters**: Expose the profile trace behind the vendor centroid
+  ([`192da5e`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/192da5e943447195074287c10e6b0f1fe616bba0))
+
+- **waters**: MRT runs default to the profile trace on a digitiser-matched axis
+  ([`62d7510`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/62d7510246ba5e656bb215d674ccd7977b9dcefa))
+
+### Refactoring
+
+- **cli**: One --tof-law flag in place of --tof-a, --tof-b and --bins-per-fwhm
+  ([`9e79ae8`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/9e79ae83c82889b005bd954da0e20fe57df4bfab))
+
+
 ## v3.17.1 (2026-09-07)
 
 ### Bug Fixes
