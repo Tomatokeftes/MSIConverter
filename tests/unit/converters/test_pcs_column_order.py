@@ -24,9 +24,10 @@ bounded chunk of columns at a time before the copy. These tests pin:
 * that matrix equals, value for value, both the in-memory route's and
   the raster-order streaming write's -- the sort permutes within columns
   and touches nothing else;
-* a raster-order reader is not sorted at all (the fast path stays fast);
-* the chunked sort itself agrees with scipy across chunk boundaries,
-  including a budget smaller than a single column.
+* a raster-order reader is not sorted at all (the fast path stays fast).
+
+The chunked sort itself is the sibling tables' ``sort_csc_columns`` and
+is pinned against scipy in ``test_csc_assembly.py``.
 
 The shuffled reader is guarded too: a "shuffle" that happened to be the
 raster order would turn every assertion above into a tautology.
@@ -49,7 +50,6 @@ from thyra.converters.spatialdata.spatialdata_2d_converter import SpatialData2DC
 from thyra.converters.spatialdata.streaming_converter import (
     SPATIALDATA_AVAILABLE,
     StreamingSpatialDataConverter,
-    _sort_csc_columns,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -253,86 +253,14 @@ def test_only_an_out_of_order_arrival_is_sorted(
 ):
     """A raster read is canonical as scattered and must not pay for a sort."""
     calls: list = []
-    real_sort = mod._sort_csc_columns
+    real_sort = mod.sort_csc_columns
 
     def _counting_sort(*args, **kwargs):
         calls.append(args)
         return real_sort(*args, **kwargs)
 
-    monkeypatch.setattr(mod, "_sort_csc_columns", _counting_sort)
+    monkeypatch.setattr(mod, "sort_csc_columns", _counting_sort)
     store = _convert_streaming(tmp_path / "out.zarr", reader_type(_config()))
 
     assert len(calls) == expected_sorts
     assert _columns_strictly_ascending(_stored_csc(store))
-
-
-# --- the chunked sort itself ----------------------------------------------
-
-
-def _scrambled_within_columns(
-    matrix: sparse.csc_matrix, seed: int
-) -> Tuple[np.ndarray, np.ndarray]:
-    """``(indices, data)`` of ``matrix`` with each column's entries permuted."""
-    rng = np.random.default_rng(seed)
-    indices = matrix.indices.astype(np.int32).copy()
-    data = matrix.data.copy()
-    indptr = matrix.indptr
-    for column in range(matrix.shape[1]):
-        lo, hi = int(indptr[column]), int(indptr[column + 1])
-        if hi - lo > 1:
-            order = rng.permutation(hi - lo)
-            indices[lo:hi] = indices[lo:hi][order]
-            data[lo:hi] = data[lo:hi][order]
-    return indices, data
-
-
-@pytest.mark.parametrize(
-    "chunk_entries", [1, 7, 10**6], ids=["one-column", "mid-column", "all"]
-)
-def test_sort_csc_columns_matches_scipy_across_chunk_boundaries(
-    tmp_path, chunk_entries
-):
-    """In place on memmaps, the chunked sort reproduces ``sort_indices``.
-
-    A budget of 1 forces one column per chunk (the branch that takes a
-    column exceeding the budget on its own); 7 lands chunk boundaries in
-    the middle of a run of columns; the last sorts everything at once.
-    """
-    n_rows, n_cols = 53, 41
-    expected = sparse.random(
-        n_rows, n_cols, density=0.3, format="csc", random_state=3, dtype=np.float64
-    )
-    expected.sort_indices()
-    # Some empty columns, so the budget arithmetic meets zero-width columns.
-    expected = sparse.csc_matrix(expected)
-    expected[:, [0, 5, 6, n_cols - 1]] = 0
-    expected.eliminate_zeros()
-    expected.sort_indices()
-    assert expected.nnz > 0
-
-    scrambled_indices, scrambled_data = _scrambled_within_columns(expected, seed=11)
-    assert not _columns_strictly_ascending(
-        sparse.csc_matrix(
-            (scrambled_data, scrambled_indices, expected.indptr), shape=expected.shape
-        )
-    )
-
-    indices = np.memmap(
-        tmp_path / "indices.bin", dtype=np.int32, mode="w+", shape=(expected.nnz,)
-    )
-    data = np.memmap(
-        tmp_path / "data.bin", dtype=np.float64, mode="w+", shape=(expected.nnz,)
-    )
-    indices[:] = scrambled_indices
-    data[:] = scrambled_data
-
-    _sort_csc_columns(
-        indices,
-        data,
-        expected.indptr.astype(np.int64),
-        n_rows,
-        chunk_entries=chunk_entries,
-    )
-
-    np.testing.assert_array_equal(np.asarray(indices), expected.indices)
-    np.testing.assert_array_equal(np.asarray(data), expected.data)

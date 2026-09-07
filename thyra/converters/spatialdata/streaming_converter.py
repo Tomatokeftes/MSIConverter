@@ -31,6 +31,7 @@ from .base_spatialdata_converter import (
     BaseSpatialDataConverter,
     _suppress_upstream_warnings,
 )
+from .csc_assembly import sort_csc_columns
 
 if SPATIALDATA_AVAILABLE:
     import geopandas as gpd
@@ -47,70 +48,6 @@ logger = logging.getLogger(__name__)
 # axis; measured at 17.5 bytes per entry at peak against 88 for a one-shot
 # build, and 32 for an unchunked vectorised one.
 _INDEX_BUILD_CHUNK = 1_000_000
-
-# Entries loaded at once when the scattered columns have to be sorted (a
-# reader that hands its pixels over out of raster order). Bounds that pass
-# to a few hundred megabytes whatever the matrix size.
-_SORT_CHUNK_ENTRIES = 16_000_000
-
-
-def _sort_csc_columns(
-    indices: Any,
-    data: Any,
-    indptr: NDArray[np.int64],
-    n_rows: int,
-    chunk_entries: int = _SORT_CHUNK_ENTRIES,
-) -> None:
-    """Put each column's entries in ascending row order, in place, chunk by chunk.
-
-    The scatter writes a column's entries in the order the reader handed
-    its pixels over. A raster read makes that ascending and the matrix
-    canonical for free. Any other order -- a TDF acquisition of several
-    areas measured one after another, whose frames come back area by
-    area -- leaves the row indices within a column unsorted, which scipy
-    reports as non-canonical and which breaks every consumer that
-    binary-searches a column. The columns are already grouped, so this is
-    a sort *within* columns over a bounded slice of the arrays at a time.
-
-    Args:
-        indices: CSC row indices, one array-like (a memmap) of the
-            non-zero count.
-        data: CSC values, aligned with ``indices``.
-        indptr: Column pointers, ``n_cols + 1`` entries.
-        n_rows: Row count of the matrix; every row index is below it.
-        chunk_entries: Entries a chunk may hold. A column larger than
-            this is sorted on its own.
-    """
-    indptr = np.asarray(indptr, dtype=np.int64)
-    n_cols = int(indptr.size - 1)
-    logger.info(
-        "Rows arrived out of raster order; sorting %s columns in chunks",
-        f"{n_cols:,}",
-    )
-    start_col = 0
-    while start_col < n_cols:
-        # The largest column range whose entries fit the chunk budget,
-        # and at least one column even when that column alone exceeds it.
-        end_col = int(
-            np.searchsorted(indptr, indptr[start_col] + chunk_entries, side="right")
-        )
-        end_col = max(min(end_col - 1, n_cols), start_col + 1)
-        lo, hi = int(indptr[start_col]), int(indptr[end_col])
-        if hi > lo:
-            rows = np.asarray(indices[lo:hi]).astype(np.int64)
-            column = np.repeat(
-                np.arange(start_col, end_col, dtype=np.int64),
-                np.diff(indptr[start_col : end_col + 1]),
-            )
-            # One combined key, unique because a row occurs once per
-            # column, sorted stably: the columns are already in order, so
-            # the key is a sequence of nearly sorted runs that timsort
-            # merges in a fraction of a general sort's time (measured
-            # 0.5 s against 3.1 s for lexsort on 16M entries).
-            order = np.argsort(column * n_rows + rows, kind="stable")
-            indices[lo:hi] = rows[order]
-            data[lo:hi] = np.asarray(data[lo:hi])[order]
-        start_col = end_col
 
 
 class StreamingSpatialDataConverter(BaseSpatialDataConverter):
@@ -1166,8 +1103,8 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         3. Main pass: Process spectra again and scatter directly to CSC
            - If the reader handed its pixels over out of raster order,
              sort each column's rows afterwards, in place on the memmap
-             (see :func:`_sort_csc_columns`), so the stored matrix is
-             canonical either way
+             (``csc_assembly.sort_csc_columns``, shared with the sibling
+             tables), so the stored matrix is canonical either way
         4. Write CSC arrays to Zarr
 
         This works because nearest-neighbor resampling is deterministic -
@@ -1236,7 +1173,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 mm_indices, mm_data, indptr, n_x, n_y, row_of_grid, pixel_count
             )
             if not rows_in_order:
-                _sort_csc_columns(mm_indices, mm_data, indptr, n_rows)
+                sort_csc_columns(mm_indices, mm_data, indptr, n_rows)
 
             # Write CSC arrays to Zarr
             logger.info("Writing CSC arrays to Zarr...")
