@@ -129,6 +129,11 @@ which means "not reported", not "MS1". `windows` is stored as a JSON string
 mzPeak's, so an archive and a store describe a precursor the same way; see
 [Output Format](output-format.md#fragmentation-msms) for the array block
 beside it and for what `merges_precursors` means for the stored spectrum.
+Waters `.raw` fills it too, from the MS level MassLynx reports per scan: a
+file with MS/MS functions only reports their precursors here, and a file
+that also holds MS1 functions converts those alone, reports MS1, and lists
+the MS/MS functions it left out under `excluded_functions` in the
+Waters-specific block (see [Supported Formats](supported-formats.md#waters-masslynx)).
 `resolved_table` names the demultiplexed sibling table when one was written,
 mirroring `ion_mobility.resolved_table`, so both kinds of sibling are
 discoverable from this block alone.

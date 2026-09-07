@@ -22,11 +22,14 @@ from thyra.converters.spatialdata.mobility_heatmap import (
     mobility_bin_edges,
 )
 from thyra.converters.spatialdata.mobility_table import (
+    GRID_VAR_REFUSE_FRACTION,
     MAX_GRID_VAR_ENTRIES,
+    VAR_BYTES_PER_FEATURE,
     build_mobility_table,
     grid_refusal,
     grid_var_bound,
     mobility_grid_range,
+    projected_var_gb,
     var_ceiling_refusal,
 )
 from thyra.core.base_extractor import MetadataExtractor
@@ -333,7 +336,7 @@ class TestVarCeiling:
         # measured 200-frame timsTOF acquisition occupied 3.9M of a
         # possible 35.5M), so refusing on the bound would turn away
         # conversions that fit ninefold over.
-        axis = np.linspace(100.0, 1000.0, 100_000)
+        axis = np.linspace(100.0, 1000.0, 400_000)
         grid = build_mobility_grid(1.1, 1.5)
         assert grid_var_bound(axis, grid) > MAX_GRID_VAR_ENTRIES
         assert grid_refusal(GridStubReader(), axis, grid) is None
@@ -383,12 +386,47 @@ class TestVarCeiling:
         assert "--resample-bins" in refusal
 
     def test_the_count_is_what_is_refused_with_the_number_printed(self):
-        assert var_ceiling_refusal(MAX_GRID_VAR_ENTRIES) is None
-        refusal = var_ceiling_refusal(MAX_GRID_VAR_ENTRIES + 1)
+        # The absolute cap, with memory taken out of the question.
+        plenty = 1e9
+        assert var_ceiling_refusal(MAX_GRID_VAR_ENTRIES, available_gb=plenty) is None
+        refusal = var_ceiling_refusal(MAX_GRID_VAR_ENTRIES + 1, available_gb=plenty)
         assert refusal is not None
         assert f"{MAX_GRID_VAR_ENTRIES + 1:,}" in refusal
         assert f"{MAX_GRID_VAR_ENTRIES:,}" in refusal
         assert "--mobility-bins" in refusal
+
+    def test_the_operative_guard_is_the_projected_var_memory(self, caplog):
+        # Design decision D4: the ceiling is a memory guard, not a constant
+        # fitted to a dataset. 10M features project to ~3.1 GB at the
+        # measured bytes-per-feature; that is refused on a machine with
+        # 4 GB free (over half), warned about with 10 GB free (over a
+        # quarter), and silent with 100 GB free.
+        n = 10_000_000
+        gb = projected_var_gb(n)
+        assert gb == pytest.approx(n * VAR_BYTES_PER_FEATURE / 1024**3)
+
+        refusal = var_ceiling_refusal(n, available_gb=4.0)
+        assert refusal is not None
+        assert f"{gb:.1f} GB" in refusal
+        assert "4.0 GB free" in refusal
+        assert "--resample-bins" in refusal and "--mobility-bins" in refusal
+
+        with caplog.at_level("WARNING"):
+            assert var_ceiling_refusal(n, available_gb=10.0) is None
+        assert "projected to need" in caplog.text
+
+        caplog.clear()
+        with caplog.at_level("WARNING"):
+            assert var_ceiling_refusal(n, available_gb=100.0) is None
+        assert "projected to need" not in caplog.text
+
+    def test_the_fractions_are_of_free_memory_not_fixed_sizes(self):
+        # The same table is fine on a workstation and refused on a laptop.
+        n = 10_000_000
+        gb = projected_var_gb(n)
+        just_enough = gb / GRID_VAR_REFUSE_FRACTION + 1e-6
+        assert var_ceiling_refusal(n, available_gb=just_enough) is None
+        assert var_ceiling_refusal(n, available_gb=just_enough * 0.9) is not None
 
 
 def _stub_obs():

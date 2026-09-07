@@ -81,9 +81,11 @@ class TestTdfWiring:
             reader.dll_manager, "tdf", tdf_spectrum="scan_sum"
         )
 
-    def test_default_mode_is_the_vendor_centroid(self):
+    def test_default_mode_is_the_scan_sum(self):
+        # Design decision D1: the instrument's own record is the default,
+        # the vendor centroid the opt-in.
         reader, _, _ = _make_reader("tdf")
-        assert reader.tdf_spectrum == "vendor_centroid"
+        assert reader.tdf_spectrum == "scan_sum"
 
     def test_unknown_mode_is_rejected_before_touching_the_sdk(self):
         with pytest.raises(ValueError, match="tdf_spectrum"):

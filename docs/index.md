@@ -36,6 +36,9 @@ The output is a single SpatialData/Zarr directory containing intensity matrices,
 | **Optics** | Optical alignment | Automatic MSI-to-microscopy registration (Bruker) |
 | **Regions** | Multi-region | Handles slides with multiple tissue sections |
 | **Resampling** | Physics-aware | Instrument-specific mass axis resampling (on by default in the CLI, opt-in from the Python API) |
+| **Ion mobility** | TIMS-aware | The summed spectrum is the instrument's own scan sum; the mass-mobility heatmap is stored by default and a mobility-resolved sibling table on request, fed from the same frame reads |
+| **MS/MS** | Demultiplexed | A scheduled PASEF acquisition is written split apart by precursor by default, next to the summed table; the schedule is recorded either way |
+| **Defaults** | Decided in the open | Every default a reasonable person could argue with is recorded with its reason and measurements in [Design Decisions](design-decisions.md) |
 | **3D** | Volume support | Process as 3D volume or separate 2D slices |
 | **Platform** | Cross-platform | Windows, macOS, Linux |
 

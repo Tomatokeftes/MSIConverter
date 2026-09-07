@@ -9,7 +9,7 @@ reconstructed from laser X/Y positions stored in each scan's metadata.
 import ctypes
 import logging
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
@@ -17,13 +17,21 @@ from tqdm import tqdm
 
 from ...core.base_extractor import MetadataExtractor
 from ...core.base_reader import BaseMSIReader
+from ...core.msms import (
+    COLLISION_INDUCED_DISSOCIATION_ACCESSION,
+    FragmentationSchedule,
+    IsolationWindow,
+)
 from ...core.registry import register_reader
 from ...metadata.extractors.waters_extractor import WatersMetadataExtractor
 from .imaging_grid import ImagingGrid, build_imaging_grid
 from .instrument import WatersInstrument, identify_waters_instrument
-from .masslynx_lib import FunctionType, MassLynxLib
+from .masslynx_lib import FunctionType, MassLynxLib, ScanInfoData
 
 logger = logging.getLogger(__name__)
+
+#: What the fragmentation schedule names as its origin.
+FRAGMENTATION_SOURCE = "waters_masslynx"
 
 
 @register_reader("waters")
@@ -38,7 +46,17 @@ class WatersReader(BaseMSIReader):
     2. Opens the .raw directory and verifies it contains imaging data
     3. Classifies acquisition functions (MS, IMS, MRM, lockmass)
     4. Reconstructs the imaging pixel grid from laser coordinates
-    5. Iterates MS spectra yielding (coords, mzs, intensities) tuples
+    5. Keeps the MS1 functions only when the file also holds MS/MS ones
+    6. Iterates MS spectra yielding (coords, mzs, intensities) tuples
+
+    Every MS function shares the one laser grid, so two functions yield
+    two spectra at the same pixel. Summing an MS1 and an MS2 spectrum into
+    one pixel would make a spectrum of nothing, which is why the level
+    filter in step 5 exists: an MSe or data-dependent acquisition converts
+    to its MS1 image, and the functions left out are recorded in the
+    Waters-specific metadata block. A file with no MS1 function converts
+    its MS/MS functions instead and says so through
+    :meth:`get_fragmentation`.
     """
 
     def __init__(
@@ -93,6 +111,9 @@ class WatersReader(BaseMSIReader):
         self._imaging_grid: Optional[ImagingGrid] = None
         self._function_types: Optional[Dict[int, FunctionType]] = None
         self._ms_functions: Optional[List[int]] = None
+        #: MS functions left out of the conversion because the file also
+        #: holds MS1 ones: function index -> what they were.
+        self._excluded_functions: Dict[int, Dict[str, Any]] = {}
         self._common_mass_axis_cache: Optional[NDArray[np.float64]] = None
         self._use_centroid = use_centroid
         self._closed = False
@@ -175,6 +196,11 @@ class WatersReader(BaseMSIReader):
             self._ml, self._handle, self._function_types
         )
 
+        # One MS level per store: keep the MS1 functions when there are any
+        self._ms_functions = self._select_functions_by_ms_level(
+            self._ms_functions, self._imaging_grid
+        )
+
         # Verify the grid has more than one position (otherwise not really imaging)
         if (
             self._imaging_grid.pixel_count_x <= 1
@@ -189,6 +215,144 @@ class WatersReader(BaseMSIReader):
             f"Initialized Waters reader: {self.data_path.name}, "
             f"{len(self._ms_functions)} MS functions, "
             f"grid {self._imaging_grid.pixel_count_x}x{self._imaging_grid.pixel_count_y}"
+        )
+
+    # ------------------------------------------------------------------
+    # MS level: which functions become the stored spectrum
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _positioned_scans(func: int, grid: "ImagingGrid") -> List["ScanInfoData"]:
+        """The scan records of one function that carry a laser position."""
+        return [
+            info
+            for (f, _scan), info in sorted(grid.scan_map.items())
+            if f == func and info.has_position
+        ]
+
+    @classmethod
+    def _function_ms_level(cls, func: int, grid: "ImagingGrid") -> int:
+        """The MS level MassLynx reports for a function's scans.
+
+        Read off the first positioned scan: MassLynx sets the level per
+        function, so one scan speaks for all of them. A function without a
+        positioned scan contributes no pixel and is treated as MS1 so that
+        it is never the reason an MS1 image is refused.
+        """
+        scans = cls._positioned_scans(func, grid)
+        return max(1, int(scans[0].ms_level)) if scans else 1
+
+    def _select_functions_by_ms_level(
+        self, ms_functions: List[int], grid: "ImagingGrid"
+    ) -> List[int]:
+        """Keep the MS1 functions when the file has any, else all of them.
+
+        Records what was left out in :attr:`_excluded_functions` so the
+        store can say the acquisition fragmented something even though
+        the stored spectra are intact-ion spectra.
+        """
+        levels = {f: self._function_ms_level(f, grid) for f in ms_functions}
+        ms1 = [f for f in ms_functions if levels[f] == 1]
+        if not ms1 or len(ms1) == len(ms_functions):
+            self._excluded_functions = {}
+            if len(ms_functions) > 1:
+                logger.warning(
+                    "%d MS functions (%s) share one laser grid; their spectra "
+                    "are summed per pixel.",
+                    len(ms_functions),
+                    ", ".join(str(f) for f in ms_functions),
+                )
+            return list(ms_functions)
+
+        self._excluded_functions = {}
+        for f in ms_functions:
+            if levels[f] == 1:
+                continue
+            precursors = self._function_precursors(f, grid)
+            self._excluded_functions[f] = {
+                "ms_level": levels[f],
+                "precursor_mz": (
+                    precursors[0]
+                    if len(precursors) == 1
+                    else (precursors if precursors else None)
+                ),
+                "n_scans": len(self._positioned_scans(f, grid)),
+            }
+        logger.warning(
+            "Functions %s are MS level %s and share the laser grid with the "
+            "MS1 function(s) %s. Only the MS1 spectra are converted; the "
+            "others are recorded in the Waters metadata block as "
+            "'excluded_functions'.",
+            ", ".join(str(f) for f in self._excluded_functions),
+            "/".join(
+                sorted({str(v["ms_level"]) for v in self._excluded_functions.values()})
+            ),
+            ", ".join(str(f) for f in ms1),
+        )
+        return ms1
+
+    @classmethod
+    def _function_precursors(cls, func: int, grid: "ImagingGrid") -> List[float]:
+        """The distinct precursor m/z values a function's scans report, ascending."""
+        values = {
+            round(float(info.precursor_mz), 4)
+            for info in cls._positioned_scans(func, grid)
+            if info.precursor_mz > 0
+        }
+        return sorted(values)
+
+    def get_fragmentation(self) -> Optional[FragmentationSchedule]:
+        """What the stored spectra are: MS1, or the fragment spectra of what.
+
+        MS level 1 whenever an MS1 function was converted, including the
+        MSe and data-dependent files whose MS/MS functions were left out
+        (those are in the Waters metadata block, not here, because this
+        describes the spectra in the store). When the file holds MS/MS
+        functions only, the schedule is their precursors: one isolation
+        window per function whose precursor is constant, and
+        ``constant_across_pixels`` false as soon as any function's
+        precursor changes from scan to scan.
+        """
+        _ml, _handle, grid, _types, ms_functions = self._require_initialized()
+        levels = {f: self._function_ms_level(f, grid) for f in ms_functions}
+        top = max(levels.values(), default=1)
+        if top <= 1:
+            return FragmentationSchedule(ms_level=1, source=FRAGMENTATION_SOURCE)
+
+        windows: List[IsolationWindow] = []
+        constant = True
+        for f in ms_functions:
+            precursors = self._function_precursors(f, grid)
+            if len(precursors) != 1:
+                constant = False
+                continue
+            windows.append(self._isolation_window(f, precursors[0], grid))
+        return FragmentationSchedule(
+            ms_level=top,
+            windows=tuple(windows),
+            constant_across_pixels=constant,
+            dissociation_accession=(
+                COLLISION_INDUCED_DISSOCIATION_ACCESSION if windows else None
+            ),
+            source=FRAGMENTATION_SOURCE,
+        )
+
+    @classmethod
+    def _isolation_window(
+        cls, func: int, target: float, grid: "ImagingGrid"
+    ) -> IsolationWindow:
+        """One function's isolation window from its first positioned scan."""
+        info = cls._positioned_scans(func, grid)[0]
+        lower = upper = None
+        start, end = float(info.quad_isolation_start), float(info.quad_isolation_end)
+        if 0.0 < start <= target <= end:
+            lower, upper = target - start, end - target
+        energy = float(info.collision_energy)
+        return IsolationWindow(
+            target=target,
+            lower_offset=lower,
+            upper_offset=upper,
+            collision_energy=energy if energy > 0 else None,
         )
 
     def _require_initialized(
@@ -247,6 +411,7 @@ class WatersReader(BaseMSIReader):
             ms_functions=ms_functions,
             instrument=self._instrument,
             use_centroid=self._use_centroid,
+            excluded_functions=self._excluded_functions,
         )
 
     def get_common_mass_axis(self) -> NDArray[np.float64]:

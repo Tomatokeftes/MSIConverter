@@ -7,23 +7,28 @@ TDF (TIMS engaged) frames are read over the **full mobility ramp**. A TIMS
 frame is one pixel, its scans are the mobility dimension, and the scan
 number maps monotonically onto 1/K0. The one spectrum the reader yields per
 pixel therefore has to collapse every scan of the frame, and there are two
-correct ways to do that (see :data:`TDF_SPECTRUM_MODES`):
+correct ways to do that (see :data:`TDF_SPECTRUM_MODES`); ``scan_sum`` is
+the default, ``vendor_centroid`` the opt-in:
 
 ``vendor_centroid``
     Bruker's own frame-level centroid extraction
     (``tims_extract_centroided_spectrum_for_frame_v2``) over scans
     ``0..NumScans``. This is the same peak picker behind the TSF line
     spectrum (``tsf_read_line_spectrum_v2``) and behind SCiLS Lab's import,
-    so TSF and TDF stores from the same instrument family agree. It merges
-    neighbouring digitizer bins and discards single-count noise, which on
-    real imaging frames keeps roughly 80-90% of the raw ion current.
+    so TSF and TDF stores from the same instrument family agree. It reports
+    peak areas, merges neighbouring digitizer bins and drops every index
+    bin its picker assigns to no peak, which on measured imaging
+    acquisitions keeps 87-96% of the raw ion current. Bruker's own
+    ``Frames.SummedIntensities`` is the scan sum, not the centroid total.
 
 ``scan_sum``
     The lossless alternative: every ``(index, scan)`` pair of the frame is
     read with ``tims_read_scans_v2`` and intensities are summed per
-    digitizer index. Keeps 100% of the ion current, yields three to four
-    times as many points per frame, and is the only mode whose result is
-    exactly the mobility marginal of the per-scan data.
+    digitizer index. Keeps 100% of the ion current, yields 1.5 to 3 times as
+    many points per frame, equals Bruker's own quasi-profile export
+    (``tims_extract_profile_for_frame``) and ``Frames.SummedIntensities``
+    exactly, and is the only mode whose result is the mobility marginal
+    of the per-scan data.
 
 Frame ids are the 1-based ``Frames.Id`` of the SQLite database throughout;
 the SDK takes them as-is.
@@ -43,7 +48,7 @@ from ctypes import (
     c_void_p,
     create_string_buffer,
 )
-from typing import Dict, Literal, Optional, Tuple
+from typing import Any, Dict, Literal, Optional, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
@@ -53,11 +58,31 @@ from .dll_manager import DLLManager
 
 logger = logging.getLogger(__name__)
 
+
+def sum_scans_per_index(
+    inverse: NDArray[Any], intensities: NDArray[Any], n_unique: int
+) -> NDArray[np.float64]:
+    """The ``scan_sum`` collapse: every pair's intensity summed per unique index.
+
+    ``inverse`` is ``np.unique(indices, return_inverse=True)``'s second
+    answer. One expression, shared by the spectrum reader and the frame
+    record (``thyra.core.frames``), so the two cannot sum differently.
+    """
+    return np.bincount(
+        np.asarray(inverse).ravel(),
+        weights=np.asarray(intensities).astype(np.float64),
+        minlength=int(n_unique),
+    )
+
+
 #: How a TDF frame's TIMS scans are collapsed into the one spectrum the
 #: reader yields per pixel. See the module docstring for what each means.
 TdfSpectrumMode = Literal["vendor_centroid", "scan_sum"]
 TDF_SPECTRUM_MODES: Tuple[str, ...] = ("vendor_centroid", "scan_sum")
-DEFAULT_TDF_SPECTRUM: str = "vendor_centroid"
+#: ``scan_sum`` since the default was decided on measurement (see
+#: ``docs/design-decisions.md`` D1): it is the instrument's own record and
+#: equals Bruker's per-frame total; the centroid is the opt-in.
+DEFAULT_TDF_SPECTRUM: str = "scan_sum"
 
 # The callback the SDK's frame-level centroid extraction hands its result
 # to: (precursor id, number of peaks, m/z values, area values). Declared
@@ -625,11 +650,7 @@ class SDKFunctions:
             return np.array([], dtype=np.float64), np.array([], dtype=np.float64)
 
         unique_indices, inverse = np.unique(indices, return_inverse=True)
-        summed = np.bincount(
-            inverse.ravel(),
-            weights=intensities.astype(np.float64),
-            minlength=unique_indices.size,
-        )
+        summed = sum_scans_per_index(inverse, intensities, unique_indices.size)
         # Unique indices are ascending and the calibration is monotonic, so
         # the m/z array comes out sorted without a second pass.
         mzs = self._convert_indices_to_mz(

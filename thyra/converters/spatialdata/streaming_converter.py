@@ -15,7 +15,7 @@ import shutil
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, Generator, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -1131,9 +1131,16 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         temp_dir.mkdir(parents=True, exist_ok=True)
 
         try:
+            # The sibling tables' sinks, fed from the two passes below when
+            # the reader hands its frames over as records (design decision
+            # D5): one raw read per frame per pass for every table.
+            passes = self._fused_sibling_passes(f"{self.dataset_id}_z0")
+
             # Step 1: Pre-scan - count entries per column (no caching)
             logger.info("Step 1/3: Pre-scan (counting entries per column)...")
-            prescan_result = self._prescan_count_columns(n_grid, n_cols, n_x, n_y)
+            prescan_result = self._prescan_count_columns(
+                n_grid, n_cols, n_x, n_y, passes
+            )
 
             col_counts = prescan_result["col_counts"]
             total_nnz = prescan_result["total_nnz"]
@@ -1149,6 +1156,8 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 prescan_result["occupancy"], n_grid
             )
             n_rows = int(kept_grid.size)
+            if passes is not None:
+                passes.finish_counting(n_rows, self._register_sibling_scratch)
 
             # The other paths set this in _finalize_data; the root attrs
             # builder reads it for msi_dataset_info["non_empty_pixels"],
@@ -1166,8 +1175,11 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             # Step 3: Main pass - process and scatter directly to CSC
             logger.info("Step 3/3: Processing spectra and scattering to CSC...")
             rows_in_order = self._scatter_spectra_direct(
-                mm_indices, mm_data, indptr, n_x, n_y, row_of_grid, pixel_count
+                mm_indices, mm_data, indptr, n_x, n_y, row_of_grid, pixel_count, passes
             )
+            if passes is not None:
+                passes.finish_scattering()
+                self._take_fused_results(passes)
             if not rows_in_order:
                 sort_csc_columns(mm_indices, mm_data, indptr, n_rows)
 
@@ -1244,8 +1256,40 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             )
         return kept_grid, row_of_grid
 
+    def _iter_pass_spectra(
+        self, passes: Any, phase: str
+    ) -> Generator[Tuple[Tuple[int, int, int], Any, Any, Any], None, None]:
+        """The summed spectra of one pass, with the frame record they came from.
+
+        Yields ``(coords, mzs, intensities, frame)``: ``frame`` is the
+        record the sinks are fed from, or ``None`` when the pass reads
+        the summed spectra directly (no sinks, or a reader without
+        records). A frame whose summed spectrum is empty is not yielded,
+        exactly as ``iter_spectra`` never yields it, but the sinks of
+        ``phase`` (``"count"`` or ``"scatter"``) still see it with no row,
+        which is what their own pass would have shown them.
+        """
+        if passes is None or passes.empty:
+            for coords, mzs, intensities in self.reader.iter_spectra(
+                batch_size=self._buffer_size
+            ):
+                yield coords, mzs, intensities, None
+            return
+        feed = getattr(passes, phase)
+        for frame in self.reader.iter_frame_scans(batch_size=self._buffer_size):
+            spectrum = frame.spectrum()
+            if spectrum is None:
+                feed(frame, None)
+                continue
+            yield frame.coords, spectrum[0], spectrum[1], frame
+
     def _prescan_count_columns(
-        self, n_grid: int, n_cols: int, n_x: int, n_y: int
+        self,
+        n_grid: int,
+        n_cols: int,
+        n_x: int,
+        n_y: int,
+        passes: Any = None,
     ) -> Dict[str, Any]:
         """Pre-scan spectra to count entries per column without caching.
 
@@ -1254,6 +1298,8 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         2. Computes TIC values per pixel
         3. Accumulates total intensity for average spectrum
         4. Records which grid positions carry a spectrum at all
+        5. Feeds the sibling tables' pass-1 sinks, when ``passes`` is given,
+           from the same frame read (see ``fused_passes.py``)
 
         No data is cached to disk - we'll reprocess spectra in the main pass.
 
@@ -1261,6 +1307,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             n_grid: Number of grid positions
             n_cols: Number of m/z bins
             n_x, n_y: Spatial dimensions
+            passes: The sibling sinks to feed, or ``None``
 
         Returns:
             Dictionary with col_counts, total_nnz, tic_values, avg_spectrum,
@@ -1285,11 +1332,11 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
 
         with tqdm(
             total=total_spectra,
-            desc="Pre-scan",
+            desc="Pre-scan" if passes is None else "Pre-scan + sibling tables",
             unit="spectrum",
         ) as pbar:
-            for coords, mzs, intensities in self.reader.iter_spectra(
-                batch_size=self._buffer_size
+            for coords, mzs, intensities, frame in self._iter_pass_spectra(
+                passes, "count"
             ):
                 x, y, z = coords
 
@@ -1297,6 +1344,15 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 mz_indices, resampled_ints = self._process_spectrum(mzs, intensities)
 
                 nnz = len(mz_indices)
+                if frame is not None:
+                    # The row the sinks count under is the grid position,
+                    # which is the table row's own order: rows are numbered
+                    # in grid order once the empty positions are dropped.
+                    # A spectrum that gets no row (empty, or off the grid)
+                    # is a pixel the siblings skip, as their own pass
+                    # skips one that is not in obs.
+                    gets_row = nnz > 0 and 0 <= y < n_y and 0 <= x < n_x
+                    passes.count(frame, (y * n_x + x) if gets_row else None)
                 if nnz > 0:
                     # Accumulate for average spectrum (vectorized). Left
                     # outside the bounds check to match the COO pre-scan,
@@ -1376,11 +1432,14 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         n_y: int,
         row_of_grid: NDArray[np.int64],
         pixel_count: int,
+        passes: Any = None,
     ) -> bool:
         """Process spectra and scatter directly to CSC arrays.
 
         This is the main pass that processes spectra again (same resampling
         as pre-scan) and scatters values directly to their CSC positions.
+        With ``passes`` it also scatters the sibling tables from the same
+        frame read (see ``fused_passes.py``).
 
         Args:
             mm_indices: Memory-mapped array for row indices
@@ -1416,11 +1475,11 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
 
         with tqdm(
             total=pixel_count,
-            desc="Scatter to CSC",
+            desc="Scatter to CSC" if passes is None else "Scatter to CSC + siblings",
             unit="spectrum",
         ) as pbar:
-            for coords, mzs, intensities in self.reader.iter_spectra(
-                batch_size=self._buffer_size
+            for coords, mzs, intensities, frame in self._iter_pass_spectra(
+                passes, "scatter"
             ):
                 x, y, z = coords
 
@@ -1436,6 +1495,9 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 row_idx = -1
                 if len(mz_indices) > 0 and 0 <= y < n_y and 0 <= x < n_x:
                     row_idx = int(row_of_grid[y * n_x + x])
+
+                if frame is not None:
+                    passes.scatter(frame, row_idx if row_idx >= 0 else None)
 
                 if row_idx >= 0:
                     if row_idx < last_row:
@@ -1571,10 +1633,13 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         # Decide on the sibling tables before uns is written, so the
         # table's uns can name them (see _collect_mobility_axis), and run
         # the raw mobility pass once for the heatmap and the grid's
-        # discovery together. The siblings' obs mirrors this table's rows:
-        # one per kept grid position, indexed by the grid index as a string.
-        self._mobility_table_key = self._plan_mobility_table(slice_id)
-        self._msms_table_key = self._plan_msms_table(slice_id)
+        # discovery together -- unless both were done from the summed
+        # table's own passes already (see _fused_sibling_passes). The
+        # siblings' obs mirrors this table's rows: one per kept grid
+        # position, indexed by the grid index as a string.
+        if not self._siblings_planned:
+            self._mobility_table_key = self._plan_mobility_table(slice_id)
+            self._msms_table_key = self._plan_msms_table(slice_id)
         sibling_obs = self._sibling_obs(kept_grid, n_x, region_key)
         self._prepare_sibling_scans(sibling_obs, z_value=0)
 

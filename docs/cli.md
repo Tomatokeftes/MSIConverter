@@ -48,9 +48,9 @@ thyra input.imzML output.zarr && python analyse.py output.zarr
 | `--resample / --no-resample` | enabled | Mass axis resampling |
 | `--include-optical / --no-optical` | enabled | Include optical images in output |
 | `--mobility-table / --no-mobility-table` | enabled | Also write the mobility-resolved sibling table when the source shares one set of (m/z, ion mobility) features across pixels (see [Output Format](output-format.md#ion-mobility)) |
-| `--mobility-heatmap / --no-mobility-heatmap` | enabled | When the source has an ion mobility dimension, store the mean mass-mobility frame on the summed table as `uns["mobility_heatmap"]`; one extra pass over the source (see [Output Format](output-format.md#ion-mobility)) |
-| `--mobility-grid / --no-mobility-grid` | **disabled** | When the source carries ion mobility per pixel rather than as a shared feature list (Bruker TDF), bin the point cloud onto a common mobility grid and write the same mobility-resolved sibling table; one extra pass over the source beyond the heatmap's, a much larger table built out of core so any acquisition fits, and it forces `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#the-same-table-from-a-common-mobility-grid)) |
-| `--msms-table / --no-msms-table` | **disabled** | When the source isolates several precursors per pixel in disjoint mobility slices (Bruker PASEF), also write them split apart as a demultiplexed sibling table; two extra passes over the source, and it forces `--tdf-spectrum scan_sum` so the split adds back up to the summed table exactly (see [Output Format](output-format.md#demultiplexed-msms-table)) |
+| `--mobility-heatmap / --no-mobility-heatmap` | enabled | When the source has an ion mobility dimension, store the mean mass-mobility frame on the summed table as `uns["mobility_heatmap"]`; on a Bruker TDF it is fed from the summed table's own passes, on other sources it is one extra pass (see [Output Format](output-format.md#ion-mobility)) |
+| `--mobility-grid / --no-mobility-grid` | **disabled** | When the source carries ion mobility per pixel rather than as a shared feature list (Bruker TDF), bin the point cloud onto a common mobility grid and write the same mobility-resolved sibling table; fed from the summed table's own two passes on the streaming route (no extra read of the source), a much larger table built out of core so any acquisition fits; its marginal reproduces the summed table exactly under the default `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#the-same-table-from-a-common-mobility-grid)) |
+| `--msms-table / --no-msms-table` | enabled | When the source isolates several precursors per pixel in disjoint mobility slices (Bruker PASEF), also write them split apart as a demultiplexed sibling table; fed from the summed table's own two passes on the streaming route (no extra read of the source); the split adds back up to the summed table exactly under the default `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#demultiplexed-msms-table)) |
 
 ### Examples
 
@@ -138,7 +138,10 @@ thyra tims_data.d output.zarr --mobility-grid --mobility-bins 512     --mobility
     two passes: the first counts the occupied `(m/z bin, channel)` cells and
     the second scatters every pixel straight into memmapped CSC arrays in a
     scratch directory next to the output (`.thyra_mobility_*`, removed once
-    the table is written). Memory is the count array over the grid's span --
+    the table is written). On a Bruker TDF those are the summed table's own
+    two passes: each frame is read once per pass and the read serves the
+    summed spectrum, the heatmap, the grid and the MS/MS split alike (see
+    [Design Decisions](design-decisions.md#d5-one-raw-read-per-frame-per-pass-serves-every-table)). Memory is the count array over the grid's span --
     142 MB on a default-resampled timsTOF axis -- plus one frame, whatever the
     number of pixels; disk is 12 bytes per stored non-zero while the table is
     being built. Measured on a whole 26,087-pixel timsTOF acquisition on a
@@ -151,8 +154,11 @@ thyra tims_data.d output.zarr --mobility-grid --mobility-bins 512     --mobility
     axis' width is multiplied by 256. A default resampled timsTOF axis is
     around 140,000 bins; 200 frames of one measured acquisition filled 3.9
     million of the resulting pairs, and a whole 26,000-pixel acquisition
-    would pass the 20,000,000 ceiling the table is refused at. Reach for
-    `--resample-bins` when the whole image is wanted resolved.
+    occupies 21 million. The table is refused when the `var` frame those
+    pairs make is projected to take more than half of the machine's free
+    memory (about 330 bytes per pair, measured), and warned about past a
+    quarter. Reach for `--resample-bins` when the whole image is wanted
+    resolved on a smaller machine.
 
 !!! warning "The defaults are an alignment, and the grid changes the TIC"
     256 channels over the mobility axis' own value range is exactly what
@@ -160,12 +166,11 @@ thyra tims_data.d output.zarr --mobility-grid --mobility-bins 512     --mobility
     selects grid channels by integer index. `--mobility-bins`,
     `--mobility-min` and `--mobility-max` each give that up.
 
-    Asking for a grid also switches a TDF conversion to `--tdf-spectrum
-    scan_sum` unless that option was given explicitly, and says so at
-    `WARNING`: the grid is built from raw scans, and its marginal over
-    channels reproduces the summed table only when that table was built the
-    same way. The switch moves the stored TIC by 13 to 21 percent against a
-    default conversion of the same file.
+    The grid is built from raw scans, and its marginal over channels
+    reproduces the summed table only when that table was built the same
+    way, which the default `--tdf-spectrum scan_sum` is. An explicit
+    `vendor_centroid` is kept, said at `WARNING`, and the mismatch is
+    recorded in the grid's `uns` block.
 
 ---
 
@@ -346,7 +351,7 @@ These options only apply when converting Bruker `.d` directories.
 | `--use-recalibrated / --no-recalibrated` | enabled | Use recalibrated m/z state |
 | `--interactive-calibration` | off | Display available calibration states |
 | `--intensity-threshold FLOAT` | none | Minimum intensity filter |
-| `--tdf-spectrum {vendor_centroid,scan_sum}` | `vendor_centroid`; `scan_sum` when `--mobility-grid` or `--msms-table` is given | How a TDF (TIMS) frame's mobility scans collapse into one spectrum per pixel |
+| `--tdf-spectrum {scan_sum,vendor_centroid}` | `scan_sum` | How a TDF (TIMS) frame's mobility scans collapse into one spectrum per pixel |
 
 ### Examples
 
@@ -360,16 +365,18 @@ thyra data.d output.zarr --interactive-calibration
 # Filter low-intensity signals (useful for continuous-mode Bruker data)
 thyra data.d output.zarr --intensity-threshold 100
 
-# TIMS data: keep every ion count instead of Bruker's centroided spectrum
-thyra tims_data.d output.zarr --tdf-spectrum scan_sum
+# TIMS data: reproduce Bruker's centroided spectrum instead of the raw scan sum
+thyra tims_data.d output.zarr --tdf-spectrum vendor_centroid
 ```
 
 !!! note "TDF: the mobility ramp is summed, not sliced"
-    Every scan of a TIMS frame is read. `vendor_centroid` is Bruker's own
-    frame-level peak picker over the full ramp (parity with TSF line spectra
-    and SCiLS Lab); `scan_sum` sums every scan per digitizer index and keeps
-    all of the ion current, at three to four times the points. See
-    [Supported Formats](supported-formats.md#bruker-timstof).
+    Every scan of a TIMS frame is read. `scan_sum` (default) sums every scan
+    per digitizer index and keeps all of the ion current, which is also
+    Bruker's own per-frame total; `vendor_centroid` is Bruker's frame-level
+    peak picker over the full ramp (parity with TSF line spectra and SCiLS
+    Lab), at 87 to 96 percent of the current and a third to two thirds of
+    the points. See [Supported Formats](supported-formats.md#bruker-timstof)
+    and [Design Decisions](design-decisions.md#d1-which-spectrum-a-reader-takes).
 
 !!! warning "Intensity threshold"
     The `--intensity-threshold` option drops all peaks below the given value

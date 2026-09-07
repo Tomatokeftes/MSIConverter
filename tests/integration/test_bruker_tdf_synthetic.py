@@ -546,13 +546,21 @@ class TestDemultiplexedStore:
         assert block["current_ratio"] == pytest.approx(1.0, abs=1e-12)
         assert block["current_ratio_pixel_max"] == pytest.approx(1.0, abs=1e-12)
 
-    def test_off_by_default(self, tmp_path):
-        """The extra pass is opt in; the schedule is recorded either way."""
+    def test_on_by_default_and_off_on_request(self, tmp_path):
+        """The split is the default (design decision D2); the schedule is recorded either way."""
         spatialdata = pytest.importorskip("spatialdata")
         _open("scan_sum").close()
         out = _convert_path(_pasef_copy(tmp_path), tmp_path / "pasef.zarr")
         sdata = spatialdata.read_zarr(out)
+        assert set(sdata.tables) == {"tims_z0", "tims_z0_msms"}
+        assert sdata.tables["tims_z0"].uns["msms_schedule"]["resolved_table"] == (
+            "tims_z0_msms"
+        )
 
+        out = _convert_path(
+            _pasef_copy(tmp_path / "again"), tmp_path / "off.zarr", msms_table=False
+        )
+        sdata = spatialdata.read_zarr(out)
         assert set(sdata.tables) == {"tims_z0"}
         assert "resolved_table" not in sdata.tables["tims_z0"].uns["msms_schedule"]
 
@@ -629,11 +637,12 @@ class TestMobilityGridStore:
         sdata = spatialdata.read_zarr(prepare_zarr_read_path(out))
         assert "tims_z0_mobility" not in sdata.tables
 
-    def test_the_flag_writes_the_sibling_and_forces_the_lossless_sum(self, tmp_path):
+    def test_the_flag_writes_the_sibling_under_the_default_lossless_sum(self, tmp_path):
         from thyra.convert import convert_msi
 
         out = tmp_path / "grid.zarr"
-        # No reader_options: the grid must pick scan_sum itself.
+        # No reader_options: the default is scan_sum (design decision D1),
+        # which is what makes the grid's marginal exact.
         assert convert_msi(
             str(FIXTURE),
             str(out),

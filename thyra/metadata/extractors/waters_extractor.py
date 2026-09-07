@@ -42,6 +42,7 @@ class WatersMetadataExtractor(MetadataExtractor):
         ms_functions: List[int],
         instrument: Optional["WatersInstrument"] = None,
         use_centroid: bool = True,
+        excluded_functions: Optional[Dict[int, Dict[str, Any]]] = None,
     ):
         """Initialize Waters metadata extractor.
 
@@ -51,7 +52,6 @@ class WatersMetadataExtractor(MetadataExtractor):
             data_path: Path to the Waters .raw directory.
             imaging_grid: Pre-built ImagingGrid with spatial metadata.
             function_types: Map of function index to FunctionType.
-            ms_functions: List of MS function indices.
             instrument: What the run's side files say about the analyser,
                 from :func:`thyra.readers.waters.instrument.identify_waters_instrument`.
                 ``None`` reports nothing instrument-specific.
@@ -61,6 +61,10 @@ class WatersMetadataExtractor(MetadataExtractor):
                 one the reader *delivers*, not the one the file was
                 acquired in: downstream axis and method selection act on
                 the spectra they will actually receive.
+            ms_functions: List of MS function indices that are converted.
+            excluded_functions: MS functions the reader left out because
+                the file also holds MS1 ones (MSe, data-dependent runs):
+                function index -> ``{"ms_level", "precursor_mz", "n_scans"}``.
         """
         super().__init__(ml)
         self._ml = ml
@@ -71,6 +75,7 @@ class WatersMetadataExtractor(MetadataExtractor):
         self._ms_functions = ms_functions
         self._instrument = instrument
         self._use_centroid = use_centroid
+        self._excluded_functions = dict(excluded_functions or {})
 
     def _extract_essential_impl(self) -> EssentialMetadata:
         """Extract essential metadata.
@@ -366,6 +371,12 @@ class WatersMetadataExtractor(MetadataExtractor):
             "function_types": {
                 str(f): ft.name if hasattr(ft, "name") else str(ft)
                 for f, ft in self._function_types.items()
+            },
+            # MS functions left out because the file also holds MS1 ones;
+            # the store's spectra are MS1, and this is where the MS/MS
+            # functions of an MSe or data-dependent run are still visible.
+            "excluded_functions": {
+                str(f): dict(detail) for f, detail in self._excluded_functions.items()
             },
             "pixel_count_x": self._imaging_grid.pixel_count_x,
             "pixel_count_y": self._imaging_grid.pixel_count_y,

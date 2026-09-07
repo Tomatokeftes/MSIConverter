@@ -20,10 +20,11 @@ must not mean another in a store built from it.
 What it deliberately does **not** do is change the data. A frame that
 isolated several precursors is still summed into one spectrum per pixel;
 the schedule recorded here is what makes that visible rather than silent.
-Splitting such a frame into one spectrum per precursor is a separate,
-opt-in table with a feature axis of (precursor, fragment) pairs -- see
+Splitting such a frame into one spectrum per precursor is a separate
+sibling table with a feature axis of (precursor, fragment) pairs, written
+by default whenever the schedule allows an exact split -- see
 ``thyra.converters.spatialdata.msms_table``, which reads the schedule
-recorded here to decide whether the split is exact.
+recorded here to decide that.
 """
 
 from dataclasses import dataclass

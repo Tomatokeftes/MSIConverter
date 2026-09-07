@@ -716,7 +716,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         mobility_bins: int = MOBILITY_CHANNELS,
         mobility_min: Optional[float] = None,
         mobility_max: Optional[float] = None,
-        msms_table: bool = False,
+        msms_table: bool = True,
         **kwargs: Any,
     ) -> None:
         """Initialize the base SpatialData converter.
@@ -772,11 +772,15 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             msms_table: When the source isolates several precursors per
                 pixel in disjoint mobility slices (Bruker PASEF), also
                 write them split apart as a demultiplexed sibling table
-                (``{table}_msms``) beside the summed MSI table
-                (default: False -- opt in, it costs an extra pass over
-                the source). Refused with a reason rather than
-                approximated when the schedule is not separable; see
-                ``msms_table.py``. Never changes the MSI table itself.
+                (``{table}_msms``) beside the summed MSI table (default:
+                True -- the summed spectrum of such a pixel is a mixture
+                of unrelated fragment spectra, so the split is the
+                accurate representation; design decision D2). Refused
+                with a reason rather than approximated when the schedule
+                is not separable, which is also what happens on every
+                source that is not MS/MS, so the default costs a source
+                that has nothing to split nothing; see ``msms_table.py``.
+                Never changes the MSI table itself.
             apply_optical_alignment: If True (default) and the MSI source
                 has FlexImaging Area metadata, compute an alignment that
                 places MSI raster coordinates in optical-image pixel
@@ -872,6 +876,15 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         # converter ran it fused with the heatmap's pass (see
         # _prepare_sibling_scans); consumed by _attach_sibling_tables.
         self._grid_discovery: Any = None
+        # The MS/MS table's accumulator when the converter fed it from the
+        # summed table's own passes (see fused_passes.py); consumed by
+        # _attach_sibling_tables like the grid's discovery.
+        self._msms_accumulator: Any = None
+        # Whether the sibling sinks were fed from the summed table's passes
+        # already, so _prepare_sibling_scans has nothing left to scan; and
+        # whether the sibling tables were planned before those passes.
+        self._sibling_scans_done = False
+        self._siblings_planned = False
         # Scratch directories holding the memmapped matrices of sibling
         # tables until they are written; released by _release_sibling_scratch.
         self._sibling_scratch: List[Tuple[Any, Path]] = []
@@ -882,7 +895,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         self._mobility_heatmap_enabled = bool(mobility_heatmap)
         self._mobility_heatmap_block: Optional[Dict[str, Any]] = None
         self._mobility_heatmap_built = False
-        # The demultiplexed MS/MS sibling (see msms_table.py): opt-in, and
+        # The demultiplexed MS/MS sibling (see msms_table.py): on by default, and
         # -- once a finalize step has decided for its slice -- the element
         # key it gets, so the MSI table's uns can name it.
         self._write_msms_table = bool(msms_table)
@@ -1442,7 +1455,13 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         built here once and cached for every ``uns`` block that asks; a
         route that never calls this still gets it from
         :meth:`_ensure_mobility_heatmap` on first demand.
+
+        A no-op when the sinks were already fed from the summed table's
+        own passes (the streaming route with a reader that hands its
+        frames over as records; see ``fused_passes.py``).
         """
+        if self._sibling_scans_done:
+            return
         self._grid_discovery = None
         try:
             if not getattr(self.reader, "has_ion_mobility", False):
@@ -1514,6 +1533,67 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         from .csc_assembly import scratch_directory
 
         return scratch_directory(f".thyra_{prefix}_", parent=self.output_path.parent)
+
+    def _register_sibling_scratch(self, prefix: str, assembly: Any) -> Path:
+        """A scratch directory for ``assembly``, released with the others once written."""
+        scratch = self._new_sibling_scratch(prefix)
+        self._sibling_scratch.append((assembly, scratch))
+        return scratch
+
+    def _fused_sibling_passes(self, table_key: str) -> Any:
+        """The sibling sinks to feed from the summed table's own passes, or ``None``.
+
+        Only for a reader that hands its frames over as records
+        (:attr:`~thyra.core.base_reader.BaseMSIReader.has_frame_scans`);
+        plans the siblings of ``table_key`` first, since the sinks are
+        theirs. ``None`` when nothing wants the frames, in which case the
+        passes read the summed spectra as they always did and
+        :meth:`_prepare_sibling_scans` scans on its own later.
+        """
+        if not getattr(self.reader, "has_frame_scans", False):
+            return None
+        if self._common_mass_axis is None or self._dimensions is None:
+            return None
+        self._mobility_table_key = self._plan_mobility_table(table_key)
+        self._msms_table_key = self._plan_msms_table(table_key)
+        self._siblings_planned = True
+        from .fused_passes import SiblingPasses
+        from .mobility_table import GridDiscovery
+        from .msms_table import new_msms_accumulator
+
+        n_x, n_y, n_z = self._dimensions
+        n_grid = int(n_x * n_y * n_z)
+        heatmap = self._pending_heatmap()
+        discovery = None
+        if self._mobility_table_key is not None and self._mobility_grid is not None:
+            try:
+                # Rows are handed to the sinks by the passes themselves,
+                # so the lookup a standalone pass would use is not needed.
+                discovery = GridDiscovery(
+                    self._common_mass_axis,
+                    self._mobility_grid,
+                    lambda coords: None,
+                    n_grid,
+                )
+            except MemoryError as e:
+                logger.warning("No mobility-resolved table: %s", e)
+        msms = None
+        if self._msms_table_key is not None:
+            msms = new_msms_accumulator(self.reader, self._common_mass_axis, n_grid)
+        if heatmap is None and discovery is None and msms is None:
+            return None
+        self._sibling_scans_done = True
+        return SiblingPasses(
+            self._common_mass_axis, heatmap=heatmap, discovery=discovery, msms=msms
+        )
+
+    def _take_fused_results(self, passes: Any) -> None:
+        """Keep what the fused passes built for the finalize step to write."""
+        if passes.heatmap_wanted:
+            self._mobility_heatmap_built = True
+            self._mobility_heatmap_block = passes.heatmap_block
+        self._grid_discovery = passes.discovery
+        self._msms_accumulator = passes.msms
 
     def _release_sibling_scratch(self, tables: Optional[Dict[str, Any]] = None) -> None:
         """Drop the sibling tables' memmaps and remove their scratch directories.
@@ -1602,10 +1682,14 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         from .mobility_table import build_mobility_table
 
         discovery, self._grid_discovery = self._grid_discovery, None
-        scratch = self._new_sibling_scratch("mobility")
-        self._sibling_scratch.append(
-            (None if discovery is None else discovery.assembly, scratch)
-        )
+        # The fused passes allocate and register their own scratch; a
+        # discovery without one is scattered by the builder on a new one.
+        scratch = None if discovery is None else discovery.scratch
+        if scratch is None:
+            scratch = self._new_sibling_scratch("mobility")
+            self._sibling_scratch.append(
+                (None if discovery is None else discovery.assembly, scratch)
+            )
         try:
             return build_mobility_table(
                 self.reader,
@@ -1634,8 +1718,11 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         """The demultiplexed sibling of one slice, on a scratch directory of its own."""
         from .msms_table import build_msms_table
 
-        scratch = self._new_sibling_scratch("msms")
-        self._sibling_scratch.append((None, scratch))
+        accumulator, self._msms_accumulator = self._msms_accumulator, None
+        scratch = None if accumulator is None else accumulator.scratch
+        if scratch is None:
+            scratch = self._new_sibling_scratch("msms")
+            self._sibling_scratch.append((None, scratch))
         try:
             return build_msms_table(
                 self.reader,
@@ -1646,6 +1733,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 uns,
                 z_value=z_value,
                 scratch=scratch,
+                accumulator=accumulator,
             )
         except Exception as e:
             logger.error("Could not build the demultiplexed MS/MS table: %s", e)
@@ -1665,8 +1753,9 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         binned the same way, differing only in whether mobility was kept.
         Under ``--tdf-spectrum scan_sum`` that holds exactly; under the
         vendor centroid it cannot, because the centroid is a peak-picked
-        spectrum over the same ramp and keeps 80-90% of the ion current
-        while the grid reads raw scans. A store whose two tables disagree
+        spectrum over the same ramp and keeps only the current inside the
+        peaks it picks (87-96% on measured acquisitions) while the grid
+        reads raw scans. A store whose two tables disagree
         must say by how much rather than leave a reader to find it by
         subtraction.
 
@@ -1733,6 +1822,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         if refusal is not None:
             logger.info("No demultiplexed MS/MS table: %s", refusal)
             return None
+        # The fragment axis is the summed table's axis whatever that axis
+        # is (design decision D6): resampled, it is the grid the user chose
+        # for the whole store; raw, it is the union of the very fragment
+        # m/z values the split re-reads, so the mapping is exact either way.
         return msms_table_key(table_key)
 
     def _attach_msms_table(
@@ -1791,7 +1884,8 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         The two tables agree exactly under ``--tdf-spectrum scan_sum``,
         which writing this table now selects; under an explicit
         ``vendor_centroid`` they do not, because the vendor peak picker
-        drops single counts while the split reads raw scans, so the
+        drops the index bins it assigns to no peak while the split reads
+        raw scans, so the
         demultiplexed table holds *more*. That is not a defect, but a
         store whose two tables disagree must say so rather than leave a
         reader to find it by subtraction. ``row_totals`` stands in for the

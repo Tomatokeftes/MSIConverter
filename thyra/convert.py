@@ -126,48 +126,28 @@ def _create_reader(
 
 
 def _force_scan_sum(reader_class: Any, options: Dict[str, Any], what: str) -> None:
-    """Switch a TDF reader to the lossless summed spectrum, out loud.
+    """Say out loud when a sibling table will not add up to the summed one.
 
     A sibling table -- the mobility grid, the demultiplexed MS/MS table --
     is built from the raw scans, so it reproduces the summed table (the
     grid's marginal over channels, the split's blocks added back up) only
-    when that table was built from the same scans. The vendor centroid is
-    a peak-picked spectrum over the same ramp and keeps 80-90% of the ion
-    current, so with it the two tables of one store genuinely do not add
-    up.
-
-    The switch moves the stored TIC by 13-21%, which reads as a bug if it
-    happens quietly, so it is said at WARNING -- and never applied over an
-    explicit ``--tdf-spectrum``, which is the caller saying they want the
-    other one and will live with the mismatch, which the sibling's
-    ``uns`` block then records.
+    when that table was built from the same scans. The default
+    ``scan_sum`` is built from them, so nothing needs switching; the
+    vendor centroid is a peak-picked spectrum over the same ramp that
+    keeps only the current inside the peaks it picks (87-96% on measured
+    acquisitions), so an explicit ``--tdf-spectrum vendor_centroid`` is
+    the caller saying they want the mismatch, which the sibling's ``uns``
+    block then records. It is said at WARNING rather than overridden.
     """
-    import inspect
-
-    if "tdf_spectrum" in options:
-        logger.warning(
-            "A %s table was asked for with --tdf-spectrum %s. The table reads "
-            "raw scans, so it will not add back up to the summed table; its "
-            "uns block records by how much.",
-            what,
-            options["tdf_spectrum"],
-        )
+    mode = options.get("tdf_spectrum")
+    if mode is None or mode == "scan_sum":
         return
-    try:
-        accepted = inspect.signature(reader_class.__init__).parameters
-    except (TypeError, ValueError):  # pragma: no cover - defensive
-        return
-    if "tdf_spectrum" not in accepted:
-        return
-    options["tdf_spectrum"] = "scan_sum"
     logger.warning(
-        "Writing a %s table, so the summed spectrum is built with "
-        "--tdf-spectrum scan_sum instead of the default vendor centroid: the "
-        "table must add back up to the summed table, and only the lossless "
-        "sum does. This moves the stored TIC by 13-21%% against a default "
-        "conversion of the same file. Pass --tdf-spectrum vendor_centroid to "
-        "keep the centroid and accept the mismatch.",
+        "A %s table was asked for with --tdf-spectrum %s. The table reads "
+        "raw scans, so it will not add back up to the summed table; its "
+        "uns block records by how much.",
         what,
+        mode,
     )
 
 
@@ -389,9 +369,9 @@ def convert_msi(
               to include. Default: None (no filtering).
             - use_recalibrated_state: bool - For Bruker data,
               use active/recalibrated calibration (default True).
-            - tdf_spectrum: "vendor_centroid" | "scan_sum" - For Bruker
+            - tdf_spectrum: "scan_sum" | "vendor_centroid" - For Bruker
               TDF (TIMS) data, how a frame's mobility scans are collapsed
-              into one spectrum per pixel (default "vendor_centroid").
+              into one spectrum per pixel (default "scan_sum").
             - use_centroid: bool - For Waters .raw, whether MassLynx
               hands back the vendor centroid (True) or the profile
               trace (False). Default None: the profile trace on a
@@ -410,12 +390,14 @@ def convert_msi(
             shared feature axis (Bruker TDF) by binning the point cloud
             onto a common mobility grid; ``mobility_bins`` (default 256,
             the heatmap's own channel count), ``mobility_min`` and
-            ``mobility_max`` size that grid. Asking for it also switches
-            a TDF reader to ``tdf_spectrum="scan_sum"`` unless the caller
-            set that option explicitly, which moves the stored TIC.
-            ``msms_table`` (default False) writes the demultiplexed MS/MS
+            ``mobility_max`` size that grid. Its marginal reproduces the
+            summed table exactly under the default
+            ``tdf_spectrum="scan_sum"``; an explicit ``"vendor_centroid"``
+            is kept, with a warning, and the mismatch recorded.
+            ``msms_table`` (default True) writes the demultiplexed MS/MS
             sibling table when the source isolates several precursors per
-            pixel in disjoint mobility slices (Bruker PASEF).
+            pixel in disjoint mobility slices (Bruker PASEF); refused with
+            a reason, and nothing written, on any other source.
             - max_mass_axis_length: int - For processed-mode imzML
               converted with --no-resample, give up once the raw
               mass axis exceeds this many unique m/z values. This

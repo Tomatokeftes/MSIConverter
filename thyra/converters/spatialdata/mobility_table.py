@@ -409,13 +409,48 @@ def _feature_var(
 # The common-grid mechanism: a per-pixel point cloud, binned
 # ----------------------------------------------------------------------
 
-#: Features a grid table's ``var`` may hold before the grid is refused --
-#: occupied ``(m/z bin, mobility channel)`` pairs, not the pairs the grid
-#: spans. The two differ by an order of magnitude on real data (a measured
-#: 200-frame timsTOF acquisition occupied 3.9M of a possible 35.5M), which
-#: is why the count is checked and not the bound: refusing on the bound
-#: would turn away conversions that fit ninefold over.
-MAX_GRID_VAR_ENTRIES = 20_000_000
+#: Absolute cap on the features a grid table's ``var`` may hold -- occupied
+#: ``(m/z bin, mobility channel)`` pairs, not the pairs the grid spans. The
+#: two differ by an order of magnitude on real data (a measured 200-frame
+#: timsTOF acquisition occupied 3.9M of a possible 35.5M), which is why the
+#: count is checked and not the bound. The cap is a statement of what a
+#: downstream tool can be expected to open, not the operative guard: that
+#: is the memory projection below (design decision D4), which is what
+#: refuses on a real machine long before this number.
+MAX_GRID_VAR_ENTRIES = 100_000_000
+
+#: Process memory the ``var`` frame costs per feature while it is built,
+#: AnnData copies included. Measured 2026-09-07 on a real grid: a private
+#: peak 4.4 GB above baseline at 13.27M features.
+VAR_BYTES_PER_FEATURE = 330
+
+#: Fractions of the machine's free memory the projected ``var`` frame may
+#: take before the conversion warns, and before it refuses. Fractions and
+#: not sizes: a table that is routine on a workstation is fatal on a
+#: laptop, and the same number cannot be right for both.
+GRID_VAR_WARN_FRACTION = 0.25
+GRID_VAR_REFUSE_FRACTION = 0.5
+
+#: What to assume is free when the machine will not say. Generous on
+#: purpose: a guess must never be the thing that refuses a conversion
+#: that would have fitted.
+ASSUMED_FREE_GB = 8.0
+
+
+def available_memory_gb() -> float:
+    """The machine's free memory in GB, or :data:`ASSUMED_FREE_GB`."""
+    try:
+        import psutil
+
+        return float(psutil.virtual_memory().available) / 1024**3
+    except Exception as e:  # pragma: no cover - platform-dependent
+        logger.debug("Could not read available memory: %s", e)
+        return ASSUMED_FREE_GB
+
+
+def projected_var_gb(n_features: int) -> float:
+    """What building a ``var`` frame of this many features is expected to cost."""
+    return float(n_features) * VAR_BYTES_PER_FEATURE / 1024**3
 
 
 def grid_var_bound(common_mass_axis: NDArray[np.float64], grid: MobilityGrid) -> int:
@@ -429,16 +464,51 @@ def grid_var_bound(common_mass_axis: NDArray[np.float64], grid: MobilityGrid) ->
     return int(np.asarray(common_mass_axis).size) * int(grid.n_channels)
 
 
-def var_ceiling_refusal(n_features: int) -> Optional[str]:
-    """Why a grid table this wide must not be built, or ``None``."""
-    if n_features <= MAX_GRID_VAR_ENTRIES:
-        return None
-    return (
-        f"the grid occupies {n_features:,} (m/z bin, mobility channel) pairs, "
-        f"above the var ceiling of {MAX_GRID_VAR_ENTRIES:,}; resample to "
-        f"fewer mass bins or ask for fewer mobility channels "
-        f"(--mobility-bins)"
+def var_ceiling_refusal(
+    n_features: int, available_gb: Optional[float] = None
+) -> Optional[str]:
+    """Why a grid table this wide must not be built, or ``None``.
+
+    The operative test is memory: the ``var`` frame is the peak of an
+    out-of-core build, its cost per feature is measured, and the machine's
+    free memory is known, so the projection is compared with what is
+    there -- refused past :data:`GRID_VAR_REFUSE_FRACTION` of it, warned
+    about past :data:`GRID_VAR_WARN_FRACTION`. The absolute cap is checked
+    first and is far above any real table.
+
+    ``available_gb`` overrides the machine's own answer, for tests.
+    """
+    levers = (
+        "resample to fewer mass bins (--resample-bins) or ask for fewer "
+        "mobility channels (--mobility-bins)"
     )
+    if n_features > MAX_GRID_VAR_ENTRIES:
+        return (
+            f"the grid occupies {n_features:,} (m/z bin, mobility channel) "
+            f"pairs, above the var ceiling of {MAX_GRID_VAR_ENTRIES:,}; {levers}"
+        )
+    gb = projected_var_gb(n_features)
+    free = available_memory_gb() if available_gb is None else float(available_gb)
+    if gb > free * GRID_VAR_REFUSE_FRACTION:
+        return (
+            f"the grid occupies {n_features:,} (m/z bin, mobility channel) "
+            f"pairs, and building their var frame is projected to need "
+            f"{gb:.1f} GB ({VAR_BYTES_PER_FEATURE} bytes per feature, measured) "
+            f"against {free:.1f} GB free, more than the "
+            f"{GRID_VAR_REFUSE_FRACTION:.0%} of free memory a conversion may "
+            f"take; {levers}"
+        )
+    if gb > free * GRID_VAR_WARN_FRACTION:
+        logger.warning(
+            "The mobility grid occupies %s pairs; building their var frame "
+            "is projected to need %.1f GB of the %.1f GB free. It will be "
+            "attempted; %s to make it smaller.",
+            f"{n_features:,}",
+            gb,
+            free,
+            levers,
+        )
+    return None
 
 
 def grid_refusal(
@@ -520,6 +590,15 @@ class GridDiscovery:
         self.n_features: Optional[int] = None
         #: The var ceiling's answer once the count is known.
         self.refusal: Optional[str] = None
+        #: What :func:`_report_discovery` decided, once it has (``None``
+        #: until then), so the verdict is reached and logged once.
+        self.decided: Optional[bool] = None
+        #: Whether pass 2 has already been run through this discovery's
+        #: assembly (the converter's fused passes do that); the builder
+        #: then takes the matrix as it is.
+        self.scattered = False
+        #: The scratch directory the fused passes allocated on, if any.
+        self.scratch: Optional[Path] = None
 
     def add_mapped(
         self,
@@ -530,7 +609,23 @@ class GridDiscovery:
         n_dropped: int,
     ) -> None:
         """Count one pixel already mapped by :func:`map_points_to_axis`."""
-        row = self.row_for(coords)
+        self.add_mapped_row(
+            self.row_for(coords), bins, mobility, intensities, n_dropped
+        )
+
+    def add_mapped_row(
+        self,
+        row: Optional[int],
+        bins: NDArray[np.int64],
+        mobility: NDArray[np.float64],
+        intensities: NDArray[np.float64],
+        n_dropped: int,
+    ) -> None:
+        """Count one mapped pixel whose row the caller already knows.
+
+        ``None`` is a pixel with no row in the table, skipped exactly as
+        :meth:`add_mapped` skips one ``row_for`` cannot place.
+        """
         if row is None:
             self.n_skipped += 1
             return
@@ -588,8 +683,65 @@ def _grid_feature_var(
     )
 
 
+class GridScatter:
+    """Pass 2 of the grid route: one mapped pixel into the allocated CSC arrays.
+
+    Built on a :class:`GridDiscovery` whose assembly has been allocated;
+    the same cell keys pass 1 counted, now with their values.
+    """
+
+    def __init__(self, discovery: GridDiscovery) -> None:
+        """Scatter into ``discovery``'s assembly, which must be allocated."""
+        self.discovery = discovery
+        self.grid = discovery.grid
+        self.assembly = discovery.assembly
+        self.n_channels = int(discovery.grid.n_channels)
+
+    def add_mapped(
+        self,
+        coords: Coords,
+        bins: NDArray[np.int64],
+        mobility: NDArray[np.float64],
+        intensities: NDArray[np.float64],
+        _n_dropped: int,
+    ) -> None:
+        """Scatter one pixel already mapped by :func:`map_points_to_axis`."""
+        self.add_mapped_row(
+            self.discovery.row_for(coords), bins, mobility, intensities, _n_dropped
+        )
+
+    def add_mapped_row(
+        self,
+        row: Optional[int],
+        bins: NDArray[np.int64],
+        mobility: NDArray[np.float64],
+        intensities: NDArray[np.float64],
+        _n_dropped: int,
+    ) -> None:
+        """Scatter one mapped pixel whose row the caller already knows."""
+        if row is None:
+            return
+        keys, values = grid_cells(
+            bins,
+            self.grid.assign(mobility).astype(np.int64),
+            intensities,
+            self.n_channels,
+        )
+        self.assembly.scatter(row, keys, values)
+
+
 def _report_discovery(discovery: GridDiscovery) -> bool:
-    """Say what pass 1 found; whether there is a table to build at all."""
+    """Say what pass 1 found; whether there is a table to build at all.
+
+    Decided and logged once: a second call returns the first verdict.
+    """
+    if discovery.decided is not None:
+        return discovery.decided
+    discovery.decided = _decide_discovery(discovery)
+    return discovery.decided
+
+
+def _decide_discovery(discovery: GridDiscovery) -> bool:
     if discovery.n_skipped:
         logger.warning(
             "%d mobility spectra had no row in the MSI table and were skipped",
@@ -625,7 +777,9 @@ def _build_from_grid(
 
     ``discovery`` is pass 1 already run (fused into the heatmap's pass by
     the converter); without it the pass runs here. Pass 2 then re-reads
-    the source and scatters each pixel straight into the CSC arrays.
+    the source and scatters each pixel straight into the CSC arrays --
+    unless the converter's fused passes have scattered already
+    (``discovery.scattered``), in which case the matrix is taken as it is.
     """
     axis = np.asarray(common_mass_axis, dtype=np.float64)
     if discovery is None:
@@ -637,22 +791,15 @@ def _build_from_grid(
     if not _report_discovery(discovery):
         return None
     assembly = discovery.assembly
-    assembly.allocate(scratch)
     n_channels = int(grid.n_channels)
-
-    class _Scatter:
-        def add_mapped(
-            self, coords: Coords, bins: Any, mobility: Any, intensities: Any, _n: int
-        ) -> None:
-            row = row_for(coords)
-            if row is None:
-                return
-            keys, values = grid_cells(
-                bins, grid.assign(mobility).astype(np.int64), intensities, n_channels
-            )
-            assembly.scatter(row, keys, values)
-
-    scan_mobility(reader, axis, _Scatter(), description="Mobility grid: scattering")
+    if not discovery.scattered:
+        assembly.allocate(scratch)
+        scan_mobility(
+            reader,
+            axis,
+            GridScatter(discovery),
+            description="Mobility grid: scattering",
+        )
     matrix = assembly.matrix()
     var = _grid_feature_var(assembly.unique_keys, axis, grid)
     logger.info(

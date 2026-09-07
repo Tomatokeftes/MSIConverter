@@ -112,13 +112,18 @@ pixel the MSI table holds; `--mobility-grid` writes what was collapsed as a
 separate table (below), and `--msms-table` slices the ramp by precursor
 instead (below). Two collapses are available through `--tdf-spectrum`:
 
-- `vendor_centroid` (default): Bruker's frame-level peak picker over the full
-  ramp, the same one behind the TSF line spectrum and SCiLS Lab's import. It
-  merges neighbouring digitizer bins and drops single-count noise, which on
-  real imaging frames keeps roughly 80 to 90 percent of the raw ion current.
-- `scan_sum`: every scan summed per digitizer index. Lossless, three to four
-  times as many points per frame, and exactly the mobility marginal of the
-  per-scan data.
+- `scan_sum` (default): every scan summed per digitizer index. Lossless,
+  1.5 to 3 times as many points per frame as the centroid, exactly the
+  mobility marginal of the per-scan data, and exactly Bruker's own
+  per-frame total (`Frames.SummedIntensities`) and its quasi-profile
+  export. This is the instrument's record, which is why it is the default;
+  see [Design Decisions](design-decisions.md#d1-which-spectrum-a-reader-takes).
+- `vendor_centroid`: Bruker's frame-level peak picker over the full ramp,
+  the same one behind the TSF line spectrum and SCiLS Lab's import. It
+  reports peak areas, merges neighbouring digitizer bins, and drops every
+  index bin its picker assigns to no peak, which on measured imaging
+  acquisitions keeps 87 to 96 percent of the raw ion current. Choose it to
+  reproduce the vendor software's numbers.
 
 The choice is recorded in the store's processing provenance
 (`msi_metadata.processing[0].parameters.tdf_spectrum`), and the acquisition's
@@ -131,9 +136,10 @@ The mobility dimension itself is not thrown away. The summed table carries
 the declared range and the `TimsCalibration` row -- and `uns["mobility_heatmap"]`,
 the dataset's mean mass-mobility frame (about 4,000 m/z bins by 256 mobility
 channels) accumulated from the raw scan read of every frame. The heatmap is
-where to look to see whether mobility separates anything; it costs one extra
-library call per frame, about a millisecond, and `--no-mobility-heatmap`
-skips it. Under `scan_sum` the heatmap summed over mobility is exactly the
+where to look to see whether mobility separates anything; on the streaming
+route it is fed from the same frame read that builds the summed table, so it
+costs the mapping of every point onto the mass axis and no extra read, and
+`--no-mobility-heatmap` skips it. Under `scan_sum` the heatmap summed over mobility is exactly the
 stored mean spectrum; under `vendor_centroid` the two differ by what the
 centroid discards. See [Output Format](output-format.md#ion-mobility). A TSF
 file has no mobility dimension and gets none of this.
@@ -145,12 +151,13 @@ directly the way an imzML mobility export has; the flag bins every pixel's
 across the conversion and writes the result as `{table}_mobility` -- the same
 element, columns and sort a shared-axis source produces. The default 256
 channels over the axis' own value range are the heatmap's, so a box on the
-heatmap indexes the table's channels. It costs a second pass over the source
-(the first is shared with the heatmap), a table with 1.3 to 4 times the summed
-table's non-zeros -- built out of core, so a whole acquisition converts
-whatever its size -- and a switch to
-`--tdf-spectrum scan_sum` (said at `WARNING`) so the table's marginal over
-channels reproduces the summed table exactly. See
+heatmap indexes the table's channels. On the streaming route it is fed from
+the summed table's own two passes -- one raw read per frame per pass serves
+every table, so the grid adds no read of the source -- and it is a table
+with 1.3 to 4 times the summed table's non-zeros, built out of core, so a
+whole acquisition converts whatever its size. Under the default `--tdf-spectrum scan_sum` the table's
+marginal over channels reproduces the summed table exactly; an explicit
+`vendor_centroid` is accepted with a `WARNING` and the mismatch recorded. See
 [Output Format](output-format.md#the-same-table-from-a-common-mobility-grid).
 
 **MS/MS acquisitions convert, and say so.** `Frames.MsMsType` tells a survey
@@ -275,6 +282,15 @@ at the cost of an axis that differs from run to run.
 (`profile spectrum` or `centroid spectrum`), `format_specific.spectrum_source`
 says which MassLynx representation it came from, and `format_specific.is_mrt`
 with `instrument_decided_by` record the instrument decision.
+**One MS level per store.** Every MS function shares the one laser grid, so
+a two-function acquisition (MSe low and high energy, or a data-dependent
+run) records an MS1 and an MS/MS spectrum at the same pixel. Thyra converts
+the MS1 function(s) only and lists the others, with their MS level and
+precursor m/z, under `excluded_functions` in the Waters-specific metadata
+block; summing an intact-ion and a fragment spectrum into one pixel would
+make a spectrum of nothing. A file with MS/MS functions only converts them
+and reports their precursors through `ms_analysis.fragmentation`, exactly as
+a Bruker MS/MS acquisition does (see [Design Decisions](design-decisions.md#d7-waters-the-summed-table-takes-ms-level-1-only)).
 
 ## PHI SmartSoft-TOF (ToF-SIMS)
 

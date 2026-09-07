@@ -18,7 +18,8 @@ own nearest-bin mapping onto the common axis, coarsened, so that under a
 lossless summed spectrum (``--tdf-spectrum scan_sum``) the heatmap's
 marginal over mobility is the stored mean spectrum coarsened to the same
 bins. Under the vendor centroid it is not, and cannot be: the centroid
-keeps 80-90% of the ion current and merges bins, and the heatmap is built
+keeps only the current inside the peaks it picks (87-96% on measured
+acquisitions) and merges bins, and the heatmap is built
 from the raw points, not from the centroid.
 
 The raw pass itself is :func:`scan_mobility`, which maps every pixel's
