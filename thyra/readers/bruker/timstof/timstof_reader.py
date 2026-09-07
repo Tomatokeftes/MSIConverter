@@ -46,7 +46,12 @@ from ..base_bruker_reader import BrukerBaseMSIReader
 from ..folder_structure import BrukerFolderStructure, BrukerFormat
 from ..mis_parser import parse_mis_file
 from .sdk.dll_manager import DLLManager
-from .sdk.sdk_functions import DEFAULT_TDF_SPECTRUM, TDF_SPECTRUM_MODES, SDKFunctions
+from .sdk.sdk_functions import (
+    DEFAULT_TDF_SPECTRUM,
+    TDF_SPECTRUM_MODES,
+    SDKFunctions,
+    sum_scans_per_index,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +213,114 @@ def _get_frame_count(db_path: Path) -> int:
         return 0
 
 
+class TdfFrameScans:
+    """One TDF frame's raw scan read, with every view of it derived on demand.
+
+    The :class:`~thyra.core.frames.FrameScans` record of the Bruker
+    reader: one ``tims_read_scans_v2`` over the full ramp at construction,
+    ``tims_index_to_mz`` on the frame's unique indices the first time any
+    view needs m/z, and the three views computed by the very helpers the
+    reader's iterators use, so a converter fed from records sees what its
+    own pass would have read.
+    """
+
+    __slots__ = (
+        "coords",
+        "frame_id",
+        "indices",
+        "intensities",
+        "scans",
+        "unique_indices",
+        "inverse",
+        "_reader",
+        "_unique_mz",
+    )
+
+    def __init__(
+        self, reader: "BrukerReader", frame_id: int, coords: Tuple[int, int, int]
+    ) -> None:
+        """Read the frame's scans once; every view is derived from them."""
+        self.coords = coords
+        self.frame_id = int(frame_id)
+        self._reader = reader
+        self.indices, self.intensities, self.scans = reader.sdk.read_tdf_scans(
+            reader.handle,
+            frame_id,
+            0,
+            reader._frame_num_scans(frame_id),
+            reader._num_peaks_cache.get(frame_id),
+        )
+        if self.indices.size:
+            unique_indices, inverse = np.unique(self.indices, return_inverse=True)
+            self.unique_indices = unique_indices
+            self.inverse = np.asarray(inverse).ravel()
+        else:
+            self.unique_indices = np.zeros(0, dtype=self.indices.dtype)
+            self.inverse = np.zeros(0, dtype=np.int64)
+        self._unique_mz: Optional[NDArray[np.float64]] = None
+
+    @property
+    def unique_mz(self) -> NDArray[np.float64]:
+        """m/z of each unique digitizer index, ascending; converted once."""
+        if self._unique_mz is None:
+            self._unique_mz = self._reader.sdk.index_to_mz(
+                self._reader.handle,
+                self.frame_id,
+                self.unique_indices.astype(np.float64),
+            )
+        return self._unique_mz
+
+    def spectrum(
+        self,
+    ) -> Optional[Tuple[NDArray[np.float64], NDArray[np.float64]]]:
+        """The summed spectrum as :meth:`BrukerReader.iter_spectra` yields it."""
+        reader = self._reader
+        try:
+            if reader.tdf_spectrum == "vendor_centroid":
+                # Bruker's own picker over the same ramp: a second library
+                # call, which is the price of that mode; the raw read still
+                # serves every other view.
+                mzs, intensities = reader._read_frame_spectrum(self.frame_id)
+            else:
+                if self.indices.size == 0:
+                    return None
+                mzs = self.unique_mz
+                intensities = sum_scans_per_index(
+                    self.inverse, self.intensities, self.unique_indices.size
+                )
+            mzs, intensities = reader._apply_intensity_filter(mzs, intensities)
+        except Exception as e:
+            logger.warning(f"Error reading spectrum for frame {self.frame_id}: {e}")
+            return None
+        if mzs.size > 0 and intensities.size > 0:
+            return mzs, intensities
+        return None
+
+    def mobility_points(
+        self,
+    ) -> Optional[Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]]:
+        """The point cloud as :meth:`BrukerReader.iter_mobility_spectra` yields it."""
+        reader = self._reader
+        try:
+            values, n_axis = reader._mobility_values()
+            return reader._mobility_points_from(self, values, n_axis)
+        except Exception as e:
+            logger.warning(
+                f"Error reading mobility scans for frame {self.frame_id}: {e}"
+            )
+            return None
+
+    def precursor_spectra(
+        self,
+    ) -> List[Tuple[int, NDArray[np.float64], NDArray[np.float64]]]:
+        """The fragment spectra as :meth:`BrukerReader.iter_precursor_spectra` yields them."""
+        context = self._reader._precursor_context()
+        if context is None:
+            return []
+        scan_map, n_windows = context
+        return self._reader._precursor_spectra_from(self, scan_map, n_windows)
+
+
 @register_reader("bruker")
 class BrukerReader(BrukerBaseMSIReader):
     """Bruker reader for TSF/TDF data formats.
@@ -327,6 +440,9 @@ class BrukerReader(BrukerBaseMSIReader):
         self._fragmentation: Optional[FragmentationSchedule] = None
         self._fragmentation_read: bool = False
         self._mobility_scan_overflow_warned: bool = False
+        # (scan -> window map, window count) for the frame records' precursor
+        # view; built once per reader, like iter_precursor_spectra's own.
+        self._precursor_scan_map_cache: Optional[Tuple[NDArray[np.int64], int]] = None
         self._closed: bool = False  # Track if resources have been closed
 
         # Preload the per-frame NumPeaks (buffer sizing) and, for TDF, the
@@ -1188,55 +1304,65 @@ class BrukerReader(BrukerBaseMSIReader):
                 "Reading mobility spectra needs the Bruker library; the reader "
                 "was opened in metadata-only mode"
             )
-        axis = self.get_mobility_axis()
-        if axis is None or axis.values is None:
-            raise SDKError("The per-scan 1/K0 axis is not available")
-        values = axis.values
-        n_axis = int(values.size)
+        values, n_axis = self._mobility_values()
 
         for frame_id, coords in self._iter_frames():
             try:
-                indices, raw_intensities, scans = self.sdk.read_tdf_scans(
-                    self.handle,
-                    frame_id,
-                    0,
-                    self._frame_num_scans(frame_id),
-                    self._num_peaks_cache.get(frame_id),
-                )
-                if indices.size == 0:
-                    continue
-                unique_indices, inverse = np.unique(indices, return_inverse=True)
-                unique_mz = self.sdk.index_to_mz(
-                    self.handle, frame_id, unique_indices.astype(np.float64)
-                )
-                mzs = unique_mz[np.asarray(inverse).ravel()]
-                if (
-                    int(scans.max()) >= n_axis
-                    and not self._mobility_scan_overflow_warned
-                ):
-                    self._mobility_scan_overflow_warned = True
-                    logger.warning(
-                        "Frame %d has scan numbers beyond the %d-scan mobility "
-                        "axis; they are clipped to the last scan's 1/K0",
-                        frame_id,
-                        n_axis,
-                    )
-                mobility = np.take(values, scans, mode="clip")
-                intensities = raw_intensities.astype(np.float64)
+                frame = TdfFrameScans(self, frame_id, coords)
+                points = self._mobility_points_from(frame, values, n_axis)
             except Exception as e:
                 logger.warning(
                     f"Error reading mobility scans for frame {frame_id}: {e}"
                 )
                 continue
-            if self._intensity_threshold is not None:
-                keep = intensities >= self._intensity_threshold
-                mzs, mobility, intensities = (
-                    mzs[keep],
-                    mobility[keep],
-                    intensities[keep],
-                )
-            if mzs.size > 0:
-                yield coords, mzs, mobility, intensities
+            if points is not None:
+                yield coords, points[0], points[1], points[2]
+
+    def _mobility_values(self) -> Tuple[NDArray[np.float64], int]:
+        """The per-scan 1/K0 values and their count, for the point cloud."""
+        axis = self.get_mobility_axis()
+        if axis is None or axis.values is None:
+            raise SDKError("The per-scan 1/K0 axis is not available")
+        return axis.values, int(axis.values.size)
+
+    def _mobility_points_from(
+        self,
+        frame: "TdfFrameScans",
+        values: NDArray[np.float64],
+        n_axis: int,
+    ) -> Optional[Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]]:
+        """One frame's ``(m/z, 1/K0, intensity)`` points from its raw read.
+
+        The one derivation behind :meth:`iter_mobility_spectra` and the
+        frame record's ``mobility_points``: ``tims_index_to_mz`` on the
+        frame's unique indices only, the scan number of each pair turned
+        into ``values[scan]``. ``None`` when the frame holds no points
+        (or none above the intensity threshold).
+        """
+        if frame.indices.size == 0:
+            return None
+        mzs = frame.unique_mz[frame.inverse]
+        scans = frame.scans
+        if int(scans.max()) >= n_axis and not self._mobility_scan_overflow_warned:
+            self._mobility_scan_overflow_warned = True
+            logger.warning(
+                "Frame %d has scan numbers beyond the %d-scan mobility "
+                "axis; they are clipped to the last scan's 1/K0",
+                frame.frame_id,
+                n_axis,
+            )
+        mobility = np.take(values, scans, mode="clip")
+        intensities = frame.intensities.astype(np.float64)
+        if self._intensity_threshold is not None:
+            keep = intensities >= self._intensity_threshold
+            mzs, mobility, intensities = (
+                mzs[keep],
+                mobility[keep],
+                intensities[keep],
+            )
+        if mzs.size == 0:
+            return None
+        return mzs, mobility, intensities
 
     def _precursor_scan_map(
         self, windows: Tuple[IsolationWindow, ...]
@@ -1324,51 +1450,111 @@ class BrukerReader(BrukerBaseMSIReader):
         n_windows = len(schedule.windows)
         for frame_id, coords in self._iter_frames():
             try:
-                indices, raw_intensities, scans = self.sdk.read_tdf_scans(
-                    self.handle,
-                    frame_id,
-                    0,
-                    self._frame_num_scans(frame_id),
-                    self._num_peaks_cache.get(frame_id),
-                )
+                frame = TdfFrameScans(self, frame_id, coords)
             except Exception as e:
                 logger.warning(
                     f"Error reading scans for frame {frame_id}: {e}",
                 )
                 continue
-            if indices.size == 0:
-                continue
-            unique_indices, inverse = np.unique(indices, return_inverse=True)
-            unique_mz = self.sdk.index_to_mz(
-                self.handle, frame_id, unique_indices.astype(np.float64)
+            for window_index, mzs, intensities in self._precursor_spectra_from(
+                frame, scan_map, n_windows
+            ):
+                yield coords, window_index, mzs, intensities
+
+    def _precursor_context(self) -> Optional[Tuple[NDArray[np.int64], int]]:
+        """``(scan -> window map, window count)``, or ``None`` when not separable.
+
+        The frame record's precursor view uses this where
+        :meth:`iter_precursor_spectra` would have raised: a record of a
+        frame that cannot be split simply has no precursor spectra.
+        """
+        if self.file_type != "tdf":
+            return None
+        schedule = self.get_fragmentation()
+        if schedule is None or not schedule.windows:
+            return None
+        if not all(w.is_mobility_resolved for w in schedule.windows):
+            return None
+        if self._precursor_scan_map_cache is None:
+            self._precursor_scan_map_cache = (
+                self._precursor_scan_map(schedule.windows),
+                len(schedule.windows),
             )
-            inverse = np.asarray(inverse).ravel()
-            intensities = raw_intensities.astype(np.float64)
-            window_of_point = np.take(scan_map, scans, mode="clip")
-            isolated = window_of_point >= 0
-            n_unique = int(unique_indices.size)
-            # Sum over each window's scans per digitizer index, every
-            # window at once: the mobility dimension is collapsed inside
-            # the window, the way iter_spectra collapses it over the whole
-            # ramp. One bincount over (window, index) keys instead of one
-            # pass over the frame per window.
-            sums = np.bincount(
-                window_of_point[isolated] * n_unique + inverse[isolated],
-                weights=intensities[isolated],
-                minlength=n_windows * n_unique,
-            ).reshape(n_windows, n_unique)
-            for window_index in np.flatnonzero(sums.any(axis=1)).tolist():
-                mzs, window_intensities = self._apply_intensity_filter(
-                    unique_mz, sums[window_index]
-                )
-                nonzero = np.flatnonzero(window_intensities)
-                if nonzero.size:
-                    yield (
-                        coords,
-                        window_index,
-                        mzs[nonzero],
-                        window_intensities[nonzero],
-                    )
+        return self._precursor_scan_map_cache
+
+    def _precursor_spectra_from(
+        self,
+        frame: "TdfFrameScans",
+        scan_map: NDArray[np.int64],
+        n_windows: int,
+    ) -> List[Tuple[int, NDArray[np.float64], NDArray[np.float64]]]:
+        """One frame's fragment spectra, one per precursor with points.
+
+        The one derivation behind :meth:`iter_precursor_spectra` and the
+        frame record's ``precursor_spectra``. Sums over each window's
+        scans per digitizer index, every window at once: the mobility
+        dimension is collapsed inside the window, the way the summed
+        spectrum collapses it over the whole ramp. One bincount over
+        (window, index) keys instead of one pass over the frame per
+        window.
+        """
+        if frame.indices.size == 0:
+            return []
+        unique_mz = frame.unique_mz
+        inverse = frame.inverse
+        intensities = frame.intensities.astype(np.float64)
+        window_of_point = np.take(scan_map, frame.scans, mode="clip")
+        isolated = window_of_point >= 0
+        n_unique = int(frame.unique_indices.size)
+        sums = np.bincount(
+            window_of_point[isolated] * n_unique + inverse[isolated],
+            weights=intensities[isolated],
+            minlength=n_windows * n_unique,
+        ).reshape(n_windows, n_unique)
+        out: List[Tuple[int, NDArray[np.float64], NDArray[np.float64]]] = []
+        for window_index in np.flatnonzero(sums.any(axis=1)).tolist():
+            mzs, window_intensities = self._apply_intensity_filter(
+                unique_mz, sums[window_index]
+            )
+            nonzero = np.flatnonzero(window_intensities)
+            if nonzero.size:
+                out.append((window_index, mzs[nonzero], window_intensities[nonzero]))
+        return out
+
+    # ------------------------------------------------------------------
+    # One read per frame for every table (design decision D5)
+    # ------------------------------------------------------------------
+
+    @property
+    def has_frame_scans(self) -> bool:
+        """True for a TDF file read through the library: one raw read serves every table."""
+        return (
+            self.file_type == "tdf"
+            and getattr(self, "sdk", None) is not None
+            and bool(self.handle)
+        )
+
+    def iter_frame_scans(
+        self, batch_size: Optional[int] = None
+    ) -> Generator["TdfFrameScans", None, None]:
+        """Every frame as a :class:`TdfFrameScans`: one ``tims_read_scans_v2`` each.
+
+        Same frames, same order and same coordinates as
+        :meth:`iter_spectra`; a frame whose read fails is logged and
+        skipped, as the iterators skip it. See
+        :mod:`thyra.core.frames`.
+        """
+        if not self.has_frame_scans:
+            raise NotImplementedError(
+                "Frame records need a TDF file read through the Bruker library"
+            )
+        for frame_id, coords in self._iter_frames():
+            try:
+                frame = TdfFrameScans(self, frame_id, coords)
+            except Exception as e:
+                logger.warning(f"Error reading scans for frame {frame_id}: {e}")
+                continue
+            yield frame
 
     def _get_maldi_frame_ids(self) -> Optional[List[int]]:
         """Get sorted frame IDs from MaldiFrameInfo table.

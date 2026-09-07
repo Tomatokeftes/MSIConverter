@@ -48,7 +48,7 @@ from ctypes import (
     c_void_p,
     create_string_buffer,
 )
-from typing import Dict, Literal, Optional, Tuple
+from typing import Any, Dict, Literal, Optional, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
@@ -57,6 +57,23 @@ from .....utils.bruker_exceptions import SDKError
 from .dll_manager import DLLManager
 
 logger = logging.getLogger(__name__)
+
+
+def sum_scans_per_index(
+    inverse: NDArray[Any], intensities: NDArray[Any], n_unique: int
+) -> NDArray[np.float64]:
+    """The ``scan_sum`` collapse: every pair's intensity summed per unique index.
+
+    ``inverse`` is ``np.unique(indices, return_inverse=True)``'s second
+    answer. One expression, shared by the spectrum reader and the frame
+    record (``thyra.core.frames``), so the two cannot sum differently.
+    """
+    return np.bincount(
+        np.asarray(inverse).ravel(),
+        weights=np.asarray(intensities).astype(np.float64),
+        minlength=int(n_unique),
+    )
+
 
 #: How a TDF frame's TIMS scans are collapsed into the one spectrum the
 #: reader yields per pixel. See the module docstring for what each means.
@@ -633,11 +650,7 @@ class SDKFunctions:
             return np.array([], dtype=np.float64), np.array([], dtype=np.float64)
 
         unique_indices, inverse = np.unique(indices, return_inverse=True)
-        summed = np.bincount(
-            inverse.ravel(),
-            weights=intensities.astype(np.float64),
-            minlength=unique_indices.size,
-        )
+        summed = sum_scans_per_index(inverse, intensities, unique_indices.size)
         # Unique indices are ascending and the calibration is monotonic, so
         # the m/z array comes out sorted without a second pass.
         mzs = self._convert_indices_to_mz(

@@ -418,13 +418,17 @@ the way the summed table is built on the streaming route, in two passes over
 the raw scans. The first pass counts, per `(m/z bin, channel)` cell of the
 grid, how many pixels occupy it -- a dense count over the grid's span, 142 MB
 on a default-resampled timsTOF axis, sized before the first pixel is read and
-independent of how many pixels there are. That pass is fused with the
-heatmap's: both need every point mapped onto the mass axis, and the mapping
-costs more than the vendor read, so it is done once. The second pass re-reads
-the source and scatters each pixel's cells straight into memmapped CSC arrays
-in a scratch directory next to the output (`.thyra_mobility_*`, removed once
-the table is written), 12 bytes of disk per stored non-zero. Nothing is ever
-held for the whole image: memory is the count array plus one frame.
+independent of how many pixels there are. The second pass scatters each
+pixel's cells straight into memmapped CSC arrays in a scratch directory next
+to the output (`.thyra_mobility_*`, removed once the table is written), 12
+bytes of disk per stored non-zero. Nothing is ever held for the whole image:
+memory is the count array plus one frame. On a Bruker TDF both passes are
+the summed table's own: the streaming route reads each frame once per pass
+and derives the summed spectrum, the heatmap's points, the grid's cells and
+the MS/MS split from that one read, so none of the siblings adds a read of
+the source (see [Design Decisions](design-decisions.md#d5-one-raw-read-per-frame-per-pass-serves-every-table)).
+Every point is mapped onto the mass axis once per pass and shared between
+the heatmap and the grid, since the mapping costs more than the vendor read.
 
 The size ceiling is on the pairs that carry signal, not on the pairs the grid
 spans. The two differ by an order of magnitude -- 200 frames of a measured
@@ -607,7 +611,9 @@ already holds for the TIC image.
       then scatter into memmapped CSC arrays in a scratch directory next to
       the output (`.thyra_msms_*`) -- so memory is the count array
       (`4 bytes x precursors x mass bins`) plus one frame, whatever the
-      pixel count. The largest acquisition this has run on is still 713
+      pixel count. On the streaming route those are the summed table's own
+      two passes, fed from the same frame read, so the split adds no read
+      of the source. The largest acquisition this has run on is still 713
       pixels with 15 precursors; `var` grows with the occupied pairs.
 
 !!! note "Relation to other MS/MS imaging representations"

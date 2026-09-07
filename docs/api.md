@@ -286,7 +286,21 @@ implementing and what each one buys you.
         - get_region_map
         - get_region_info
         - has_shared_mass_axis
+        - has_ion_mobility
+        - get_mobility_axis
+        - iter_mobility_spectra
+        - get_fragmentation
+        - iter_precursor_spectra
+        - has_frame_scans
+        - iter_frame_scans
         - close
+
+A reader whose summed spectrum, mobility point cloud and precursor spectra
+all derive from one raw read per pixel can hand that read over as a record,
+so a conversion that writes several tables reads the source once per pass
+(design decision D5). The Bruker TDF reader does; the record's contract is:
+
+::: thyra.core.frames.FrameScans
 
 ---
 

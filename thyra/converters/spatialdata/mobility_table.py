@@ -590,6 +590,15 @@ class GridDiscovery:
         self.n_features: Optional[int] = None
         #: The var ceiling's answer once the count is known.
         self.refusal: Optional[str] = None
+        #: What :func:`_report_discovery` decided, once it has (``None``
+        #: until then), so the verdict is reached and logged once.
+        self.decided: Optional[bool] = None
+        #: Whether pass 2 has already been run through this discovery's
+        #: assembly (the converter's fused passes do that); the builder
+        #: then takes the matrix as it is.
+        self.scattered = False
+        #: The scratch directory the fused passes allocated on, if any.
+        self.scratch: Optional[Path] = None
 
     def add_mapped(
         self,
@@ -600,7 +609,23 @@ class GridDiscovery:
         n_dropped: int,
     ) -> None:
         """Count one pixel already mapped by :func:`map_points_to_axis`."""
-        row = self.row_for(coords)
+        self.add_mapped_row(
+            self.row_for(coords), bins, mobility, intensities, n_dropped
+        )
+
+    def add_mapped_row(
+        self,
+        row: Optional[int],
+        bins: NDArray[np.int64],
+        mobility: NDArray[np.float64],
+        intensities: NDArray[np.float64],
+        n_dropped: int,
+    ) -> None:
+        """Count one mapped pixel whose row the caller already knows.
+
+        ``None`` is a pixel with no row in the table, skipped exactly as
+        :meth:`add_mapped` skips one ``row_for`` cannot place.
+        """
         if row is None:
             self.n_skipped += 1
             return
@@ -658,8 +683,65 @@ def _grid_feature_var(
     )
 
 
+class GridScatter:
+    """Pass 2 of the grid route: one mapped pixel into the allocated CSC arrays.
+
+    Built on a :class:`GridDiscovery` whose assembly has been allocated;
+    the same cell keys pass 1 counted, now with their values.
+    """
+
+    def __init__(self, discovery: GridDiscovery) -> None:
+        """Scatter into ``discovery``'s assembly, which must be allocated."""
+        self.discovery = discovery
+        self.grid = discovery.grid
+        self.assembly = discovery.assembly
+        self.n_channels = int(discovery.grid.n_channels)
+
+    def add_mapped(
+        self,
+        coords: Coords,
+        bins: NDArray[np.int64],
+        mobility: NDArray[np.float64],
+        intensities: NDArray[np.float64],
+        _n_dropped: int,
+    ) -> None:
+        """Scatter one pixel already mapped by :func:`map_points_to_axis`."""
+        self.add_mapped_row(
+            self.discovery.row_for(coords), bins, mobility, intensities, _n_dropped
+        )
+
+    def add_mapped_row(
+        self,
+        row: Optional[int],
+        bins: NDArray[np.int64],
+        mobility: NDArray[np.float64],
+        intensities: NDArray[np.float64],
+        _n_dropped: int,
+    ) -> None:
+        """Scatter one mapped pixel whose row the caller already knows."""
+        if row is None:
+            return
+        keys, values = grid_cells(
+            bins,
+            self.grid.assign(mobility).astype(np.int64),
+            intensities,
+            self.n_channels,
+        )
+        self.assembly.scatter(row, keys, values)
+
+
 def _report_discovery(discovery: GridDiscovery) -> bool:
-    """Say what pass 1 found; whether there is a table to build at all."""
+    """Say what pass 1 found; whether there is a table to build at all.
+
+    Decided and logged once: a second call returns the first verdict.
+    """
+    if discovery.decided is not None:
+        return discovery.decided
+    discovery.decided = _decide_discovery(discovery)
+    return discovery.decided
+
+
+def _decide_discovery(discovery: GridDiscovery) -> bool:
     if discovery.n_skipped:
         logger.warning(
             "%d mobility spectra had no row in the MSI table and were skipped",
@@ -695,7 +777,9 @@ def _build_from_grid(
 
     ``discovery`` is pass 1 already run (fused into the heatmap's pass by
     the converter); without it the pass runs here. Pass 2 then re-reads
-    the source and scatters each pixel straight into the CSC arrays.
+    the source and scatters each pixel straight into the CSC arrays --
+    unless the converter's fused passes have scattered already
+    (``discovery.scattered``), in which case the matrix is taken as it is.
     """
     axis = np.asarray(common_mass_axis, dtype=np.float64)
     if discovery is None:
@@ -707,22 +791,15 @@ def _build_from_grid(
     if not _report_discovery(discovery):
         return None
     assembly = discovery.assembly
-    assembly.allocate(scratch)
     n_channels = int(grid.n_channels)
-
-    class _Scatter:
-        def add_mapped(
-            self, coords: Coords, bins: Any, mobility: Any, intensities: Any, _n: int
-        ) -> None:
-            row = row_for(coords)
-            if row is None:
-                return
-            keys, values = grid_cells(
-                bins, grid.assign(mobility).astype(np.int64), intensities, n_channels
-            )
-            assembly.scatter(row, keys, values)
-
-    scan_mobility(reader, axis, _Scatter(), description="Mobility grid: scattering")
+    if not discovery.scattered:
+        assembly.allocate(scratch)
+        scan_mobility(
+            reader,
+            axis,
+            GridScatter(discovery),
+            description="Mobility grid: scattering",
+        )
     matrix = assembly.matrix()
     var = _grid_feature_var(assembly.unique_keys, axis, grid)
     logger.info(

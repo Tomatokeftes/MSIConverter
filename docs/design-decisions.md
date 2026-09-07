@@ -223,17 +223,75 @@ the present fixed ceiling and is refused after one fused read; with
 
 ---
 
-## D5. One pass over the raw file for all three tables: deferred
+## D5. One raw read per frame per pass serves every table
 
-**Status:** Deferred 2026-09-07.
+**Status:** Implemented 2026-09-07, the same day it was deferred. It was
+deferred on a 400-frame warm measurement that put the grid's extra read at
+about 4 percent of wall time; the whole-slide logs from the D1 measurement
+then showed the mobility heatmap's own pass at 201 s of a 528 s conversion
+under `scan_sum` and 272 s of 438 s under the vendor centroid. The extra
+reads were 38 to 62 percent of a default conversion, not 4, and the reopen
+condition was met on the same afternoon.
 
-**Reason.** Measured warm on 400 frames, the extra read that the grid costs
-is about 4 percent of wall time. The engine's two passes, count then
-scatter, are inherent and cannot become one.
+**Decision.** A Bruker TDF reader hands each frame over once, as a record
+of its raw scan read, from which the summed spectrum, the mobility point
+cloud and the fragment spectrum of each precursor are all derived. On the
+streaming route the two passes the summed table already takes, count then
+scatter, feed the heatmap, the mobility grid and the MS/MS table from that
+same read. Two raw reads of the source per conversion, whatever is written;
+a default conversion used to take three, a grid four, a grid with the MS/MS
+split six. The engine's two passes are still inherent, so "one pass" was
+never the right name; "one read per pass" is.
 
-**Reopen when** a cold measurement on the 26k-pixel slide shows the extra
-read above about 10 percent of the conversion. The warm number says nothing
-about a 4 GB file on a network share, and that case is unmeasured.
+**What makes it safe.** Every derivation goes through the very helpers the
+reader's three iterators use, and every sink is the same accumulator the
+standalone passes feed, so the fused route cannot see different numbers.
+That was checked rather than assumed: stores written by the committed code
+and by the fused code were compared table by table on five configurations
+(the 400-frame slide with and without the grid on both write routes, and
+the 713-pixel PASEF set with its split on both routes) and were identical
+in every array, every `var` and `obs` frame and every `uns` block, index
+dtypes included. A stub source that answers both the iterators and the
+records pins the same identity in the unit tests, and pins that the fused
+route reads it exactly twice and never through the iterators.
+
+**Measured** (2026-09-07, warm, optical image left out):
+
+| conversion | before | after |
+|---|---|---|
+| 400 frames, default (heatmap) | 13 s | 11 s |
+| 400 frames, `--mobility-grid` | 32 s | 21 s |
+| 713-pixel PASEF, MS/MS split | 12 s | 9 s |
+| whole 26,087-pixel slide, default | 528 s | 454 s |
+| whole slide, `--mobility-grid --resample-bins 40000` | 1,400 s | 858 s |
+
+The grid row's "before" was measured on an earlier commit, before the
+engine's column sort was made six times faster, so part of that gain is
+the sort's; the 400-frame row above is the clean comparison for the grid.
+On the whole slide the heatmap's own pass (201 s) became part of the count
+pass, which grew from about 120 s to 266 s: what was saved is the read and
+the index-to-m/z conversion of every frame, about 55 s, plus the second
+scatter-side read. What remains is the mapping of every raw point onto the
+mass axis, 51,000 points per frame on this slide, which the heatmap and
+the grid need and the summed spectrum does not. That mapping is the next
+lever, not another read: the points of a frame share about 30,000 unique
+digitizer indices, and mapping those once and gathering would give the
+same bins for two fifths of the work. Not done here.
+
+**Objections considered.**
+
+- *The in-memory route still runs the standalone passes.* True, and left
+  so: that route holds the whole matrix in RAM and is taken by small
+  files, where the passes cost seconds. The streaming route is where a
+  file large enough for the passes to matter goes.
+- *Under `vendor_centroid` the summed spectrum cannot be derived from the
+  raw scans.* Correct; in that mode the record asks the library for the
+  centroid as a second call per frame, and the raw read still serves the
+  sinks. That mode is the opt-in.
+
+**Known limits.** Only the Bruker TDF reader hands frames over as records;
+every other source keeps its iterators and its standalone passes, which for
+an imzML mobility export is one pass over an already sparse file.
 
 ---
 

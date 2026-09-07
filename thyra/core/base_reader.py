@@ -11,6 +11,7 @@ from ..metadata.types import ComprehensiveMetadata, EssentialMetadata
 
 if TYPE_CHECKING:
     from .base_extractor import MetadataExtractor
+    from .frames import FrameScans
     from .mobility import MobilityAxis
     from .msms import FragmentationSchedule
 
@@ -238,6 +239,40 @@ class BaseMSIReader(ABC):
             Mapping of column name to per-channel values, or None.
         """
         return None
+
+    # ------------------------------------------------------------------
+    # One read per frame for every table
+    #
+    # A source whose summed spectrum, mobility point cloud and precursor
+    # spectra are all functions of one raw read per pixel can hand that
+    # read over once, as a record, so a converter that writes several
+    # tables reads the source once per pass rather than once per table.
+    # See ``thyra.core.frames`` and design decision D5.
+    # ------------------------------------------------------------------
+
+    @property
+    def has_frame_scans(self) -> bool:
+        """Whether :meth:`iter_frame_scans` is available on this source."""
+        return False
+
+    def iter_frame_scans(
+        self, batch_size: Optional[int] = None
+    ) -> Generator["FrameScans", None, None]:
+        """Iterate the frames as records that derive every view of a pixel.
+
+        Yields one :class:`~thyra.core.frames.FrameScans` per frame, in
+        the same order and with the same coordinates as
+        :meth:`iter_spectra`, including frames whose summed spectrum is
+        empty (their :meth:`~thyra.core.frames.FrameScans.spectrum` is
+        ``None``), so a consumer can still count them for the sinks that
+        do not depend on the summed spectrum.
+
+        Raises:
+            NotImplementedError: When :attr:`has_frame_scans` is False.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not hand its frames over as records"
+        )
 
     # ------------------------------------------------------------------
     # Ion mobility

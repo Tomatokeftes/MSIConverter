@@ -39,7 +39,7 @@ precursors costs the same memory as a 700-pixel one with 15.
 
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -288,6 +288,95 @@ def _feature_var(
     )
 
 
+class MsmsAccumulator:
+    """The two passes of the demultiplexed table, one pixel-precursor pair at a time.
+
+    Pass 1 (:meth:`count`) records which ``(precursor, column)`` keys each
+    row occupies; :meth:`finish_counting` says whether anything was
+    accumulated and names the columns; :meth:`allocate` backs the CSC
+    arrays with files; pass 2 (:meth:`scatter`) writes the values. The
+    standalone :func:`_demultiplex` drives it from
+    ``iter_precursor_spectra``; the converter's fused passes drive it from
+    frame records. Either way every key comes from the same
+    :class:`_Demultiplexer`, so the two cannot disagree on what a row holds.
+    """
+
+    def __init__(
+        self, axis: NDArray[np.float64], window_rank: NDArray[np.int64], n_rows: int
+    ) -> None:
+        """Allocate the count over ``windows x axis``; refuses a span too wide."""
+        n_windows = int(window_rank.size)
+        self.demux = _Demultiplexer(axis, window_rank)
+        self.assembly = CscAssembly(n_windows * int(axis.size), n_rows)
+        self.n_skipped = 0
+        self.n_rows_seen = 0
+        #: :meth:`finish_counting`'s verdict, ``None`` until it has run.
+        self.has_rows: Optional[bool] = None
+        #: Whether pass 2 has been run (the converter's fused passes set it).
+        self.scattered = False
+        #: The scratch directory the fused passes allocated on, if any.
+        self.scratch: Optional[Path] = None
+
+    def count(
+        self,
+        row: Optional[int],
+        spectra: Sequence[Tuple[int, NDArray[np.float64], NDArray[np.float64]]],
+    ) -> None:
+        """Pass 1 for one pixel: its precursor spectra, or none when it has no row."""
+        if row is None:
+            self.n_skipped += len(spectra)
+            return
+        for window_index, mzs, intensities in spectra:
+            keys, _values = self.demux.entries(window_index, mzs, intensities)
+            if keys.size:
+                self.n_rows_seen += 1
+            self.assembly.count(row, keys)
+
+    def finish_counting(self) -> bool:
+        """Say what pass 1 found; whether there is a table to build at all."""
+        if self.n_skipped:
+            logger.warning(
+                "%d demultiplexed spectra had no row in the MSI table and were skipped",
+                self.n_skipped,
+            )
+        if self.demux.n_dropped:
+            logger.warning(
+                "%d fragment peaks fell outside the mass axis and were dropped "
+                "from the demultiplexed table",
+                self.demux.n_dropped,
+            )
+        if self.n_rows_seen == 0:
+            logger.warning(
+                "No demultiplexed spectra matched the MSI table; no MS/MS table written"
+            )
+            self.has_rows = False
+            return False
+        self.assembly.finish_counting()
+        self.has_rows = True
+        return True
+
+    def allocate(self, scratch: Path) -> None:
+        """Back the CSC arrays with files in ``scratch``."""
+        self.assembly.allocate(scratch)
+
+    def scatter(
+        self,
+        row: Optional[int],
+        spectra: Sequence[Tuple[int, NDArray[np.float64], NDArray[np.float64]]],
+    ) -> None:
+        """Pass 2 for one pixel."""
+        if row is None:
+            return
+        for window_index, mzs, intensities in spectra:
+            keys, values = self.demux.entries(window_index, mzs, intensities)
+            self.assembly.scatter(row, keys, values)
+
+    def result(self) -> Tuple[sparse.csc_matrix, NDArray[np.int64], CscAssembly]:
+        """``(matrix, unique keys, assembly)`` once pass 2 is complete."""
+        assert self.assembly.unique_keys is not None
+        return self.assembly.matrix(), self.assembly.unique_keys, self.assembly
+
+
 def _demultiplex(
     reader: BaseMSIReader,
     row_for: RowLookup,
@@ -299,49 +388,38 @@ def _demultiplex(
     """Two passes over the precursor spectra; ``(matrix, keys, assembly)`` or ``None``."""
     from tqdm import tqdm
 
-    n_windows = int(window_rank.size)
-    demux = _Demultiplexer(axis, window_rank)
-    assembly = CscAssembly(n_windows * int(axis.size), n_obs)
-    n_skipped = 0
-    n_rows_seen = 0
+    accumulator = MsmsAccumulator(axis, window_rank, n_obs)
     with tqdm(desc="MS/MS table: counting", unit="spectrum") as pbar:
         for coords, window_index, mzs, intensities in reader.iter_precursor_spectra():
             pbar.update(1)
-            row = row_for(coords)
-            if row is None:
-                n_skipped += 1
-                continue
-            keys, _values = demux.entries(window_index, mzs, intensities)
-            if keys.size:
-                n_rows_seen += 1
-            assembly.count(row, keys)
-    if n_skipped:
-        logger.warning(
-            "%d demultiplexed spectra had no row in the MSI table and were skipped",
-            n_skipped,
-        )
-    if demux.n_dropped:
-        logger.warning(
-            "%d fragment peaks fell outside the mass axis and were dropped "
-            "from the demultiplexed table",
-            demux.n_dropped,
-        )
-    if n_rows_seen == 0:
-        logger.warning(
-            "No demultiplexed spectra matched the MSI table; no MS/MS table written"
-        )
+            accumulator.count(row_for(coords), [(window_index, mzs, intensities)])
+    if not accumulator.finish_counting():
         return None
-    assembly.finish_counting()
-    assembly.allocate(scratch)
+    accumulator.allocate(scratch)
     with tqdm(desc="MS/MS table: scattering", unit="spectrum") as pbar:
         for coords, window_index, mzs, intensities in reader.iter_precursor_spectra():
             pbar.update(1)
-            row = row_for(coords)
-            if row is None:
-                continue
-            keys, values = demux.entries(window_index, mzs, intensities)
-            assembly.scatter(row, keys, values)
-    return assembly.matrix(), assembly.unique_keys, assembly
+            accumulator.scatter(row_for(coords), [(window_index, mzs, intensities)])
+    return accumulator.result()
+
+
+def new_msms_accumulator(
+    reader: BaseMSIReader, common_mass_axis: NDArray[np.float64], n_rows: int
+) -> Optional[MsmsAccumulator]:
+    """An accumulator for ``reader``'s schedule, or ``None`` when it must not be split.
+
+    What the converter's fused passes feed. Same refusals and the same
+    precursor axis as :func:`build_msms_table`, which then takes the
+    accumulator back once the passes have run.
+    """
+    schedule = reader.get_fragmentation()
+    if schedule is None or demultiplex_refusal(schedule) is not None:
+        return None
+    axis = np.asarray(common_mass_axis, dtype=np.float64)
+    if axis.size == 0:
+        return None
+    _mz, _mobility, window_rank = _precursor_axis(schedule, _window_mobility(reader))
+    return MsmsAccumulator(axis, window_rank, n_rows)
 
 
 def build_msms_table(
@@ -354,6 +432,7 @@ def build_msms_table(
     z_value: Optional[int] = None,
     pixel_key: Optional[Callable[[Coords], Optional[str]]] = None,
     scratch: Optional[Path] = None,
+    accumulator: Optional[MsmsAccumulator] = None,
 ) -> Optional[Any]:
     """Build the demultiplexed MS/MS table for one MSI table, or ``None``.
 
@@ -372,6 +451,9 @@ def build_msms_table(
             ``obs`` index label; the default matches on ``(x, y[, z])``.
         scratch: Directory for the memmapped CSC arrays the table is built
             on; see :func:`~thyra.converters.spatialdata.mobility_table.build_mobility_table`.
+        accumulator: The two passes already run by the converter's fused
+            passes (:func:`new_msms_accumulator`, fed frame by frame);
+            ``None`` runs them here over ``iter_precursor_spectra``.
 
     Returns:
         A ``TableModel``-parsed AnnData, or ``None`` when the acquisition
@@ -391,21 +473,30 @@ def build_msms_table(
         schedule, _window_mobility(reader)
     )
     n_obs = int(len(obs))
-    owns_scratch = scratch is None
-    workdir = scratch_directory("thyra_msms_") if scratch is None else Path(scratch)
-    built = None
-    try:
-        built = _demultiplex(
-            reader,
-            row_lookup(obs, z_value, pixel_key),
-            axis,
-            window_rank,
-            n_obs,
-            workdir,
+    if accumulator is not None:
+        if not accumulator.has_rows or not accumulator.scattered:
+            return None
+        built: Optional[Tuple[Any, NDArray[np.int64], CscAssembly]] = (
+            accumulator.result()
         )
-    finally:
-        if built is None and owns_scratch:
-            remove_scratch(workdir)
+        owns_scratch = False
+        workdir = Path(accumulator.scratch) if accumulator.scratch else Path()
+    else:
+        owns_scratch = scratch is None
+        workdir = scratch_directory("thyra_msms_") if scratch is None else Path(scratch)
+        built = None
+        try:
+            built = _demultiplex(
+                reader,
+                row_lookup(obs, z_value, pixel_key),
+                axis,
+                window_rank,
+                n_obs,
+                workdir,
+            )
+        finally:
+            if built is None and owns_scratch:
+                remove_scratch(workdir)
     if built is None:
         return None
     matrix, unique_keys, assembly = built

@@ -136,9 +136,10 @@ The mobility dimension itself is not thrown away. The summed table carries
 the declared range and the `TimsCalibration` row -- and `uns["mobility_heatmap"]`,
 the dataset's mean mass-mobility frame (about 4,000 m/z bins by 256 mobility
 channels) accumulated from the raw scan read of every frame. The heatmap is
-where to look to see whether mobility separates anything; it costs one extra
-library call per frame, about a millisecond, and `--no-mobility-heatmap`
-skips it. Under `scan_sum` the heatmap summed over mobility is exactly the
+where to look to see whether mobility separates anything; on the streaming
+route it is fed from the same frame read that builds the summed table, so it
+costs the mapping of every point onto the mass axis and no extra read, and
+`--no-mobility-heatmap` skips it. Under `scan_sum` the heatmap summed over mobility is exactly the
 stored mean spectrum; under `vendor_centroid` the two differ by what the
 centroid discards. See [Output Format](output-format.md#ion-mobility). A TSF
 file has no mobility dimension and gets none of this.
@@ -150,10 +151,11 @@ directly the way an imzML mobility export has; the flag bins every pixel's
 across the conversion and writes the result as `{table}_mobility` -- the same
 element, columns and sort a shared-axis source produces. The default 256
 channels over the axis' own value range are the heatmap's, so a box on the
-heatmap indexes the table's channels. It costs a second pass over the source
-(the first is shared with the heatmap), a table with 1.3 to 4 times the summed
-table's non-zeros -- built out of core, so a whole acquisition converts
-whatever its size. Under the default `--tdf-spectrum scan_sum` the table's
+heatmap indexes the table's channels. On the streaming route it is fed from
+the summed table's own two passes -- one raw read per frame per pass serves
+every table, so the grid adds no read of the source -- and it is a table
+with 1.3 to 4 times the summed table's non-zeros, built out of core, so a
+whole acquisition converts whatever its size. Under the default `--tdf-spectrum scan_sum` the table's
 marginal over channels reproduces the summed table exactly; an explicit
 `vendor_centroid` is accepted with a `WARNING` and the mismatch recorded. See
 [Output Format](output-format.md#the-same-table-from-a-common-mobility-grid).

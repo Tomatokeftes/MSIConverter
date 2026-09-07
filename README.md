@@ -34,6 +34,7 @@ for a full walkthrough, including the published example dataset
 - **Optical Alignment**: Automatic MSI-to-optical image registration for Bruker data
 - **Multi-Region Support**: Handles slides with multiple tissue sections
 - **Resampling**: Physics-aware mass axis resampling (on by default in the CLI; opt-in from the Python API)
+- **Ion Mobility and MS/MS**: TIMS acquisitions keep their mass-mobility heatmap and can carry a mobility-resolved sibling table; scheduled PASEF MS/MS acquisitions are written split apart by precursor by default. The defaults and the measurements behind them are recorded in the [design decisions](https://m4i-imaging-mass-spectrometry.github.io/thyra/design-decisions/)
 - **Validated Metadata**: Versioned, ontology-mapped metadata schema (PSI-MS, NCBITaxon, UBERON, CHEBI) with `thyra validate` and one-command METASPACE export
 - **3D Support**: Process volume data or treat as 2D slices
 - **Cross-Platform**: Windows, macOS, and Linux

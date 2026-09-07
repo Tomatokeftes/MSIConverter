@@ -48,9 +48,9 @@ thyra input.imzML output.zarr && python analyse.py output.zarr
 | `--resample / --no-resample` | enabled | Mass axis resampling |
 | `--include-optical / --no-optical` | enabled | Include optical images in output |
 | `--mobility-table / --no-mobility-table` | enabled | Also write the mobility-resolved sibling table when the source shares one set of (m/z, ion mobility) features across pixels (see [Output Format](output-format.md#ion-mobility)) |
-| `--mobility-heatmap / --no-mobility-heatmap` | enabled | When the source has an ion mobility dimension, store the mean mass-mobility frame on the summed table as `uns["mobility_heatmap"]`; one extra pass over the source (see [Output Format](output-format.md#ion-mobility)) |
-| `--mobility-grid / --no-mobility-grid` | **disabled** | When the source carries ion mobility per pixel rather than as a shared feature list (Bruker TDF), bin the point cloud onto a common mobility grid and write the same mobility-resolved sibling table; one extra pass over the source beyond the heatmap's, a much larger table built out of core so any acquisition fits; its marginal reproduces the summed table exactly under the default `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#the-same-table-from-a-common-mobility-grid)) |
-| `--msms-table / --no-msms-table` | enabled | When the source isolates several precursors per pixel in disjoint mobility slices (Bruker PASEF), also write them split apart as a demultiplexed sibling table; two extra passes over the source; the split adds back up to the summed table exactly under the default `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#demultiplexed-msms-table)) |
+| `--mobility-heatmap / --no-mobility-heatmap` | enabled | When the source has an ion mobility dimension, store the mean mass-mobility frame on the summed table as `uns["mobility_heatmap"]`; on a Bruker TDF it is fed from the summed table's own passes, on other sources it is one extra pass (see [Output Format](output-format.md#ion-mobility)) |
+| `--mobility-grid / --no-mobility-grid` | **disabled** | When the source carries ion mobility per pixel rather than as a shared feature list (Bruker TDF), bin the point cloud onto a common mobility grid and write the same mobility-resolved sibling table; fed from the summed table's own two passes on the streaming route (no extra read of the source), a much larger table built out of core so any acquisition fits; its marginal reproduces the summed table exactly under the default `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#the-same-table-from-a-common-mobility-grid)) |
+| `--msms-table / --no-msms-table` | enabled | When the source isolates several precursors per pixel in disjoint mobility slices (Bruker PASEF), also write them split apart as a demultiplexed sibling table; fed from the summed table's own two passes on the streaming route (no extra read of the source); the split adds back up to the summed table exactly under the default `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#demultiplexed-msms-table)) |
 
 ### Examples
 
@@ -138,7 +138,10 @@ thyra tims_data.d output.zarr --mobility-grid --mobility-bins 512     --mobility
     two passes: the first counts the occupied `(m/z bin, channel)` cells and
     the second scatters every pixel straight into memmapped CSC arrays in a
     scratch directory next to the output (`.thyra_mobility_*`, removed once
-    the table is written). Memory is the count array over the grid's span --
+    the table is written). On a Bruker TDF those are the summed table's own
+    two passes: each frame is read once per pass and the read serves the
+    summed spectrum, the heatmap, the grid and the MS/MS split alike (see
+    [Design Decisions](design-decisions.md#d5-one-raw-read-per-frame-per-pass-serves-every-table)). Memory is the count array over the grid's span --
     142 MB on a default-resampled timsTOF axis -- plus one frame, whatever the
     number of pixels; disk is 12 bytes per stored non-zero while the table is
     being built. Measured on a whole 26,087-pixel timsTOF acquisition on a
