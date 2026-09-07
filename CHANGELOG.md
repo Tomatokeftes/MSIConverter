@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v3.17.1 (2026-09-07)
+
+### Bug Fixes
+
+- **optical**: Keep the old tolerance and bound while streaming TIFFs
+  ([`f6c0104`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/f6c0104ac1663bca54a545bae952316e695b146e))
+
+- **optical**: Stream optical TIFFs into the store instead of holding them whole
+  ([`e4c0117`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/e4c0117d52e374e9783788fc2f7aa708bae5120f))
+
+### Refactoring
+
+- **converters**: One chunked CSC column sort for both routes
+  ([`3507dd3`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/3507dd3cf86e238559bbf77d9f0a2ccf98fe5fd2))
+
+
 ## v3.17.0 (2026-09-07)
 
 ### Bug Fixes
