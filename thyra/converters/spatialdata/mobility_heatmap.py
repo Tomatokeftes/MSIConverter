@@ -27,7 +27,11 @@ points onto the mass axis once and hands the result to whichever sinks
 were given -- the heatmap, the mobility grid's discovery pass, or both.
 Mapping is the expensive part of the pass (the vendor read is a fifth of
 it), so a grid conversion that fuses its discovery into the heatmap's
-pass pays for it once rather than twice.
+pass pays for it once rather than twice. A frame whose points come
+indexed by their distinct m/z values -- a TDF frame reads as digitizer
+indices, so about three fifths as many distinct values as points -- goes
+through :func:`map_indexed_points_to_axis`, which maps those once and
+gathers for the same bins.
 
 Mobility is a feature coordinate. Nothing here knows where a pixel is.
 """
@@ -148,6 +152,51 @@ def map_points_to_axis(
         if mzs.size == 0:
             return np.zeros(0, dtype=np.int64), mobility, intensities, n_dropped
     return _nn_map_to_bins(axis, mzs).astype(np.int64), mobility, intensities, n_dropped
+
+
+def map_indexed_points_to_axis(
+    axis: NDArray[np.float64],
+    unique_mz: NDArray[np.float64],
+    inverse: NDArray[np.int64],
+    mobility: NDArray[np.float64],
+    intensities: NDArray[np.float64],
+) -> Tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.float64], int]:
+    """:func:`map_points_to_axis` for points whose m/z is ``unique_mz[inverse]``.
+
+    Both halves of that function are elementwise in the m/z, so both
+    commute with the gather exactly: the nearest bin of
+    ``unique_mz[inverse]`` is the nearest bin of ``unique_mz`` gathered
+    by ``inverse``, and a point is in range exactly when its unique m/z
+    is. Mapping the unique values and gathering therefore gives the same
+    bins, the same mask and the same drop count as mapping every point
+    -- for as many binary searches as the frame has distinct m/z values
+    rather than points, which on a TDF frame is about three fifths.
+
+    A source whose points do not share m/z values keeps
+    :func:`map_points_to_axis`; this is the same mapping, not a second
+    one, and the two are pinned against each other in the tests.
+
+    Returns:
+        What :func:`map_points_to_axis` returns for ``unique_mz[inverse]``.
+    """
+    unique_mz = np.asarray(unique_mz, dtype=np.float64)
+    inverse = np.asarray(inverse)
+    mobility = np.asarray(mobility, dtype=np.float64)
+    intensities = np.asarray(intensities, dtype=np.float64)
+    if inverse.size == 0:
+        return np.zeros(0, dtype=np.int64), mobility, intensities, 0
+    bins = _nn_map_to_bins(axis, unique_mz).astype(np.int64)
+    in_range = (unique_mz >= axis[0]) & (unique_mz <= axis[-1])
+    if in_range.all():
+        return bins[inverse], mobility, intensities, 0
+    kept = in_range[inverse]
+    n_dropped = int(inverse.size - kept.sum())
+    inverse = inverse[kept]
+    mobility = mobility[kept]
+    intensities = intensities[kept]
+    if inverse.size == 0:
+        return np.zeros(0, dtype=np.int64), mobility, intensities, n_dropped
+    return bins[inverse], mobility, intensities, n_dropped
 
 
 class MobilityHeatmap:

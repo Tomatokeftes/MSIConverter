@@ -310,6 +310,33 @@ class TdfFrameScans:
             )
             return None
 
+    def mobility_points_indexed(
+        self,
+    ) -> Optional[
+        Tuple[
+            NDArray[np.float64],
+            NDArray[np.int64],
+            NDArray[np.float64],
+            NDArray[np.float64],
+        ]
+    ]:
+        """The point cloud with the m/z left factored (:class:`~thyra.core.frames.FrameScans`).
+
+        ``unique_mz[inverse]`` is :meth:`mobility_points`' ``mzs``: the
+        frame is read as digitizer indices, and this hands over the
+        conversion of the unique ones together with the map back to the
+        points, which is what the reader has anyway.
+        """
+        reader = self._reader
+        try:
+            values, n_axis = reader._mobility_values()
+            return reader._indexed_mobility_points_from(self, values, n_axis)
+        except Exception as e:
+            logger.warning(
+                f"Error reading mobility scans for frame {self.frame_id}: {e}"
+            )
+            return None
+
     def precursor_spectra(
         self,
     ) -> List[Tuple[int, NDArray[np.float64], NDArray[np.float64]]]:
@@ -1325,23 +1352,33 @@ class BrukerReader(BrukerBaseMSIReader):
             raise SDKError("The per-scan 1/K0 axis is not available")
         return axis.values, int(axis.values.size)
 
-    def _mobility_points_from(
+    def _indexed_mobility_points_from(
         self,
         frame: "TdfFrameScans",
         values: NDArray[np.float64],
         n_axis: int,
-    ) -> Optional[Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]]:
-        """One frame's ``(m/z, 1/K0, intensity)`` points from its raw read.
+    ) -> Optional[
+        Tuple[
+            NDArray[np.float64],
+            NDArray[np.int64],
+            NDArray[np.float64],
+            NDArray[np.float64],
+        ]
+    ]:
+        """One frame's points as ``(unique m/z, index of each point, 1/K0, intensity)``.
 
-        The one derivation behind :meth:`iter_mobility_spectra` and the
-        frame record's ``mobility_points``: ``tims_index_to_mz`` on the
-        frame's unique indices only, the scan number of each pair turned
-        into ``values[scan]``. ``None`` when the frame holds no points
-        (or none above the intensity threshold).
+        The one derivation behind :meth:`iter_mobility_spectra`, the
+        frame record's ``mobility_points`` and its indexed view:
+        ``tims_index_to_mz`` on the frame's unique indices only, the scan
+        number of each pair turned into ``values[scan]``. The m/z of the
+        points is left as ``unique_mz[inverse]`` rather than expanded,
+        because a consumer that maps m/z onto an axis can map the unique
+        values once and gather -- a TDF frame carries about three fifths
+        as many unique indices as points. ``None`` when the frame holds
+        no points (or none above the intensity threshold).
         """
         if frame.indices.size == 0:
             return None
-        mzs = frame.unique_mz[frame.inverse]
         scans = frame.scans
         if int(scans.max()) >= n_axis and not self._mobility_scan_overflow_warned:
             self._mobility_scan_overflow_warned = True
@@ -1351,18 +1388,36 @@ class BrukerReader(BrukerBaseMSIReader):
                 frame.frame_id,
                 n_axis,
             )
+        inverse = frame.inverse
         mobility = np.take(values, scans, mode="clip")
         intensities = frame.intensities.astype(np.float64)
         if self._intensity_threshold is not None:
             keep = intensities >= self._intensity_threshold
-            mzs, mobility, intensities = (
-                mzs[keep],
+            inverse, mobility, intensities = (
+                inverse[keep],
                 mobility[keep],
                 intensities[keep],
             )
-        if mzs.size == 0:
+        if inverse.size == 0:
             return None
-        return mzs, mobility, intensities
+        return frame.unique_mz, inverse, mobility, intensities
+
+    def _mobility_points_from(
+        self,
+        frame: "TdfFrameScans",
+        values: NDArray[np.float64],
+        n_axis: int,
+    ) -> Optional[Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]]:
+        """One frame's ``(m/z, 1/K0, intensity)`` points, the indexed view expanded.
+
+        ``None`` when the frame holds no points (or none above the
+        intensity threshold).
+        """
+        indexed = self._indexed_mobility_points_from(frame, values, n_axis)
+        if indexed is None:
+            return None
+        unique_mz, inverse, mobility, intensities = indexed
+        return unique_mz[inverse], mobility, intensities
 
     def _precursor_scan_map(
         self, windows: Tuple[IsolationWindow, ...]

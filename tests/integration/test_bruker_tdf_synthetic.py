@@ -195,6 +195,28 @@ class TestSyntheticFixture:
                 seen.append(frame["frame"])
         assert sorted(seen) == [f["frame"] for f in expected["frames"]]
 
+    def test_the_indexed_points_are_the_flat_points_factored(self, expected):
+        # The record's two views of the same read: the indexed one leaves
+        # the m/z as (distinct values, index of each point), which is what
+        # the fused passes map by. unique_mz[inverse] must be the flat
+        # view's m/z, value for value, or a sibling table would bin
+        # points differently depending on which view it asked for.
+        with _open("scan_sum") as reader:
+            n = 0
+            for frame in reader.iter_frame_scans():
+                flat = frame.mobility_points()
+                indexed = frame.mobility_points_indexed()
+                assert (flat is None) == (indexed is None)
+                if flat is None:
+                    continue
+                unique_mz, inverse, mobility, intensities = indexed
+                np.testing.assert_array_equal(unique_mz[inverse], flat[0])
+                np.testing.assert_array_equal(mobility, flat[1])
+                np.testing.assert_array_equal(intensities, flat[2])
+                assert unique_mz.size <= flat[0].size
+                n += 1
+        assert n == len(expected["frames"])
+
     def test_mobility_cloud_sums_to_the_scan_sum_spectrum(self, expected):
         with _open("scan_sum") as reader:
             summed = {c: (m, i) for c, m, i in reader.iter_spectra()}

@@ -19,6 +19,8 @@ from thyra.converters.spatialdata.mobility_heatmap import (
     HEATMAP_MZ_BINS,
     MobilityHeatmap,
     build_mobility_heatmap,
+    map_indexed_points_to_axis,
+    map_points_to_axis,
     mobility_bin_edges,
     mz_bin_edges,
 )
@@ -176,6 +178,114 @@ class TestAccumulator:
         assert counts[0].sum() == 2.0  # entries 0..2
         assert counts[1].sum() == 1.0  # entries 3..5
         assert counts[3].sum() == 1.0  # entry 9
+
+
+class TestIndexedMapping:
+    """``map_indexed_points_to_axis`` is the flat mapping, gathered.
+
+    A TDF frame reports its points as digitizer indices, so its m/z
+    values repeat; mapping the distinct ones and gathering must give what
+    mapping every point gives, bins, masked arrays and drop count alike.
+    """
+
+    AXIS = np.array([100.0, 110.0, 120.0, 130.0])
+
+    def _both(self, mzs, mobility, intensities):
+        """Map one point cloud both ways: point by point, and factored."""
+        flat = map_points_to_axis(
+            self.AXIS,
+            np.asarray(mzs, dtype=np.float64),
+            np.asarray(mobility, dtype=np.float64),
+            np.asarray(intensities, dtype=np.float64),
+        )
+        unique, inverse = np.unique(
+            np.asarray(mzs, dtype=np.float64), return_inverse=True
+        )
+        indexed = map_indexed_points_to_axis(
+            self.AXIS,
+            unique,
+            np.asarray(inverse).ravel(),
+            np.asarray(mobility, dtype=np.float64),
+            np.asarray(intensities, dtype=np.float64),
+        )
+        return flat, indexed
+
+    @staticmethod
+    def _same(flat, indexed):
+        np.testing.assert_array_equal(indexed[0], flat[0])
+        np.testing.assert_array_equal(indexed[1], flat[1])
+        np.testing.assert_array_equal(indexed[2], flat[2])
+        assert indexed[3] == flat[3]
+        assert indexed[0].dtype == flat[0].dtype == np.int64
+
+    def test_repeated_mz_values_map_to_the_same_bins(self):
+        mzs = [100.0, 121.0, 100.0, 130.0, 121.0, 104.9, 121.0]
+        mobility = np.linspace(1.5, 1.1, len(mzs))
+        intensities = np.arange(1.0, len(mzs) + 1.0)
+        flat, indexed = self._both(mzs, mobility, intensities)
+        self._same(flat, indexed)
+        assert flat[3] == 0 and flat[0].size == len(mzs)
+
+    def test_out_of_range_points_are_dropped_the_same_way(self):
+        # Below the axis, above it, and repeats of both.
+        mzs = [99.9, 100.0, 140.0, 121.0, 99.9, 140.0, 130.0]
+        mobility = np.linspace(1.5, 1.1, len(mzs))
+        intensities = np.arange(1.0, len(mzs) + 1.0)
+        flat, indexed = self._both(mzs, mobility, intensities)
+        self._same(flat, indexed)
+        assert flat[3] == 4 and flat[0].size == 3
+
+    def test_every_point_out_of_range(self):
+        flat, indexed = self._both(
+            [10.0, 10.0, 500.0], [1.5, 1.4, 1.3], [1.0, 2.0, 3.0]
+        )
+        self._same(flat, indexed)
+        assert flat[0].size == 0 and flat[3] == 3
+
+    def test_a_frame_with_no_points(self):
+        empty = np.zeros(0, dtype=np.float64)
+        flat = map_points_to_axis(self.AXIS, empty, empty, empty)
+        indexed = map_indexed_points_to_axis(
+            self.AXIS, empty, np.zeros(0, dtype=np.int64), empty, empty
+        )
+        self._same(flat, indexed)
+
+    def test_ties_go_right_through_the_gather_too(self):
+        # 105.0 is exactly between two entries; the flat mapping takes the
+        # right one, and the gathered mapping is the same mapping.
+        flat, indexed = self._both([105.0, 105.0], [1.5, 1.4], [1.0, 2.0])
+        self._same(flat, indexed)
+        np.testing.assert_array_equal(flat[0], [1, 1])
+
+    def test_the_unique_values_are_mapped_once(self, monkeypatch):
+        calls = []
+        original = mh._nn_map_to_bins
+
+        def counted(axis, mzs):
+            calls.append(np.asarray(mzs).size)
+            return original(axis, mzs)
+
+        monkeypatch.setattr(mh, "_nn_map_to_bins", counted)
+        mzs = np.array([100.0, 121.0] * 50)
+        map_indexed_points_to_axis(
+            self.AXIS,
+            *np.unique(mzs, return_inverse=True),
+            np.ones(mzs.size),
+            np.ones(mzs.size),
+        )
+        assert calls == [2]
+
+    def test_an_accumulator_fed_either_way_agrees(self):
+        mzs = np.array([100.0, 121.0, 100.0, 140.0, 130.0, 121.0])
+        mobility = np.linspace(1.5, 1.1, mzs.size)
+        intensities = np.arange(1.0, mzs.size + 1.0)
+        flat, indexed = self._both(mzs, mobility, intensities)
+        a = MobilityHeatmap(self.AXIS, (1.1, 1.5))
+        b = MobilityHeatmap(self.AXIS, (1.1, 1.5))
+        a.add_mapped(None, *flat)
+        b.add_mapped(None, *indexed)
+        np.testing.assert_array_equal(a.finalize()["counts"], b.finalize()["counts"])
+        assert a.n_out_of_range == b.n_out_of_range == 1
 
 
 # ----------------------------------------------------------------------
