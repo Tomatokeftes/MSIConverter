@@ -2,6 +2,33 @@
 
 <!-- version list -->
 
+## v3.19.0 (2026-09-07)
+
+### Bug Fixes
+
+- **waters**: Convert the MS1 functions only and record the MS/MS ones
+  ([`0dae3c1`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/0dae3c1768bd4a5365c8e01d120700bc5d191bfd))
+
+### Documentation
+
+- Design decisions page, and the vendor centroid described as measured
+  ([`0dae3c1`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/0dae3c1768bd4a5365c8e01d120700bc5d191bfd))
+
+- Index, README, CLI, formats, output-format, metadata-schema and API
+  ([`26001c6`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/26001c6048dd2616f3e23cf92ecc7af8d33f5fe2))
+
+- **decisions**: The Waters MRT profile default belongs on the record side of D1
+  ([`3aa3079`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/3aa3079c569c95abf891d286c6a1c5936d30f84a))
+
+### Features
+
+- **converters**: One raw read per frame per pass serves every table
+  ([`26001c6`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/26001c6048dd2616f3e23cf92ecc7af8d33f5fe2))
+
+- **defaults**: The instrument's record, the MS/MS split, and a memory guard
+  ([`d33f5a0`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/d33f5a081bbdfb1bb29ed142feeafa3efc533096))
+
+
 ## v3.18.0 (2026-09-07)
 
 ### Features
