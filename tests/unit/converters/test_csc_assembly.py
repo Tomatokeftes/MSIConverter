@@ -18,6 +18,7 @@ from thyra.converters.spatialdata.csc_assembly import (
     count_refusal,
     index_dtype,
     remove_scratch,
+    sort_csc_columns,
 )
 from thyra.converters.spatialdata.mobility_table import (
     collapse_row,
@@ -206,3 +207,73 @@ class TestRowHelpers:
     def test_unique_labels_pass_through_untouched(self):
         labels = np.strings.add("k", int_strings([3, 1, 2]))
         assert disambiguate_labels(labels, np.array([3, 1, 2])) is labels
+
+
+def _scrambled_within_columns(matrix, seed):
+    """``(indices, data)`` of ``matrix`` with each column's entries permuted."""
+    rng = np.random.default_rng(seed)
+    indices = matrix.indices.astype(np.int32).copy()
+    data = matrix.data.copy()
+    indptr = matrix.indptr
+    for column in range(matrix.shape[1]):
+        lo, hi = int(indptr[column]), int(indptr[column + 1])
+        if hi - lo > 1:
+            order = rng.permutation(hi - lo)
+            indices[lo:hi] = indices[lo:hi][order]
+            data[lo:hi] = data[lo:hi][order]
+    return indices, data
+
+
+class TestTheChunkedSort:
+    """The in-place sort the assembly and the streaming route share."""
+
+    @pytest.mark.parametrize(
+        "chunk_entries", [1, 7, 10**6], ids=["one-column", "mid-column", "all"]
+    )
+    def test_sort_csc_columns_matches_scipy_across_chunk_boundaries(
+        self, tmp_path, chunk_entries
+    ):
+        """In place on memmaps, the chunked sort reproduces ``sort_indices``.
+
+        A budget of 1 forces one column per chunk (the branch that takes a
+        column exceeding the budget on its own); 7 lands chunk boundaries
+        in the middle of a run of columns; the last sorts everything at
+        once.
+        """
+        n_rows, n_cols = 53, 41
+        expected = sparse.random(
+            n_rows, n_cols, density=0.3, format="csc", random_state=3, dtype=np.float64
+        )
+        expected.sort_indices()
+        # Some empty columns, so the budget arithmetic meets zero-width columns.
+        expected = sparse.csc_matrix(expected)
+        expected[:, [0, 5, 6, n_cols - 1]] = 0
+        expected.eliminate_zeros()
+        expected.sort_indices()
+        assert expected.nnz > 0
+
+        scrambled_indices, scrambled_data = _scrambled_within_columns(expected, seed=11)
+        scrambled = sparse.csc_matrix(
+            (scrambled_data, scrambled_indices, expected.indptr), shape=expected.shape
+        )
+        assert not scrambled.has_sorted_indices
+
+        indices = np.memmap(
+            tmp_path / "indices.bin", dtype=np.int32, mode="w+", shape=(expected.nnz,)
+        )
+        data = np.memmap(
+            tmp_path / "data.bin", dtype=np.float64, mode="w+", shape=(expected.nnz,)
+        )
+        indices[:] = scrambled_indices
+        data[:] = scrambled_data
+
+        sort_csc_columns(
+            indices,
+            data,
+            expected.indptr.astype(np.int64),
+            n_rows,
+            chunk_entries=chunk_entries,
+        )
+
+        np.testing.assert_array_equal(np.asarray(indices), expected.indices)
+        np.testing.assert_array_equal(np.asarray(data), expected.data)
