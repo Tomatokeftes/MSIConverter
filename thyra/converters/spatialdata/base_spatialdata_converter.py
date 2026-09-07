@@ -716,7 +716,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         mobility_bins: int = MOBILITY_CHANNELS,
         mobility_min: Optional[float] = None,
         mobility_max: Optional[float] = None,
-        msms_table: bool = False,
+        msms_table: bool = True,
         **kwargs: Any,
     ) -> None:
         """Initialize the base SpatialData converter.
@@ -772,11 +772,15 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             msms_table: When the source isolates several precursors per
                 pixel in disjoint mobility slices (Bruker PASEF), also
                 write them split apart as a demultiplexed sibling table
-                (``{table}_msms``) beside the summed MSI table
-                (default: False -- opt in, it costs an extra pass over
-                the source). Refused with a reason rather than
-                approximated when the schedule is not separable; see
-                ``msms_table.py``. Never changes the MSI table itself.
+                (``{table}_msms``) beside the summed MSI table (default:
+                True -- the summed spectrum of such a pixel is a mixture
+                of unrelated fragment spectra, so the split is the
+                accurate representation; design decision D2). Refused
+                with a reason rather than approximated when the schedule
+                is not separable, which is also what happens on every
+                source that is not MS/MS, so the default costs a source
+                that has nothing to split nothing; see ``msms_table.py``.
+                Never changes the MSI table itself.
             apply_optical_alignment: If True (default) and the MSI source
                 has FlexImaging Area metadata, compute an alignment that
                 places MSI raster coordinates in optical-image pixel
@@ -882,7 +886,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         self._mobility_heatmap_enabled = bool(mobility_heatmap)
         self._mobility_heatmap_block: Optional[Dict[str, Any]] = None
         self._mobility_heatmap_built = False
-        # The demultiplexed MS/MS sibling (see msms_table.py): opt-in, and
+        # The demultiplexed MS/MS sibling (see msms_table.py): on by default, and
         # -- once a finalize step has decided for its slice -- the element
         # key it gets, so the MSI table's uns can name it.
         self._write_msms_table = bool(msms_table)
@@ -1734,6 +1738,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         if refusal is not None:
             logger.info("No demultiplexed MS/MS table: %s", refusal)
             return None
+        # The fragment axis is the summed table's axis whatever that axis
+        # is (design decision D6): resampled, it is the grid the user chose
+        # for the whole store; raw, it is the union of the very fragment
+        # m/z values the split re-reads, so the mapping is exact either way.
         return msms_table_key(table_key)
 
     def _attach_msms_table(

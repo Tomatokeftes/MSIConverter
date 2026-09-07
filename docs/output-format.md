@@ -376,13 +376,12 @@ Three things are worth knowing before asking for one:
   the 0.002 to 0.02 band TIMS resolving power supports; that is said at
   `INFO` and the count is not moved for it, because the alignment is worth
   more than the size.
-- **It forces `--tdf-spectrum scan_sum`,** at `WARNING`, unless that option
-  was given explicitly. A grid table is built from raw scans, so its marginal
-  reproduces the summed table only when the summed table was built from the
-  same scans; the default vendor centroid is a peak-picked spectrum over the
-  same ramp. The switch moves the stored TIC by 13 to 21 percent against a
-  default conversion of the same file, which reads as a bug if it happens
-  quietly.
+- **Its marginal reproduces the summed table under the default
+  `--tdf-spectrum scan_sum`.** A grid table is built from raw scans, so its
+  marginal reproduces the summed table only when the summed table was built
+  from the same scans, which the default is. An explicit `vendor_centroid`,
+  a peak-picked spectrum over the same ramp, is kept and said at `WARNING`;
+  `uns["mobility_marginal"]` then records by how much the two differ.
 
 **The marginal invariant.** Summing a grid table's channels within one m/z
 bin reproduces that bin's column of the summed table, per pixel. That is what
@@ -412,7 +411,7 @@ A grid is refused, at `INFO` or `WARNING` and never as an exception, when:
 | `--mobility-grid` was not given | binning is opt in: it costs a pass over the source and a much larger table |
 | the mobility axis carries no per-scan values | a reader opened without its vendor library cannot supply them, and the declared range is not a substitute |
 | the grid spans more pairs than the counting pass can hold (a raw, unresampled axis of millions of bins) | the count array is `4 bytes x bins x channels`, capped at 1 GB; resample to fewer mass bins |
-| the occupied `(m/z bin, channel)` pairs pass 20,000,000 | the count is printed; resample to fewer mass bins or ask for fewer channels |
+| the `var` frame of the occupied `(m/z bin, channel)` pairs is projected to take more than half of the machine's free memory (330 bytes per pair, measured), or the pairs pass an absolute cap of 100,000,000 | the count, the projection and the free memory are printed; resample to fewer mass bins or ask for fewer channels. A projection past a quarter of free memory is attempted with a `WARNING`. See [Design Decisions](design-decisions.md#d4-the-grids-feature-ceiling-is-a-memory-guard-not-a-format-limit) |
 
 **How it is built, and why its size does not matter.** The table is built
 the way the summed table is built on the streaming route, in two passes over
@@ -476,9 +475,9 @@ AnnData/zarr); `read_msi_metadata_blocks` and `thyra validate` decode it.
     `merges_precursors` is `True`, that spectrum holds fragments of every
     precursor the frame isolated, with nothing marking which came from
     which -- so it must not be read as the fragment spectrum of any one of
-    them. Conversion says so at `WARNING`. `--msms-table` writes the split
-    apart as a second table, below; the MSI table itself is unchanged
-    either way.
+    them. Conversion says so at `WARNING`, and by default also writes the
+    split apart as a second table, below (`--no-msms-table` turns that
+    off); the MSI table itself is unchanged either way.
 
 ```python
 if "msms_schedule" in table.uns:
@@ -493,8 +492,10 @@ if "msms_schedule" in table.uns:
 When the source isolates several precursors per pixel in **disjoint
 mobility scan ranges** (Bruker PASEF -- the targeted MALDI variant is
 Bruker's `iprm-PASEF`, which serially fragments a scheduled list of
-precursors at every pixel), `--msms-table` also writes them split apart as
-a sibling table, `{table}_msms`. Each precursor's block is its **precursor
+precursors at every pixel), Thyra also writes them split apart as a
+sibling table, `{table}_msms`, by default (`--no-msms-table` opts out; see
+[Design Decisions](design-decisions.md#d2-the-msms-table-is-written-by-default-when-the-schedule-qualifies)).
+Each precursor's block is its **precursor
 ion image**, and each column inside the block is one fragment's image:
 
 | | MSI table `{id}_z0` | MS/MS table `{id}_z0_msms` |
@@ -513,13 +514,12 @@ precursor's fragments are therefore a contiguous column block whose row
 sums are its ion image, and **the blocks add back up**: summing all
 fragment columns of every precursor reproduces the summed table's TIC per
 pixel, because each recorded point falls in exactly one isolation window.
-Exactly, because `--msms-table` selects `--tdf-spectrum scan_sum` for the
-summed table (at `WARNING`, as `--mobility-grid` does, and never over an
-explicit `--tdf-spectrum`): the split is built from the raw scans, and only
-a summed spectrum built from the same scans can add back up to it. The
-vendor centroid keeps only the current inside the peaks it picks (87 to
-96 percent on the acquisitions measured) and the two tables of one store
-would genuinely not agree.
+Exactly, under the default `--tdf-spectrum scan_sum`: the split is built
+from the raw scans, and only a summed spectrum built from the same scans
+can add back up to it. An explicit `vendor_centroid` keeps only the current
+inside the peaks it picks (87 to 96 percent on the acquisitions measured),
+so the two tables of one store would genuinely not agree; that is said at
+`WARNING` and recorded in `uns["demultiplexed_current"]`.
 
 ```python
 msms = sdata.tables["msi_z0_msms"]
@@ -578,8 +578,8 @@ split needs today.
 
 **`uns["demultiplexed_current"]`** records how much of the summed table's
 ion current the split holds: `current_ratio` over the whole image, and
-`current_ratio_pixel_min` / `_max` across pixels. Under
-`--tdf-spectrum scan_sum`, which the table selects, it is exactly `1.0`.
+`current_ratio_pixel_min` / `_max` across pixels. Under the default
+`--tdf-spectrum scan_sum` it is exactly `1.0`.
 Under an explicit `--tdf-spectrum vendor_centroid` it is **above** 1 -- the
 vendor peak picker drops the index bins it assigns to no peak while the
 split reads raw scans,

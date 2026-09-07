@@ -570,21 +570,21 @@ class GroupedCommand(click.Command):
         "mobility grid and write the same mobility-resolved sibling table "
         "(default: disabled; one extra pass over the source beyond the "
         "heatmap's and a much larger table, built out of core so any "
-        "acquisition fits). Also switches the summed spectrum to "
-        "--tdf-spectrum scan_sum unless that was given explicitly, which "
-        "moves the stored TIC"
+        "acquisition fits). Its marginal over channels reproduces the summed "
+        "table exactly under the default --tdf-spectrum scan_sum"
     ),
 )
 @click.option(
     "--msms-table/--no-msms-table",
-    default=False,
+    default=None,
     help=(
         "When the source isolates several precursors per pixel in disjoint "
         "mobility slices (Bruker PASEF), also write them split apart as a "
         "demultiplexed sibling table next to the summed MSI table "
-        "(default: disabled; two extra passes over the source). Also switches "
-        "the summed spectrum to --tdf-spectrum scan_sum unless that was given "
-        "explicitly, so the split adds back up to it exactly"
+        "(default: enabled, since the summed spectrum of such a pixel mixes "
+        "unrelated fragment spectra; two extra passes over an MS/MS source, "
+        "nothing on any other). The split adds back up to the summed table "
+        "exactly under the default --tdf-spectrum scan_sum"
     ),
 )
 @click.option(
@@ -765,9 +765,10 @@ class GroupedCommand(click.Command):
     default=None,
     help=(
         "How a TDF (TIMS) frame's mobility scans are collapsed into one "
-        "spectrum per pixel: vendor_centroid (default) is Bruker's frame-level "
-        "peak picker over the full ramp, matching TSF line spectra; scan_sum "
-        "sums every scan and keeps all of the ion current. TDF only."
+        "spectrum per pixel: scan_sum (default) sums every scan and keeps all "
+        "of the ion current, matching Bruker's own per-frame total; "
+        "vendor_centroid is Bruker's frame-level peak picker over the full "
+        "ramp, matching TSF line spectra and SCiLS Lab. TDF only."
     ),
 )
 # -- Waters-specific --
@@ -838,7 +839,7 @@ def main(
     mobility_bins: int,
     mobility_min: Optional[float],
     mobility_max: Optional[float],
-    msms_table: bool,
+    msms_table: Optional[bool],
     intensity_threshold: Optional[float],
     tdf_spectrum: Optional[str],
     waters_spectrum: Optional[str],
@@ -942,7 +943,10 @@ def main(
         mobility_bins=mobility_bins,
         mobility_min=mobility_min,
         mobility_max=mobility_max,
-        msms_table=msms_table,
+        # Passed only when given: the converter's own default applies
+        # otherwise, and an explicit request is what the lossless-spectrum
+        # check in convert.py reacts to.
+        **({} if msms_table is None else {"msms_table": msms_table}),
     )
 
     ok = _handle_post_conversion(success, output)

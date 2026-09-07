@@ -7,7 +7,8 @@ TDF (TIMS engaged) frames are read over the **full mobility ramp**. A TIMS
 frame is one pixel, its scans are the mobility dimension, and the scan
 number maps monotonically onto 1/K0. The one spectrum the reader yields per
 pixel therefore has to collapse every scan of the frame, and there are two
-correct ways to do that (see :data:`TDF_SPECTRUM_MODES`):
+correct ways to do that (see :data:`TDF_SPECTRUM_MODES`); ``scan_sum`` is
+the default, ``vendor_centroid`` the opt-in:
 
 ``vendor_centroid``
     Bruker's own frame-level centroid extraction
@@ -61,7 +62,10 @@ logger = logging.getLogger(__name__)
 #: reader yields per pixel. See the module docstring for what each means.
 TdfSpectrumMode = Literal["vendor_centroid", "scan_sum"]
 TDF_SPECTRUM_MODES: Tuple[str, ...] = ("vendor_centroid", "scan_sum")
-DEFAULT_TDF_SPECTRUM: str = "vendor_centroid"
+#: ``scan_sum`` since the default was decided on measurement (see
+#: ``docs/design-decisions.md`` D1): it is the instrument's own record and
+#: equals Bruker's per-frame total; the centroid is the opt-in.
+DEFAULT_TDF_SPECTRUM: str = "scan_sum"
 
 # The callback the SDK's frame-level centroid extraction hands its result
 # to: (precursor id, number of peaks, m/z values, area values). Declared

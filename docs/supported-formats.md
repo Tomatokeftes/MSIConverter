@@ -112,16 +112,18 @@ pixel the MSI table holds; `--mobility-grid` writes what was collapsed as a
 separate table (below), and `--msms-table` slices the ramp by precursor
 instead (below). Two collapses are available through `--tdf-spectrum`:
 
-- `vendor_centroid` (default): Bruker's frame-level peak picker over the full
-  ramp, the same one behind the TSF line spectrum and SCiLS Lab's import. It
+- `scan_sum` (default): every scan summed per digitizer index. Lossless,
+  1.5 to 3 times as many points per frame as the centroid, exactly the
+  mobility marginal of the per-scan data, and exactly Bruker's own
+  per-frame total (`Frames.SummedIntensities`) and its quasi-profile
+  export. This is the instrument's record, which is why it is the default;
+  see [Design Decisions](design-decisions.md#d1-which-spectrum-a-reader-takes).
+- `vendor_centroid`: Bruker's frame-level peak picker over the full ramp,
+  the same one behind the TSF line spectrum and SCiLS Lab's import. It
   reports peak areas, merges neighbouring digitizer bins, and drops every
   index bin its picker assigns to no peak, which on measured imaging
-  acquisitions keeps 87 to 96 percent of the raw ion current. Bruker's own
-  per-frame total (`Frames.SummedIntensities`) is the scan sum, not this.
-  See [Design Decisions](design-decisions.md#d1-which-spectrum-a-reader-takes).
-- `scan_sum`: every scan summed per digitizer index. Lossless, three to four
-  times as many points per frame, and exactly the mobility marginal of the
-  per-scan data.
+  acquisitions keeps 87 to 96 percent of the raw ion current. Choose it to
+  reproduce the vendor software's numbers.
 
 The choice is recorded in the store's processing provenance
 (`msi_metadata.processing[0].parameters.tdf_spectrum`), and the acquisition's
@@ -151,9 +153,9 @@ channels over the axis' own value range are the heatmap's, so a box on the
 heatmap indexes the table's channels. It costs a second pass over the source
 (the first is shared with the heatmap), a table with 1.3 to 4 times the summed
 table's non-zeros -- built out of core, so a whole acquisition converts
-whatever its size -- and a switch to
-`--tdf-spectrum scan_sum` (said at `WARNING`) so the table's marginal over
-channels reproduces the summed table exactly. See
+whatever its size. Under the default `--tdf-spectrum scan_sum` the table's
+marginal over channels reproduces the summed table exactly; an explicit
+`vendor_centroid` is accepted with a `WARNING` and the mismatch recorded. See
 [Output Format](output-format.md#the-same-table-from-a-common-mobility-grid).
 
 **MS/MS acquisitions convert, and say so.** `Frames.MsMsType` tells a survey

@@ -23,9 +23,10 @@ it stated.
 one, otherwise the vendor's picked spectrum. It applies no peak picking of
 its own.
 
-**Status:** Accepted 2026-09-07. Changes the Bruker TDF default from
-`vendor_centroid` to `scan_sum` in the next minor release. Every other row of
-the table below is already what the code does.
+**Status:** Implemented 2026-09-07. The Bruker TDF default changed from
+`vendor_centroid` to `scan_sum`; the centroid stays available through
+`--tdf-spectrum vendor_centroid`. Every other row of the table below was
+already what the code does.
 
 | Source | What the file holds | What Thyra reads | Why |
 |---|---|---|---|
@@ -99,17 +100,28 @@ vendor calls TIC.
   reading the largest array available.
 
 **Known limits.** The summed table holds about three times the points per
-pixel on a short-ramp slide, half again on a long-ramp one. The full
-26k-pixel store size under `scan_sum` is not yet measured and should be
-before the release.
+pixel on a short-ramp slide, half again on a long-ramp one. Measured on
+the whole 26,087-pixel slide (2026-09-07, default mass axis, optical image
+left out, same machine):
+
+| | `vendor_centroid` | `scan_sum` | ratio |
+|---|---|---|---|
+| non-zeros in the summed table | 282,223,487 | 893,289,573 | 3.2x |
+| store on disk | 1.36 GB | 2.50 GB | 1.8x |
+| conversion, warm | 438 s | 528 s | 1.2x |
+
+The store grows less than the point count because the sharded chunks
+compress the low counts well. That is the price of the default, and the
+flag buys the old size back.
 
 ---
 
 ## D2. The MS/MS table is written by default when the schedule qualifies
 
-**Status:** Accepted 2026-09-07. `--msms-table` becomes the default for a
-Bruker PASEF acquisition with a constant, non-overlapping schedule of at
-least two precursors; `--no-msms-table` opts out.
+**Status:** Implemented 2026-09-07. `--msms-table` is the default; the
+table is written for a Bruker PASEF acquisition with a constant,
+non-overlapping schedule of at least two precursors and refused, with the
+reason logged, on everything else. `--no-msms-table` opts out.
 
 **Reason.** A scheduled PASEF acquisition fragments each precursor in turn
 at every pixel. The one-spectrum-per-pixel summed table of such a pixel is
@@ -182,11 +194,12 @@ are opt in and carry their parameters.
 
 ## D4. The grid's feature ceiling is a memory guard, not a format limit
 
-**Status:** Accepted 2026-09-07. The fixed ceiling of 20,000,000 occupied
-(m/z bin, mobility channel) pairs becomes a projection of the `var` frame's
-memory against the machine's free memory, warning past one fraction and
-refusing past a larger one, with an absolute cap kept only as documentation
-for downstream tools.
+**Status:** Implemented 2026-09-07. The fixed ceiling of 20,000,000 occupied
+(m/z bin, mobility channel) pairs became a projection of the `var` frame's
+memory (330 bytes per feature, measured) against the machine's free memory,
+warning past a quarter of it and refusing past half, with an absolute cap of
+100,000,000 kept as a statement of what downstream tools can be expected to
+open rather than as the operative guard.
 
 **Reason.** Both sibling tables are built out of core, so the remaining
 peak is the `var` frame, measured at roughly 330 bytes per feature including
@@ -226,8 +239,8 @@ about a 4 GB file on a network share, and that case is unmeasured.
 
 ## D6. The MS/MS fragment axis is the MS1 mass axis
 
-**Status:** Implemented. Condition accepted 2026-09-07: refuse or warn when
-the axis is unresampled.
+**Status:** Implemented. A condition attached to it on 2026-09-07, to refuse
+the table on an unresampled axis, was withdrawn the same day; see below.
 
 **Reason.** Fragments and precursors pass through the same TOF and have the
 same resolving power, so one mass axis per store is the accurate
@@ -238,19 +251,24 @@ meaningful and the conservation check exact.
 **Objections considered.**
 
 - *On a raw, unresampled axis fragments snap to MS1-only m/z values, and
-  any fragment outside the axis range is dropped.* Correct. The CLI always
-  resamples, so this only bites the Python API called without a resampling
-  configuration. The MS/MS table should refuse, or at least warn, on a raw
-  axis; that is the condition above.
+  any fragment outside the axis range is dropped.* This objection was
+  raised, accepted, implemented as a refusal, and then found to be wrong
+  by the existing PASEF test, which relies on the raw axis for an exact
+  equality. The premise fails because on a scheduled MS/MS acquisition the
+  summed table holds no intact ions: its spectra are the same fragment
+  peaks the split re-reads, so the raw axis is the union of the fragment
+  m/z values themselves and the mapping is exact. The refusal was removed
+  and a test now pins the raw axis as exact on both write routes.
 
-**Known limits.** MS1 resampling sets fragment resolution. That is a
-consequence of the decision, not an accident.
+**Known limits.** The resampling grid chosen for the summed table sets
+fragment resolution. That is a consequence of the decision, not an
+accident.
 
 ---
 
 ## D7. Waters: the summed table takes MS level 1 only
 
-**Status:** Accepted 2026-09-07, as a correctness fix.
+**Status:** Implemented 2026-09-07, as a correctness fix.
 
 **What was found.** The Waters reader classifies acquisition functions and
 then yields every scan of every MS-classified function as a pixel spectrum,
@@ -261,10 +279,13 @@ that MassLynx reports are parsed and then ignored. What the converter does
 with the duplicate coordinate is not verified, and no Waters MS/MS imaging
 file was available to test on; either outcome, overwrite or sum, is wrong.
 
-**Decision.** Filter the summed table to MS level 1 and record the other
-functions in the fragmentation metadata block the Bruker path already
-writes. A demultiplexed Waters table waits until a scheduled Waters
-acquisition exists to look at.
+**Decision.** Convert the MS level 1 functions only, and list the others,
+with their level, precursor m/z and scan count, under `excluded_functions`
+in the Waters-specific metadata block. The versioned `fragmentation` block
+describes the spectra in the store, so it says MS1 for such a file; a file
+with MS/MS functions only converts them and reports their precursors there,
+as the Bruker path does. A demultiplexed Waters table waits until a
+scheduled Waters acquisition exists to look at.
 
 **Objections considered.**
 

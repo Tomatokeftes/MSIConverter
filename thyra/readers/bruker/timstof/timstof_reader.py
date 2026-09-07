@@ -261,11 +261,12 @@ class BrukerReader(BrukerBaseMSIReader):
                 step 2 doesn't need the Bruker SDK to be installed.
             tdf_spectrum: How a TDF (TIMS engaged) frame's mobility scans
                 are collapsed into the one spectrum yielded per pixel.
-                ``"vendor_centroid"`` (default) is Bruker's frame-level
-                centroid extraction over the full ramp, the same peak
-                picker behind the TSF line spectrum; ``"scan_sum"`` sums
-                every scan per digitizer index and keeps all of the ion
-                current. Ignored for TSF. See
+                ``"scan_sum"`` (default) sums every scan per digitizer
+                index and keeps all of the ion current, which is also
+                Bruker's own per-frame total; ``"vendor_centroid"`` is
+                Bruker's frame-level centroid extraction over the full
+                ramp, the same peak picker behind the TSF line spectrum.
+                Ignored for TSF. See
                 :mod:`thyra.readers.bruker.timstof.sdk.sdk_functions`.
             **kwargs: Additional arguments
         """
