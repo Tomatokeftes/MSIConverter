@@ -387,24 +387,26 @@ each of those files:
 
 So on these files the level filter dropped every chunk after the first, and
 the lockmass classification -- which predates this decision -- dropped the
-last one on top of that. Measured, pixels converted against pixels in the
-file:
+last one on top of that. Pixels converted, against the pixels the file
+holds:
 
-| File | Instrument | Functions | v3.19.0 | In the file |
-|---|---|---|---|---|
-| `20140509_ZF_No13.raw` | Synapt G1 | 25 | 1,657 | 37,033 |
-| `20140513_ZF_No16.raw` | Synapt G1 | 11 | 2,496 | 21,732 |
-| `20141003 MTB_04.raw` | Synapt G1 | 8 | 1,700 | 12,972 |
-| `140903_trypsin_vs_no.raw` | Synapt G1 | 5 | 2,284 | 9,223 |
-| `180814_EVO_Fresh_image.raw` | Synapt G1 | 3 | 3,200 | 7,682 |
-| `20201209_BCtumor_left Analyte 2.raw` | Synapt G2-Si | 4 | 15,790 | 61,107 |
-| `20201223_BCTumor_Eva MDA_468.raw` | Synapt G2-Si | 3 | 5,837 | 17,550 |
-| `20201218_MDA468_slide20201208 Analyte 5.raw` | Synapt G2-Si | 2 | 7,355 | 8,547 |
+| File | Instrument | Functions | v3.19.0 | Now (centroid) | In the file |
+|---|---|---|---|---|---|
+| `20140509_ZF_No13.raw` | Synapt G1 | 25 | 1,657 | 36,633 | 37,033 |
+| `20140513_ZF_No16.raw` | Synapt G1 | 11 | 2,496 | 20,438 | 21,788 |
+| `20141003 MTB_04.raw` | Synapt G1 | 8 | 1,700 | 12,110 | 12,972 |
+| `140903_trypsin_vs_no.raw` | Synapt G1 | 5 | 2,284 | 8,843 | 9,221 |
+| `180814_EVO_Fresh_image.raw` | Synapt G1 | 3 | 3,200 | 6,408 | 7,682 |
+| `20201209_BCtumor_left Analyte 2.raw` | Synapt G2-Si | 4 | 15,790 | 49,096 | 61,108 |
+| `20201223_BCTumor_Eva MDA_468.raw` | Synapt G2-Si | 3 | 5,837 | 11,413 | 17,550 |
+| `20201218_MDA468_slide20201208 Analyte 5.raw` | Synapt G2-Si | 2 | 7,355 | 7,355 | 8,547 |
 
-The two-function G2-Si run is the mildest case and still loses 14 percent of
-the image; the 25-function one keeps 4.5 percent of it. Nothing in the store
+The two-function G2-Si run is the mildest case and still lost 14 percent of
+the image; the 25-function one kept 4.5 percent of it. Nothing in the store
 said so: the reader logged a warning about "MS level 2" functions and the
-conversion looked healthy.
+conversion looked healthy. The middle column is what the rule below converts
+by default; the gap that remains is one chunk per file, and the next section
+is why.
 
 **One real multi-function acquisition was found**, and it is what makes the
 rule below decidable rather than a guess:
@@ -468,21 +470,30 @@ So the rule takes the representation into account: while the run is read as
 centroids, a chunk the library will not centroid **stays out**, and
 `excluded_functions` records it with its scan count, the pixels it would
 have added and the reason. Reading the run as the profile trace
-(`--waters-spectrum profile`, and the default on an MRT) converts every
+(`--waters-spectrum profile`, and the default on an MRT) selects every
 chunk, because then all of them come back the same way. The warning names
-the cost and the flag:
+the cost and the flags:
 
     Function(s) 2 hold 1274 pixels (16.6% of the image) that no other
     function covers, but MassLynx names them the lockmass function and will
     not centroid them. They stay out rather than put profile rows in a table
-    of centroids: pass --waters-spectrum profile to convert the whole image.
+    of centroids: pass --waters-spectrum profile --streaming true to convert
+    the whole image.
+
+`--streaming true` is in that sentence because the profile store is large
+and `--streaming auto` does not notice: its estimate assumes 10,000 peaks
+per spectrum whatever the source, which is 0.57 GB for this run, while the
+streaming converter's own estimate once running is **74.1 GB** (7,682
+pixels x 2,590,447 bins). Left on `auto` the conversion stays in memory and
+dies at 72 percent asking for a 24.5 GiB array on a 128 GB machine. That
+estimate is a general defect, tracked separately.
 
 The alternative -- forcing the whole run to the profile trace whenever a
 chunk cannot be centroided -- would keep the image whole automatically, but
-it silently overrides D1's measured choice for a whole vendor and costs
-about ten times the non-zeros on every chunked file, of which this share
+it silently overrides D1's measured choice for a whole vendor and turns a
+241 MB store into a 74 GB one, on every chunked file, of which this share
 holds 1,396. Better to convert what is consistent, say what is missing, and
-leave the trade to the one flag that already exists.
+leave the trade to the flags that already exist.
 
 The `fragmentation` block follows the **precursor**, not the level: a
 converted function holds fragment spectra when MassLynx reports a precursor
@@ -493,9 +504,11 @@ artefact above, and reads as MS1.
 
 | Check | Result |
 |---|---|
-| `180814_EVO_Fresh_image.raw`, 3 chunks, converted whole | 7,682 pixels, no duplicate coordinates, `ms_functions [0, 1, 2]`, `function_types["2"] == "LOCKMASS"`, `fragmentation` MS1 |
-| `20170818_08.raw`, a real single-precursor MS/MS run | `fragmentation` MS level 2, one window at m/z 377.4, collision energy 35.0, CID; converter declines a demultiplexed table because one precursor needs none |
-| every file in the table above | pixels converted equal the file's distinct laser positions, and no two converted functions share a pixel |
+| `180814_EVO_Fresh_image.raw` converted, default centroid | 6,408 pixels against v3.19.0's 3,200, no duplicate coordinates, no empty pixel, `ms_functions [0, 1]`, `excluded_functions["2"]` carrying `n_unique_pixels 1274` and its reason, `fragmentation` MS1. The TIC image is continuous across the chunk boundary at row 19 |
+| the same run with `--waters-spectrum profile` | all three chunks selected: 7,683 spectra on all 7,682 pixels, one representation. Needs `--streaming true`; see above |
+| `20170818_08.raw`, a real single-precursor MS/MS run | `fragmentation` MS level 2, one window at m/z 377.4, collision energy 35.0, CID; the converter declines a demultiplexed table because one precursor needs none |
+| `20191107_fastDDA_neg_002.raw`, the real DDA run | functions 1 to 15 recorded under `excluded_functions` with their per-scan precursors, function 0 converted, `fragmentation` MS1 |
+| every file in the table above | no two converted functions share a pixel, and converted plus recorded pixels equal the file's distinct laser positions |
 
 ### Objections considered
 
@@ -528,8 +541,8 @@ ambiguous anyway: the store holds one spectrum per pixel.
 
 The second half of the original entry -- "a demultiplexed Waters table waits
 until a scheduled Waters acquisition exists to look at" -- still waits. Of
-506 Waters `.raw` directories surveyed, **113 declare a "MALDI TOF MSMS
-FUNCTION"**, and every one of them has exactly **one** function isolating
+the 506 methods whose `_extern.inf` was read, **113 declare a "MALDI TOF
+MSMS FUNCTION"**, and every one of them has exactly **one** function isolating
 **one** precursor, 224 KB to 3.9 MB, 9 to 60 scans on five or fewer distinct
 positions: spot acquisitions, not images. A Waters demultiplexer needs a
 file whose MS/MS functions each isolate a *different* constant precursor

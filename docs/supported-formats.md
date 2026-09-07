@@ -319,14 +319,18 @@ the image at about 3x the neighbouring TIC, so while a run is read as
 centroids that chunk stays out, and `excluded_functions` records its scan
 count, the pixels it would have added and the reason. `--waters-spectrum
 profile` converts every chunk, because then they all come back the same way.
-The log names the cost and the flag:
+The log names the cost and the flags:
 
 ```
 Function(s) 2 hold 1274 pixels (16.6% of the image) that no other function
 covers, but MassLynx names them the lockmass function and will not centroid
 them. They stay out rather than put profile rows in a table of centroids:
-pass --waters-spectrum profile to convert the whole image.
+pass --waters-spectrum profile --streaming true to convert the whole image.
 ```
+
+Pass `--streaming true` with it: the profile store for that run is estimated
+at 74 GB against 241 MB for the centroid one, and `--streaming auto` does not
+notice, so the conversion otherwise runs out of memory.
 
 A file whose converted functions carry a precursor m/z holds fragment
 spectra and reports them through `ms_analysis.fragmentation`, exactly as a

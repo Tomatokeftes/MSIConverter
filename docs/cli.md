@@ -425,7 +425,9 @@ thyra synapt_run.raw output.zarr --waters-spectrum profile
     it in a new *function*. It will not centroid the last of them, so a
     centroid conversion leaves that chunk out and logs how many pixels
     (16.6% of one Synapt G1 run) and this flag. Reading the trace converts
-    every chunk, because then they all come back the same way. See
+    every chunk, because then they all come back the same way -- pass
+    `--streaming true` with it, since the profile store for that run is
+    estimated at 74 GB against 241 MB. See
     [Which functions hold the image](supported-formats.md#which-functions-hold-the-image).
 
 ---
