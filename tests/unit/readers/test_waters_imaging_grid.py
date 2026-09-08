@@ -216,20 +216,40 @@ class TestBuildImagingGrid:
         assert grid.pixel_count_y == 1
         assert len(grid.scan_map) == 3  # all scans in map (including no-pos)
 
-    def test_single_pixel_grid(self):
-        """Test grid with only one position."""
-        positions = [(0, 0, 0.5, 0.5)]
+    def test_single_pixel_grid_is_refused(self):
+        """A stage that never moved is a spot acquisition, not an image.
+
+        This used to return a 1x1 grid with a 0.0 um pitch and let the
+        conversion report success with the whole acquisition on one pixel
+        (issue #213). On the Xevo DESI share that is what 76 of 105 .raw
+        dirs look like -- calibrations, tuning runs, single-spot DDA.
+        """
+        positions = [(0, 0, 0.5, 0.5), (0, 1, 0.5, 0.5), (0, 2, 0.5, 0.5)]
+        mock_ml = self._setup_mock_ml(positions)
+        func_types = {0: FunctionType.MS}
+
+        with pytest.raises(ValueError, match="same stage position"):
+            build_imaging_grid(mock_ml, "handle", func_types)
+
+    def test_single_row_grid_is_kept(self):
+        """One line of a raster is real data, and must survive the refusal.
+
+        The share holds aborted line scans (138x1, 48x1) alongside the
+        completed rasters they were retried into. Only a grid that
+        collapses on *both* axes is a spot.
+        """
+        positions = [
+            (0, 0, 0.1, 0.05),
+            (0, 1, 0.2, 0.05),
+            (0, 2, 0.3, 0.05),
+        ]
         mock_ml = self._setup_mock_ml(positions)
         func_types = {0: FunctionType.MS}
 
         grid = build_imaging_grid(mock_ml, "handle", func_types)
 
-        assert grid.pixel_count_x == 1
+        assert grid.pixel_count_x == 3
         assert grid.pixel_count_y == 1
-        assert grid.lateral_width == 0.0
-        assert grid.lateral_height == 0.0
-        assert grid.pixel_size_x == 0.0
-        assert grid.pixel_size_y == 0.0
 
     def test_no_valid_positions_raises(self):
         """Test error when no scans have valid positions."""
@@ -261,9 +281,12 @@ class TestBuildImagingGrid:
         assert len(grid.scan_map) == 4
 
     def test_pixel_size_calculation(self):
-        """Test that pixel sizes are correctly computed."""
-        # 4 positions: x at 0.1, 0.2, 0.3, 0.4 mm = 100, 200, 300, 400 um
-        # lateral_width = 300 um, pixel_count_x = 4, pixel_size_x = 75 um
+        """The pitch is the extent over the *intervals*, not the positions.
+
+        Four positions 100 um apart are a 100 um raster. Dividing the
+        300 um centre-to-centre span by the position count reported 75 um
+        (issue #217); it is 300 / 3.
+        """
         positions = [
             (0, 0, 0.1, 0.1),
             (0, 1, 0.2, 0.1),
@@ -276,4 +299,45 @@ class TestBuildImagingGrid:
         grid = build_imaging_grid(mock_ml, "handle", func_types)
 
         assert grid.lateral_width == 300.0
-        assert grid.pixel_size_x == 75.0  # 300 / 4
+        assert grid.pixel_size_x == 100.0  # 300 / (4 - 1)
+
+    def test_a_square_raster_is_not_reported_as_anisotropic(self):
+        """The old error was 1/N per axis, so it invented anisotropy.
+
+        A 100 um raster three wide and two tall came out 66.67 x 50.0.
+        Only x reaches the store, so the disagreement never showed.
+        """
+        positions = [
+            (0, 0, 0.1, 0.1),
+            (0, 1, 0.2, 0.1),
+            (0, 2, 0.3, 0.1),
+            (0, 3, 0.1, 0.2),
+            (0, 4, 0.2, 0.2),
+            (0, 5, 0.3, 0.2),
+        ]
+        mock_ml = self._setup_mock_ml(positions)
+        func_types = {0: FunctionType.MS}
+
+        grid = build_imaging_grid(mock_ml, "handle", func_types)
+
+        assert grid.pixel_size_x == 100.0
+        assert grid.pixel_size_y == 100.0
+
+    def test_an_axis_with_one_position_reports_no_pitch(self):
+        """One position has no interval, so 0.0 rather than a made-up number.
+
+        The extractor turns that into ``pixel_size=None``, which becomes
+        the "use --pixel-size" refusal. Aborted single-line scans take
+        this path, so it must not become a division by zero.
+        """
+        positions = [
+            (0, 0, 0.1, 0.05),
+            (0, 1, 0.2, 0.05),
+        ]
+        mock_ml = self._setup_mock_ml(positions)
+        func_types = {0: FunctionType.MS}
+
+        grid = build_imaging_grid(mock_ml, "handle", func_types)
+
+        assert grid.pixel_size_x == 100.0
+        assert grid.pixel_size_y == 0.0

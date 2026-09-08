@@ -1,5 +1,6 @@
 # thyra/convert.py
 import logging
+import math
 import traceback
 import warnings
 from pathlib import Path
@@ -7,6 +8,7 @@ from typing import Any, Dict, Literal, Optional, Tuple, Union
 
 from .core.base_converter import PixelSizeSource
 from .core.registry import detect_format, get_converter_class, get_reader_class
+from .resampling.constants import SpectrumType, Thresholds
 from .utils.windows_paths import prepare_zarr_output_path
 
 logger = logging.getLogger(__name__)
@@ -199,13 +201,120 @@ def _determine_pixel_size(
     return final_pixel_size, PixelSizeSource.AUTO_DETECTED, pixel_size_detection_info
 
 
-def _should_use_streaming(streaming: Union[bool, Literal["auto"]], reader: Any) -> bool:
+#: Bytes one stored value costs the standard converter. It pre-allocates
+#: parallel COO arrays -- int32 row, int32 column, float64 intensity (see
+#: ``spatialdata_2d_converter._create_sparse_matrix_for_slice``) -- so a
+#: value costs 16 bytes there, not the 8 the estimate used to count. That
+#: allocation is what ``auto`` is deciding about, so it is what gets counted.
+_BYTES_PER_STORED_VALUE = 16
+
+#: Values per spectrum assumed when the source reports neither a peak count
+#: nor a spectrum count. A last resort: every extractor measures
+#: ``total_peaks``, so this is reached by a Bruker handle built with
+#: ``skip_total_peaks`` and little else.
+_ASSUMED_VALUES_PER_SPECTRUM = 10000
+
+
+def _resolved_target_bins(probe: Any) -> Optional[int]:
+    """The bin count the converter's axis planner will actually choose.
+
+    Asked of a converter instance rather than recomputed here, because
+    ``target_bins`` is set only when the caller passed ``--resample-bins``;
+    the default derives the count from a bin width at a reference m/z, on
+    a law that depends on the axis type the decision tree picks. Issue #87
+    was a second copy of that arithmetic drifting from the first, so this
+    calls the one implementation instead of growing a third.
+
+    Args:
+        probe: A converter instance, or ``None``.
+
+    Returns:
+        The resolved bin count, or ``None`` when the conversion resamples
+        nothing or the plan cannot be resolved without reading the file.
+    """
+    if probe is None or getattr(probe, "_resampling_config", None) is None:
+        return None
+    try:
+        _min_mz, _max_mz, _axis_type, target_bins = probe._resolve_resampling_plan()
+    except Exception as e:  # pragma: no cover - depends on the source file
+        logger.debug(f"Could not resolve the resampling plan for auto-streaming: {e}")
+        return None
+    return int(target_bins) if target_bins else None
+
+
+def _values_per_spectrum(
+    essential_meta: Any,
+    target_bins: Optional[int] = None,
+) -> int:
+    """How many values one converted spectrum will hold.
+
+    Two numbers decide this, and which one wins depends on whether the
+    source is profile or centroid:
+
+    * **The source's own width**, ``total_peaks / n_spectra``. This is
+      *measured*, not guessed -- Waters and PHI scan the spectra, imzML
+      reads the array lengths, Bruker sums ``NumPeaks``. It is the profile
+      bin count on profile data and the peak count on centroided data. A
+      fixed 10,000 stood in for it before issue #214.
+    * **The resampled axis width**, when the conversion resamples. Onto a
+      finer axis an interpolating method fills the bins between the source
+      points, so a *contiguous* profile trace approaches the axis width,
+      while centroided peaks stay peaks with gaps between them and do not.
+
+    So a profile source is sized at the axis it will be written onto and a
+    centroid source at its own peak count, each capped by the other where
+    that is the smaller. Measured on the issue #214 run
+    (``180814_EVO_Fresh_image.raw`` as a profile trace): 85,117 points per
+    spectrum against a 2,590,447-bin axis, and the conversion died holding
+    a 24.5 GiB array -- about 428,000 values per spectrum, five times the
+    source width. The source width alone estimates 9.7 GB and stays under
+    the threshold; the axis width is what puts it over.
+
+    Args:
+        essential_meta: The reader's ``EssentialMetadata``.
+        target_bins: The resampled axis width, from
+            :func:`_resolved_target_bins`, or ``None`` when nothing is
+            resampled.
+
+    Returns:
+        Values per spectrum.
+    """
+    total_peaks = getattr(essential_meta, "total_peaks", None) or 0
+    n_spectra = getattr(essential_meta, "n_spectra", None) or 0
+    source_width = (
+        math.ceil(total_peaks / n_spectra)
+        if total_peaks > 0 and n_spectra > 0
+        else None
+    )
+
+    if target_bins is None:
+        return source_width or _ASSUMED_VALUES_PER_SPECTRUM
+    if source_width is None:
+        return target_bins
+
+    spectrum_type = getattr(essential_meta, "spectrum_type", None)
+    if spectrum_type == SpectrumType.PROFILE:
+        # A trace has no gaps to keep the resampled row sparse.
+        return max(source_width, target_bins)
+    # Peaks stay peaks; a coarser axis can only merge them.
+    return min(source_width, target_bins)
+
+
+def _should_use_streaming(
+    streaming: Union[bool, Literal["auto"]],
+    reader: Any,
+    probe: Any = None,
+) -> bool:
     """Determine if streaming converter should be used.
 
     Args:
         streaming: True to force streaming, False to force the standard
             converter, ``"auto"`` to pick on estimated size.
         reader: The reader for the input.
+        probe: An instance of the converter that would otherwise run, used
+            to resolve the resampled axis width. ``None`` sizes the
+            conversion from the source alone, which under-counts a profile
+            source that will be resampled onto a finer axis.
 
     Returns:
         True if the streaming converter should be used.
@@ -227,24 +336,41 @@ def _should_use_streaming(streaming: Union[bool, Literal["auto"]], reader: Any) 
     # progress with the real reason invisible.
     essential_meta = reader.get_essential_metadata()
 
-    # Auto-detect based on estimated dataset size (>10GB). Only the estimate
+    # Auto-detect based on estimated in-memory size. Only the estimate
     # itself is best-effort: a reader whose dimensions are missing or oddly
     # shaped simply does not get the automatic upgrade.
+    #
+    # Sizing the grid rather than the spectrum count is deliberate: a sparse
+    # raster has fewer spectra than pixels, and over-estimating is the safe
+    # direction. The whole decision is one-sided -- under-estimating keeps a
+    # conversion in memory that needed to stream and it dies there, while
+    # over-estimating costs at most a streaming run that would also have fit.
     try:
         dims = essential_meta.dimensions
         n_pixels = dims[0] * dims[1] * dims[2]
-        # Rough estimate: assume average 10k peaks per spectrum, 8 bytes each
-        estimated_gb = (n_pixels * 10000 * 8) / (1024**3)
+        per_spectrum = _values_per_spectrum(
+            essential_meta, _resolved_target_bins(probe)
+        )
+        estimated_gb = (n_pixels * per_spectrum * _BYTES_PER_STORED_VALUE) / (1024**3)
     except Exception as e:
         logger.debug(f"Could not estimate dataset size for auto-streaming: {e}")
         return False
 
-    if estimated_gb > 10:
+    threshold = Thresholds.STREAMING_SIZE_GB
+    detail = (
+        f"{n_pixels:,} pixels x {per_spectrum:,} values per spectrum "
+        f"x {_BYTES_PER_STORED_VALUE} bytes"
+    )
+    if estimated_gb > threshold:
         logger.info(
-            f"Auto-detected large dataset (~{estimated_gb:.1f} GB), "
+            f"Auto-detected large dataset (~{estimated_gb:.1f} GB: {detail}), "
             "using streaming converter"
         )
         return True
+    logger.info(
+        f"Estimated in-memory size ~{estimated_gb:.1f} GB ({detail}), at or "
+        f"below the {threshold} GB threshold -- using the standard converter"
+    )
     return False
 
 
@@ -280,9 +406,23 @@ def _create_converter(
         **kwargs,
     }
 
+    converter_class = _resolve_converter_class(format_type)
+
+    # On the "auto" path, size the conversion against the axis it will
+    # actually write. Only the converter's own planner knows that width --
+    # ``target_bins`` is usually None and the real count comes from a bin
+    # width on a law the decision tree picks -- so an instance is built to
+    # ask it. Construction only sets attributes (nothing touches
+    # ``output_path`` before ``convert()``), and when the estimate stays
+    # under the threshold this same instance is the converter returned, so
+    # the probe is free in the common case.
+    probe = None
+    if streaming == "auto":
+        probe = converter_class(reader, output_path, **converter_kwargs)
+
     # Try streaming converter if requested
     if (
-        _should_use_streaming(streaming, reader)
+        _should_use_streaming(streaming, reader, probe)
         and "spatialdata" in format_type.lower()
     ):
         try:
@@ -296,9 +436,17 @@ def _create_converter(
             logger.warning(f"Streaming converter not available: {e}")
             logger.warning("Falling back to standard converter")
 
+    if probe is not None:
+        return probe
+    return converter_class(reader, output_path, **converter_kwargs)
+
+
+def _resolve_converter_class(format_type: str) -> Any:
+    """The converter class for ``format_type``, with the SpatialData hint."""
     try:
         converter_class = get_converter_class(format_type.lower())
         logger.info(f"Using converter: {converter_class.__name__}")
+        return converter_class
     except ValueError as e:
         if "spatialdata" in format_type.lower():
             logger.error(
@@ -311,7 +459,6 @@ def _create_converter(
             raise ValueError("SpatialData converter unavailable") from e
         else:
             raise e
-    return converter_class(reader, output_path, **converter_kwargs)
 
 
 def _perform_conversion_with_cleanup(converter: Any, reader: Any) -> bool:
