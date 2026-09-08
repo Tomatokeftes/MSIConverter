@@ -1,10 +1,10 @@
 # tests/unit/converters/test_3d_tic_axis_order.py
 """The 3D TIC volume must be stored on the axes it declares.
 
-``SpatialData3DConverter`` accumulates TIC into an array indexed ``[y, x, z]``
-(``_create_data_structures``), and hands it to ``Image3DModel``, which declares
-``(c, z, y, x)``. Those are different orders, so the array has to be
-transposed. ``_create_tic_image`` used to *relabel* it instead::
+The 3D converter used to accumulate TIC into an array indexed ``[y, x, z]``
+and hand it to ``Image3DModel``, which declares ``(c, z, y, x)``. Those are
+different orders, so the array had to be transposed. ``_create_tic_image``
+used to *relabel* it instead::
 
     z_size, y_size, x_size = tic_values.shape          # (n_y, n_x, n_z)
     tic_values.reshape(1, z_size, y_size, x_size)      # a no-op reshape
@@ -46,10 +46,10 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
+from thyra.converters.spatialdata import SpatialDataConverter
 from thyra.converters.spatialdata.base_spatialdata_converter import (
     SPATIALDATA_AVAILABLE,
 )
-from thyra.converters.spatialdata.spatialdata_3d_converter import SpatialData3DConverter
 from thyra.core.base_extractor import MetadataExtractor
 from thyra.core.base_reader import BaseMSIReader
 from thyra.metadata.types import ComprehensiveMetadata, EssentialMetadata
@@ -165,9 +165,10 @@ def _convert(tmp_path_factory, dimensions: Tuple[int, int, int]):
     """Convert one probe grid through the 3D route; hand back the store root."""
     n_x, n_y, n_z = dimensions
     output_path = tmp_path_factory.mktemp(f"tic_axes_{n_x}x{n_y}x{n_z}") / "out.zarr"
-    converter = SpatialData3DConverter(
+    converter = SpatialDataConverter(
         _AxisProbeReader(dimensions),
         output_path,
+        handle_3d=True,
         dataset_id=_DATASET_ID,
         pixel_size_um=10.0,
     )

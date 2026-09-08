@@ -14,8 +14,8 @@ an imzML declares, so a file that is already 0-based yields ``x = -1``
 route is inferred from the reader source rather than measured against a
 vendor file, so the fixture reproduces the coordinate directly.
 
-Only x and y are exercised. ``_refuse_multiple_z_planes`` runs before
-either pass, so ``n_z == 1`` and a z term cannot reach here.
+Only x and y are exercised; a z past the declared planes takes the
+same path (``_locate`` returns no table for it).
 
 **The guard was itself incomplete at first**, which the per-pixel
 assertions here could not see. The pre-scan counted ``col_counts`` and
@@ -27,8 +27,8 @@ at the bottom of this file exist alongside the value ones.
 
 This file used to run every assertion on both streaming routes and compare
 them against each other. The COO route is gone, and the comparisons went
-with it; the in-memory converters are the reference now, in
-``test_stored_pixel_spectrum_oracle``.
+with it; the computed expectation in ``test_stored_pixel_spectrum_oracle``
+is the reference now.
 """
 
 import logging

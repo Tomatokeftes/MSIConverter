@@ -286,27 +286,24 @@ _MARGINAL_TOLERANCE = 1e-9
 
 
 def _current_ratio_block(
-    table: Any,
-    summed_key: str,
-    summed: Any = None,
-    row_totals: Any = None,
+    table: Any, summed_key: str, summed: Any
 ) -> Optional[Dict[str, Any]]:
     """How much of the summed table's ion current a sibling holds, per pixel.
 
-    Against the summed matrix when it is in hand, else against per-pixel
-    totals of it -- which is what the streaming route has, since it writes
-    the summed table straight to disk and never holds it. The ratio is the
-    same number either way: a sibling's row sum over every one of its
-    columns is that pixel's ion current, and so is the summed table's.
-    ``None`` when the two cannot be compared (a row count mismatch, no
-    ion current at all), which is not a disagreement.
+    A sibling's row sum over every one of its columns is that pixel's ion
+    current, and so is the summed table's, so the two row sums compare
+    directly. Both matrices sit on memmaps, and a row sum is one pass
+    over each -- nothing the size of a matrix is held in RAM, which is
+    why this is the whole comparison: a cell-by-cell deviation between
+    the grid table's marginal and the summed table needs the product and
+    the difference materialised, each as large as the summed table, and
+    the route that writes both never holds either. ``None`` when the two
+    cannot be compared (a row count mismatch, no ion current at all),
+    which is not a disagreement.
     """
-    if summed is not None:
-        totals = np.asarray(summed.X.sum(axis=1)).ravel().astype(np.float64)
-    elif row_totals is not None:
-        totals = np.asarray(row_totals, dtype=np.float64).ravel()
-    else:
+    if summed is None:
         return None
+    totals = np.asarray(summed.X.sum(axis=1)).ravel().astype(np.float64)
     split = np.asarray(table.X.sum(axis=1)).ravel().astype(np.float64)
     if split.size != totals.size or not totals.any():
         return None
@@ -316,55 +313,6 @@ def _current_ratio_block(
         "current_ratio": float(split.sum() / totals.sum()),
         "current_ratio_pixel_min": float(np.nanmin(per_pixel)),
         "current_ratio_pixel_max": float(np.nanmax(per_pixel)),
-    }
-
-
-def _marginal_agreement(
-    table: Any, summed: Any, summed_key: str
-) -> Optional[Dict[str, Any]]:
-    """Compare a grid table's marginal over channels with the summed table.
-
-    The marginal is ``X`` collapsed onto ``var["mz_index"]``, which is a
-    single sparse product rather than a loop over m/z bins, and is
-    compared against the summed table cell by cell. ``None`` when the two
-    cannot be compared at all (an empty table, a summed table with no ion
-    current), which is not a disagreement and so is not recorded as one.
-    """
-    from scipy import sparse
-
-    mz_index = np.asarray(table.var["mz_index"].to_numpy(), dtype=np.int64)
-    n_axis = int(summed.n_vars)
-    if mz_index.size == 0 or int(mz_index.max()) >= n_axis:
-        return None
-    collapse = sparse.csr_matrix(
-        (
-            np.ones(mz_index.size, dtype=np.float64),
-            (np.arange(mz_index.size, dtype=np.int64), mz_index),
-        ),
-        shape=(int(mz_index.size), n_axis),
-    )
-    # The sibling's matrix is left in whatever format it came in (on the
-    # assembly's memmaps, when it was built out of core): scipy converts
-    # the small collapse operator to match rather than the other way round.
-    marginal = table.X @ collapse
-    whole = summed.X
-    if marginal.shape != whole.shape:
-        return None
-    total = np.asarray(whole.sum(axis=1)).ravel().astype(np.float64)
-    if not total.any():
-        return None
-    difference = marginal - whole
-    max_abs = float(np.abs(difference.data).max()) if difference.nnz else 0.0
-    scale = float(np.abs(whole.data).max()) if whole.nnz else 0.0
-    split = np.asarray(marginal.sum(axis=1)).ravel().astype(np.float64)
-    per_pixel = split / np.where(total == 0, np.nan, total)
-    return {
-        "summed_table": summed_key,
-        "current_ratio": float(split.sum() / total.sum()),
-        "current_ratio_pixel_min": float(np.nanmin(per_pixel)),
-        "current_ratio_pixel_max": float(np.nanmax(per_pixel)),
-        "max_absolute_deviation": max_abs,
-        "max_relative_deviation": float(max_abs / scale) if scale else 0.0,
     }
 
 
@@ -894,9 +842,9 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         # whether the sibling tables were planned before those passes.
         self._sibling_scans_done = False
         self._siblings_planned = False
-        # Scratch directories holding the memmapped matrices of sibling
-        # tables until they are written; released by _release_sibling_scratch.
-        self._sibling_scratch: List[Tuple[Any, Path]] = []
+        # Scratch directories holding the memmapped matrices of every table
+        # until it is written; released by _release_table_scratch.
+        self._table_scratch: List[Tuple[Any, Path]] = []
         # The mass-mobility heatmap (see mobility_heatmap.py): built once
         # per conversion, on first demand, and shared by every uns block
         # that asks for it. ``_built`` distinguishes "not yet" from
@@ -932,9 +880,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             self._setup_resampling()
             # Note: _build_resampled_mass_axis() will be called in _initialize_conversion()
             # after reader metadata is fully loaded
-
-        # Cache for dense mass axis indices (to avoid repeated np.arange calls)
-        self._cached_mass_axis_indices: Optional[NDArray[np.int_]] = None
 
         # Shared-axis nearest-neighbor cache. Continuous imzML, Rapiflex,
         # Waters and PHI all hand every spectrum the same m/z array, so the
@@ -1118,11 +1063,17 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             logger.debug(f"Could not extract spectrum metadata: {e}")
 
     def convert(self) -> bool:
-        """Run the base workflow; release sibling scratch on every exit path."""
+        """Run the base workflow; release the tables' scratch on every exit path.
+
+        The scratch cleanup must run on success, on an exception and on a
+        KeyboardInterrupt alike: a route that released its temp directory
+        on the success path only leaked 79.5 GiB into one user's system
+        temp before a manual sweep.
+        """
         try:
             return super().convert()
         finally:
-            self._release_sibling_scratch()
+            self._release_table_scratch()
 
     def build_uns_metadata(self) -> Dict[str, Any]:
         """The provenance block every write path must persist, identically.
@@ -1138,20 +1089,20 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         - ``raw_metadata`` -- the source metadata as read.
         - ``regions`` -- the acquisition region summary, as JSON.
 
-        This exists because the converters have two write paths and they
-        drifted. The in-memory converters hand the table to ``anndata``'s
-        writer, which serialises whatever is in ``adata.uns``; the
-        streaming (PCS) path hand-writes the Zarr layout and used to
-        compose its own, much smaller block -- with
-        ``spectrum_type`` hardcoded to ``"processed"``, which is not even
-        a value the extractors produce. Routing was on a size threshold at
-        the time, so a dataset large enough to reach the PCS path came out
-        claiming a spectrum representation it did not have, and without any
-        of the other sections, while a slightly smaller one from the same
-        instrument came out complete. Both paths now render this mapping,
-        so a section added here reaches every store. (The threshold is
-        gone -- PCS is the default route -- but the divergence it exposed
-        is exactly what this method exists to prevent.)
+        This exists because the converters once had two write paths and
+        they drifted. The in-memory converters handed the table to
+        ``anndata``'s writer, which serialises whatever is in
+        ``adata.uns``; the streaming path hand-wrote the Zarr layout and
+        composed its own, much smaller block -- with ``spectrum_type``
+        hardcoded to ``"processed"``, which is not even a value the
+        extractors produce. Routing was on a size threshold at the time,
+        so a dataset large enough to reach the streaming path came out
+        claiming a spectrum representation it did not have, and without
+        any of the other sections, while a slightly smaller one from the
+        same instrument came out complete. There is one write path now,
+        through ``anndata``'s writer, and every table -- the summed one
+        and its siblings -- renders this mapping, so a section added here
+        reaches every store.
 
         Sections the reader has nothing for are omitted rather than
         written empty, so consumers can tell "not available from this
@@ -1462,8 +1413,8 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         :meth:`_ensure_mobility_heatmap` on first demand.
 
         A no-op when the sinks were already fed from the summed table's
-        own passes (the streaming route with a reader that hands its
-        frames over as records; see ``fused_passes.py``).
+        own passes (a reader that hands its frames over as records; see
+        ``fused_passes.py``).
         """
         if self._sibling_scans_done:
             return
@@ -1539,10 +1490,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
 
         return scratch_directory(f".thyra_{prefix}_", parent=self.output_path.parent)
 
-    def _register_sibling_scratch(self, prefix: str, assembly: Any) -> Path:
+    def _register_table_scratch(self, prefix: str, assembly: Any) -> Path:
         """A scratch directory for ``assembly``, released with the others once written."""
         scratch = self._new_sibling_scratch(prefix)
-        self._sibling_scratch.append((assembly, scratch))
+        self._table_scratch.append((assembly, scratch))
         return scratch
 
     def _fused_sibling_passes(self, table_key: str) -> Any:
@@ -1600,25 +1551,23 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         self._grid_discovery = passes.discovery
         self._msms_accumulator = passes.msms
 
-    def _release_sibling_scratch(self, tables: Optional[Dict[str, Any]] = None) -> None:
-        """Drop the sibling tables' memmaps and remove their scratch directories.
+    def _release_table_scratch(self, tables: Optional[Dict[str, Any]] = None) -> None:
+        """Drop every table's memmaps and remove their scratch directories.
 
-        Called once the siblings are written. ``tables`` is the mapping
-        that still holds them; its sibling entries are removed first,
-        because a mapped file cannot be deleted on Windows and the AnnData
-        is what keeps it mapped. Idempotent, so the ``finally`` of every
-        route can call it too.
+        Called once the store is written. ``tables`` is the mapping that
+        still holds the tables; it is emptied first, because a mapped file
+        cannot be deleted on Windows and the AnnData is what keeps it
+        mapped. Idempotent, so the ``finally`` of ``convert`` can call it
+        too.
         """
         from .csc_assembly import remove_scratch
 
-        if not self._sibling_scratch:
+        if not self._table_scratch:
             return
         if tables is not None:
-            for key in (self._mobility_table_key, self._msms_table_key):
-                if key is not None:
-                    tables.pop(key, None)
-        pending = self._sibling_scratch
-        self._sibling_scratch = []
+            tables.clear()
+        pending = self._table_scratch
+        self._table_scratch = []
         for assembly, path in pending:
             if assembly is not None:
                 assembly.release()
@@ -1631,7 +1580,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         region_key: str,
         obs: pd.DataFrame,
         z_value: Optional[int] = None,
-        summed_row_totals: Optional[NDArray[np.float64]] = None,
     ) -> None:
         """Build the sibling tables of ``table_key`` and add them.
 
@@ -1639,11 +1587,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         :meth:`_plan_msms_table` did not name for this slice. A failure
         is logged and leaves the summed table untouched: the siblings are
         additive, and a store without them is still complete.
-
-        ``summed_row_totals`` is the summed table's per-pixel ion current
-        for a route that does not hold the summed matrix (the streaming
-        route's TIC image is exactly that); with it, every sibling still
-        records how much of that current it holds.
         """
         if self._common_mass_axis is None:
             return
@@ -1661,18 +1604,14 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             )
             if table is not None:
                 if self._mobility_grid is not None:
-                    self._record_mobility_marginal(
-                        table, summed, table_key, summed_row_totals
-                    )
+                    self._record_mobility_marginal(table, summed, table_key)
                 data_structures["tables"][self._mobility_table_key] = table
         if self._msms_table_key is not None:
             table = self._build_msms_sibling(
                 obs, table_key, region_key, dict(sibling_uns), z_value
             )
             if table is not None:
-                self._record_demultiplexed_current(
-                    table, summed, table_key, summed_row_totals
-                )
+                self._record_demultiplexed_current(table, summed, table_key)
                 data_structures["tables"][self._msms_table_key] = table
 
     def _build_mobility_sibling(
@@ -1692,7 +1631,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         scratch = None if discovery is None else discovery.scratch
         if scratch is None:
             scratch = self._new_sibling_scratch("mobility")
-            self._sibling_scratch.append(
+            self._table_scratch.append(
                 (None if discovery is None else discovery.assembly, scratch)
             )
         try:
@@ -1727,7 +1666,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         scratch = None if accumulator is None else accumulator.scratch
         if scratch is None:
             scratch = self._new_sibling_scratch("msms")
-            self._sibling_scratch.append((None, scratch))
+            self._table_scratch.append((None, scratch))
         try:
             return build_msms_table(
                 self.reader,
@@ -1745,12 +1684,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             return None
 
     @staticmethod
-    def _record_mobility_marginal(
-        table: Any,
-        summed: Any,
-        summed_key: str,
-        row_totals: Optional[NDArray[np.float64]] = None,
-    ) -> None:
+    def _record_mobility_marginal(table: Any, summed: Any, summed_key: str) -> None:
         """Say how far the grid table's marginal is from the summed table.
 
         Summing a grid table's channels within one m/z bin must reproduce
@@ -1764,44 +1698,33 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         must say by how much rather than leave a reader to find it by
         subtraction.
 
-        The streaming route writes the summed table straight to disk and
-        never holds it, so there ``row_totals`` -- the per-pixel ion
-        current that route already computed for the TIC image -- stands in
-        for it. The current ratio is then exactly the same number; only
-        the per-column deviation, which needs both matrices, is left out.
+        The comparison is per pixel: the grid table's row sums against
+        the summed table's, which is one bounded pass over each memmap.
+        The per-cell deviation the in-memory converters used to record
+        needed the marginal and its difference from the summed table
+        materialised, each the size of the summed table, and went with
+        them (design decision D11); the current ratio is the same number
+        it always was.
         """
         try:
-            if summed is not None:
-                block = _marginal_agreement(table, summed, summed_key)
-            else:
-                block = _current_ratio_block(table, summed_key, row_totals=row_totals)
+            block = _current_ratio_block(table, summed_key, summed)
         except Exception as e:  # pragma: no cover - defensive
             logger.debug("Could not compare the mobility marginal: %s", e)
             return
         if block is None:
             return
         table.uns["mobility_marginal"] = block
-        deviation = block.get("max_relative_deviation")
-        exact = abs(float(block["current_ratio"]) - 1.0) <= _MARGINAL_TOLERANCE and (
-            deviation is None or float(deviation) <= _MARGINAL_TOLERANCE
-        )
+        exact = abs(float(block["current_ratio"]) - 1.0) <= _MARGINAL_TOLERANCE
         log = logger.info if exact else logger.warning
         log(
             "The mobility grid table holds %.4fx the summed table's ion "
-            "current (per pixel %.4f to %.4f)%s. They agree exactly only "
+            "current (per pixel %.4f to %.4f). They agree exactly only "
             "under --tdf-spectrum scan_sum; the vendor centroid is a "
             "peak-picked spectrum over the same scans and keeps less of "
             "the current.",
             block["current_ratio"],
             block["current_ratio_pixel_min"],
             block["current_ratio_pixel_max"],
-            (
-                ""
-                if deviation is None
-                else "; the largest disagreement between a marginal over "
-                f"channels and its summed column is {deviation:.4g} of the "
-                "table's largest value"
-            ),
         )
 
     def _plan_msms_table(self, table_key: str) -> Optional[str]:
@@ -1833,57 +1756,8 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         # m/z values the split re-reads, so the mapping is exact either way.
         return msms_table_key(table_key)
 
-    def _attach_msms_table(
-        self,
-        data_structures: Dict[str, Any],
-        table_key: str,
-        region_key: str,
-        obs: pd.DataFrame,
-        z_value: Optional[int] = None,
-    ) -> None:
-        """Build the demultiplexed MS/MS sibling of ``table_key`` and add it.
-
-        No-op unless :meth:`_plan_msms_table` named one for this slice.
-        A failure here is logged and leaves the summed table untouched: the
-        sibling is additive, and a store without it is still complete.
-        """
-        key = self._msms_table_key
-        if key is None or self._common_mass_axis is None:
-            return
-        from .msms_table import build_msms_table
-
-        # The sibling carries the same provenance as the summed table,
-        # minus the heatmap: that block is the summed table's navigator
-        # over the mobility ramp this one has already been split along.
-        sibling_uns = self.build_uns_metadata()
-        sibling_uns.pop("mobility_heatmap", None)
-        try:
-            table = build_msms_table(
-                self.reader,
-                obs,
-                self._common_mass_axis,
-                table_key,
-                region_key,
-                sibling_uns,
-                z_value=z_value,
-            )
-        except Exception as e:
-            logger.error("Could not build the demultiplexed MS/MS table: %s", e)
-            return
-        if table is None:
-            return
-        self._record_demultiplexed_current(
-            table, data_structures["tables"].get(table_key), table_key
-        )
-        data_structures["tables"][key] = table
-
     @staticmethod
-    def _record_demultiplexed_current(
-        table: Any,
-        summed: Any,
-        summed_key: str,
-        row_totals: Optional[NDArray[np.float64]] = None,
-    ) -> None:
+    def _record_demultiplexed_current(table: Any, summed: Any, summed_key: str) -> None:
         """Say how much of the summed table's ion current the split holds.
 
         The two tables agree exactly under ``--tdf-spectrum scan_sum``,
@@ -1893,13 +1767,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         raw scans, so the
         demultiplexed table holds *more*. That is not a defect, but a
         store whose two tables disagree must say so rather than leave a
-        reader to find it by subtraction. ``row_totals`` stands in for the
-        summed matrix on the route that never holds it.
+        reader to find it by subtraction.
         """
         try:
-            block = _current_ratio_block(
-                table, summed_key, summed=summed, row_totals=row_totals
-            )
+            block = _current_ratio_block(table, summed_key, summed)
         except Exception as e:  # pragma: no cover - defensive
             logger.debug("Could not compare the demultiplexed current: %s", e)
             return
@@ -1966,10 +1837,9 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
     def _processing_provenance(self) -> List[Any]:
         """The processing steps this conversion performed, oldest first.
 
-        Modeled on mzQC provenance.  The list must be identical across
-        every write path for the same input (the uns parity suite
-        compares the block verbatim), so nothing route-specific -- the
-        sparse layout, the streaming/in-memory split -- belongs here.
+        Modeled on mzQC provenance.  The list describes what was done to
+        the data, so nothing about how the store was written -- the sparse
+        layout, the number of passes -- belongs here.
         """
         from thyra import __version__
         from thyra.metadata.schema import ProcessingStep, SoftwareRef
@@ -2092,40 +1962,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             return self._serialize_for_zarr(vars(obj))
         else:
             return obj
-
-    def _drop_empty_pixels(self, adata: "AnnData") -> "AnnData":
-        """Drop obs rows whose intensity matrix row has no non-zero values.
-
-        Acquisitions are typically polygon-shaped, but the obs table is
-        indexed over the rectangular bounding box of the acquired
-        coordinates. That leaves "corner" pixels inside the bbox but
-        outside the actual polygon, which carry no spectra and inflate
-        the obs / shapes layouts (#88). For multi-region datasets these
-        empties also include inter-region gaps when the bbox is the
-        union of regions.
-
-        Filtering here makes obs reflect only positions where data was
-        actually acquired. The TIC image is unaffected (it is a dense
-        2D spatial image, not a per-pixel table). Visualisation code
-        that scatters obs values back onto a grid via obs[``x``]/[``y``]
-        works identically before and after.
-        """
-        if adata.n_obs == 0:
-            return adata
-        row_nnz = adata.X.getnnz(axis=1)
-        non_empty = np.asarray(row_nnz).flatten() > 0
-        if bool(non_empty.all()):
-            return adata
-        n_total = adata.n_obs
-        n_kept = int(non_empty.sum())
-        logger.info(
-            "Dropping %d empty pixel rows from obs (%d non-empty pixels "
-            "remain). These positions are inside the bounding box but "
-            "outside the acquisition polygon.",
-            n_total - n_kept,
-            n_kept,
-        )
-        return adata[non_empty, :].copy()
 
     def _calculate_bins_from_width(
         self, min_mz: float, max_mz: float, axis_type
@@ -2352,11 +2188,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         if self._common_mass_axis is None:
             raise RuntimeError("Common mass axis is None after assignment")
 
-        # Cache the mass axis indices array to avoid repeated np.arange() calls
-        self._cached_mass_axis_indices = np.arange(
-            len(self._common_mass_axis), dtype=np.int_
-        )
-
         # Calculate bin sizes for informative logging
         bin_widths = np.diff(self._common_mass_axis)
         min_bin_size = np.min(bin_widths) * 1000  # Convert to mDa
@@ -2509,9 +2340,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         the identity for ordinary data. A spectrum that repeats an m/z value
         -- an ion mobility export lists a feature once per mobility -- maps
         two entries to one column, and writing both would leave a
-        duplicate ``(row, col)`` in the sparse matrix: the in-memory route
-        sums those on conversion, the streaming route wrote them as two
-        entries in one column. Summing here makes every route agree.
+        duplicate ``(row, col)`` in the sparse matrix (the scatter also
+        requires a row's bins to be unique). Summing here is what the old
+        in-memory route did through scipy's COO conversion, so a store
+        reads back the same.
         """
         if indices.size < 2:
             return indices, intensities
@@ -2526,106 +2358,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         )
         return unique.astype(indices.dtype, copy=False), summed
 
-    def _map_mass_to_indices(self, mzs: NDArray[np.float64]) -> NDArray[np.int_]:
-        """Override mass mapping to handle resampling with interpolation."""
-        if self._common_mass_axis is None:
-            raise ValueError("Common mass axis is not initialized.")
-
-        if mzs.size == 0:
-            return np.array([], dtype=int)
-
-        # If resampling is enabled, we need to interpolate instead of exact
-        # matching
-        if self._resampling_config:
-            return self._resample_spectrum_to_indices(mzs)
-        else:
-            # Use parent's exact matching for non-resampled data
-            return super()._map_mass_to_indices(mzs)
-
-    def _resample_spectrum_to_indices(
-        self, mzs: NDArray[np.float64]
-    ) -> NDArray[np.int_]:
-        """Map spectrum m/z values to resampled mass axis indices using interpolation."""
-        # For resampled data, we want to return ALL indices in the resampled
-        # axis. The actual resampling/interpolation will be handled in the
-        # processing
-        if self._common_mass_axis is None:
-            raise RuntimeError("Common mass axis is not initialized")
-        return np.arange(len(self._common_mass_axis), dtype=np.int_)
-
-    def _process_single_spectrum(
-        self,
-        data_structures: Any,
-        coords: Tuple[int, int, int],
-        mzs: NDArray[np.float64],
-        intensities: NDArray[np.float64],
-    ) -> None:
-        """Override spectrum processing to handle resampling with sparse optimization."""
-        # Only log detailed per-spectrum info at DEBUG level
-        logger.debug(
-            f"Processing spectrum at {coords}: {len(mzs)} peaks, "
-            f"intensity sum: {np.sum(intensities):.2e}"
-        )
-
-        if self._resampling_config:
-            # OPTIMIZATION: Use sparse resampling directly for nearest_neighbor
-            if (
-                hasattr(self, "_resampling_method")
-                and self._resampling_method == ResamplingMethod.NEAREST_NEIGHBOR
-            ):
-                # Sparse path - much faster, no dense array allocation
-                mz_indices, resampled_intensities = self._nearest_neighbor_resample(
-                    mzs, intensities
-                )
-                logger.debug(
-                    f"Resampled (sparse): {len(resampled_intensities)} non-zero bins, "
-                    f"sum: {np.sum(resampled_intensities):.2e}"
-                )
-            else:
-                # TIC-preserving, in its sparse form: only the bins under
-                # the source's clusters are evaluated, which on a
-                # zero-suppressed profile is a small fraction of the axis.
-                mz_indices, resampled_intensities = (
-                    self._tic_preserving_resample_sparse(mzs, intensities)
-                )
-                logger.debug(
-                    f"Resampled (sparse, TIC-preserving): "
-                    f"{len(resampled_intensities)} non-zero bins, "
-                    f"sum: {np.sum(resampled_intensities):.2e}"
-                )
-
-            # Call the specific converter's processing with resampled data
-            self._process_resampled_spectrum(
-                data_structures, coords, mz_indices, resampled_intensities
-            )
-        else:
-            # Use standard processing for non-resampled data
-            mz_indices = self._map_mass_to_indices(mzs)
-            mz_indices, intensities = self._coalesce_duplicate_bins(
-                mz_indices, intensities
-            )
-            logger.debug(
-                f"Mapped to {len(mz_indices)} indices, "
-                f"intensity sum: {np.sum(intensities):.2e}"
-            )
-            self._process_resampled_spectrum(
-                data_structures, coords, mz_indices, intensities
-            )
-
-    def _resample_spectrum(
-        self, mzs: NDArray[np.float64], intensities: NDArray[np.float64]
-    ) -> NDArray[np.float64]:
-        """Resample a single spectrum onto the common mass axis using TIC-preserving method.
-
-        Note: Nearest neighbor resampling is handled directly in _process_single_spectrum
-        for performance optimization (returns sparse data).
-        """
-        if self._common_mass_axis is None:
-            raise ValueError("Common mass axis is not initialized")
-
-        # This method is only called for TIC-preserving resampling (dense path)
-        return self._tic_preserving_resample(mzs, intensities)
-
     def _count_out_of_range(self, n_dropped: int, n_total: int) -> None:
         """Record peaks discarded for lying outside the target mass axis.
 
@@ -2639,9 +2371,9 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         narrowed range typically excludes peaks in every spectrum, and on
         xenium that is 918,855 identical lines. ``_out_of_range_peaks``
         keeps the running total; note it counts resample *calls*, and the
-        PCS route resamples every spectrum twice, so it is a lower bound
-        on nothing and an upper bound on nothing -- read the warning, not
-        the counter, if you want a per-spectrum figure.
+        converter resamples every spectrum twice (once per pass), so it
+        is a lower bound on nothing and an upper bound on nothing -- read
+        the warning, not the counter, if you want a per-spectrum figure.
 
         Args:
             n_dropped: Peaks outside the axis in this spectrum.
@@ -2891,94 +2623,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             getattr(self, "_gap_tolerance_da", None),
         )
 
-    def _process_resampled_spectrum(
-        self,
-        data_structures: Any,
-        coords: Tuple[int, int, int],
-        mz_indices: NDArray[np.int_],
-        intensities: NDArray[np.float64],
-    ) -> None:
-        """Process a spectrum with resampled intensities - to be overridden by subclasses."""
-        # This method should be overridden by specific converters (2D/3D)
-        pass
-
-    def _create_sparse_matrix(self) -> Dict[str, Any]:
-        """Create COO arrays for storing intensity values.
-
-        Returns:
-            Dictionary containing pre-allocated COO arrays and metadata
-
-        Raises:
-            ValueError: If dimensions or common mass axis are not initialized
-        """
-        if self._dimensions is None:
-            raise ValueError("Dimensions are not initialized")
-        if self._common_mass_axis is None:
-            raise ValueError("Common mass axis is not initialized")
-
-        n_x, n_y, n_z = self._dimensions
-        n_pixels = n_x * n_y * n_z
-        n_masses = len(self._common_mass_axis)
-
-        # Get exact number of peaks from cached metadata (no iteration needed!)
-        if self._essential_metadata_cached is None:
-            raise RuntimeError("Essential metadata cache is not initialized")
-        exact_nnz = self._essential_metadata_cached.total_peaks
-
-        logger.info(
-            f"Pre-allocating COO arrays: {n_pixels:,} pixels x {n_masses:,} m/z bins"
-        )
-        logger.info(f"Exact non-zero values from metadata: {exact_nnz:,}")
-
-        # Pre-allocate arrays with exact size (uint32 for indices, all values are positive)
-        return {
-            "rows": np.empty(exact_nnz, dtype=np.uint32),
-            "cols": np.empty(exact_nnz, dtype=np.uint32),
-            "data": np.empty(exact_nnz, dtype=np.float64),
-            "current_idx": 0,
-            "n_rows": n_pixels,
-            "n_cols": n_masses,
-        }
-
-    def _create_coordinates_dataframe(self) -> pd.DataFrame:
-        """Create coordinates dataframe with pixel positions."""
-        if self._dimensions is None:
-            raise ValueError("Dimensions are not initialized")
-
-        n_x, n_y, n_z = self._dimensions
-        n_pixels = n_x * n_y * n_z
-
-        pixel_idx = np.arange(n_pixels, dtype=np.int64)
-        z_idx = pixel_idx // (n_x * n_y)
-        remainder = pixel_idx % (n_x * n_y)
-        y_idx = remainder // n_x
-        x_idx = remainder % n_x
-
-        coords_df = pd.DataFrame(
-            {
-                "x": x_idx,
-                "y": y_idx,
-                "z": z_idx if n_z > 1 else np.zeros(n_pixels, dtype=np.int64),
-                "instance_id": pixel_idx.astype(str),
-                "region": np.full(n_pixels, f"{self.dataset_id}_pixels"),
-                "spatial_x": x_idx * self.pixel_size_um,
-                "spatial_y": y_idx * self.pixel_size_um,
-                # Slice depth uses the z spacing, not the in-plane pitch:
-                # the table has to land in the same micrometre frame as
-                # the TIC volume's Scale, or the two disagree at "global".
-                "spatial_z": (
-                    z_idx * self.z_spacing_um
-                    if n_z > 1
-                    else np.zeros(n_pixels, dtype=np.float64)
-                ),
-            }
-        )
-        coords_df.set_index("instance_id", inplace=True)
-
-        coords_df["region_number"] = self.build_region_numbers(x_idx, y_idx)
-
-        return coords_df
-
     def build_region_numbers(self, x_values, y_values) -> NDArray[np.int32]:
         """``obs["region_number"]`` for the given pixel positions, in row order.
 
@@ -2988,11 +2632,11 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         ``uns["regions"]`` reports for that case. Only the Bruker timsTOF
         reader produces a map today; a position missing from it gets -1.
 
-        Shared because there are three places that build an obs table --
-        the in-memory 2D and 3D converters and the hand-written PCS layout
-        (a fourth, the streaming COO route, is gone) -- and each had its
-        own copy of this rule. The PCS one had no copy at all and simply
-        omitted the column.
+        Kept as one method because the three write paths that used to
+        build an obs table each had their own copy of this rule, and the
+        hand-written streaming layout had no copy at all and simply
+        omitted the column. One obs builder remains; the rule stays here
+        so the sibling tables' builders can share it too.
 
         Args:
             x_values: Pixel x index per obs row.
@@ -3089,76 +2733,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 continue
             validated[name] = values
         return validated
-
-    def _get_pixel_index(self, x: int, y: int, z: int) -> int:
-        """Calculate linear pixel index from 3D coordinates.
-
-        Args:
-            x: X coordinate
-            y: Y coordinate
-            z: Z coordinate
-
-        Returns:
-            Linear pixel index
-
-        Raises:
-            ValueError: If dimensions are not initialized
-        """
-        if self._dimensions is None:
-            raise ValueError("Dimensions are not initialized")
-
-        n_x, n_y, _ = self._dimensions
-        return z * (n_x * n_y) + y * n_x + x
-
-    def _add_to_sparse_matrix(
-        self,
-        coo_arrays: Dict[str, Any],
-        pixel_idx: int,
-        mz_indices: NDArray[np.int_],
-        intensities: NDArray[np.float64],
-    ) -> None:
-        """Add intensity data to COO arrays efficiently.
-
-        Args:
-            coo_arrays: Dictionary with pre-allocated COO arrays
-            pixel_idx: Linear pixel index
-            mz_indices: Indices for mass values
-            intensities: Intensity values to add
-        """
-        # Filter out zero intensities to maintain sparsity
-        nonzero_mask = intensities != 0.0
-        if not np.any(nonzero_mask):
-            return
-
-        valid_mz_indices = mz_indices[nonzero_mask]
-        valid_intensities = intensities[nonzero_mask]
-        n = len(valid_intensities)
-
-        # Check if we need to resize arrays
-        current_idx = coo_arrays["current_idx"]
-        end_idx = current_idx + n
-        current_size = len(coo_arrays["rows"])
-
-        if end_idx > current_size:
-            # Resize arrays by 50% to accommodate more data
-            new_size = int(current_size * 1.5)
-            if new_size < end_idx:
-                new_size = end_idx + int(current_size * 0.1)  # Ensure it fits
-
-            logger.info(
-                f"Resizing COO arrays from {current_size:,} to {new_size:,} elements"
-            )
-
-            coo_arrays["rows"] = np.resize(coo_arrays["rows"], new_size)
-            coo_arrays["cols"] = np.resize(coo_arrays["cols"], new_size)
-            coo_arrays["data"] = np.resize(coo_arrays["data"], new_size)
-
-        # Direct array assignment (vectorized, very fast)
-        coo_arrays["rows"][current_idx:end_idx] = pixel_idx
-        coo_arrays["cols"][current_idx:end_idx] = valid_mz_indices
-        coo_arrays["data"][current_idx:end_idx] = valid_intensities
-
-        coo_arrays["current_idx"] = end_idx
 
     def _create_pixel_shapes(self, adata: AnnData) -> "ShapesModel":
         """Create geometric shapes for pixels with proper transformations.
@@ -3786,10 +3360,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 self._stream_pending_optical_pixels()
                 zarr.consolidate_metadata(str(self.output_path))
             logger.info(f"Successfully saved SpatialData to {self.output_path}")
-            # The sibling tables were written from their memmaps; nothing
-            # holds them now but this object and the caller's mapping.
+            # Every table was written from its memmaps; nothing holds them
+            # now but this object and the caller's mapping.
             del sdata
-            self._release_sibling_scratch(data_structures.get("tables"))
+            self._release_table_scratch(data_structures.get("tables"))
             return True
         except Exception as e:
             logger.error(f"Error saving SpatialData: {e}")
@@ -3826,16 +3400,18 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
 
         The store's own attrs, as opposed to the table's ``uns`` block
         :meth:`build_uns_metadata` owns. Sibling of that method and here for
-        the same reason: the streaming-PCS path hand-writes its Zarr layout
-        and composed its own, shorter set -- 7 attributes against 10 on real
-        ``pea.imzML``, missing ``coordinate_systems``,
+        the same reason: the streaming path used to hand-write its Zarr
+        layout and composed its own, shorter set -- 7 attributes against
+        10 on real ``pea.imzML``, missing ``coordinate_systems``,
         ``format_specific_metadata`` and ``msi_dataset_info``.
 
         ``coordinate_systems`` is the one that matters most in practice: it
         is the structured contract saying what unit ``"global"`` is in, and
         Ousia and the registration tooling read it rather than guessing.
-        A PCS store simply did not have it, and at the time the route was
-        chosen by size, so the datasets that lost it were the largest ones.
+        A streaming store simply did not have it, and at the time the route
+        was chosen by size, so the datasets that lost it were the largest
+        ones. Every store is written through :meth:`_save_output` now, so
+        this is the one place the attrs are composed.
 
         Sections the reader has nothing for are omitted rather than written
         empty, matching :meth:`build_uns_metadata`.

@@ -1,38 +1,31 @@
-"""The streaming PCS path drops empty pixel rows, and refuses depth.
+"""Rows follow the acquired spectra, and depth goes to its own table.
 
-Two changes that have to travel together, which is the whole point of
-this module.
+**The rows.** The streaming route used to emit one row per grid position.
+Acquisitions are polygon-shaped and the grid is their bounding box, so the
+corners came out as all-zero rows -- the same #88 the in-memory converters
+fixed by dropping empty rows after the fact. On real ``pea.imzML``: 17,423
+rows against 12,737 spectra, 4,686 of them empty, with
+``shapes/ds_z0_pixels`` carrying a polygon for each phantom. The rows are
+now decided in the counting pass (``_TableUnit.finish_counting``), before
+anything is scattered.
 
-**The rows.** ``_write_csc_arrays_to_zarr`` used to emit one row per grid
-position. Acquisitions are polygon-shaped and the grid is their bounding
-box, so the corners came out as all-zero rows -- the same #88 the other
-three write paths fix with ``_drop_empty_pixels``. On real ``pea.imzML``:
-17,423 rows against 12,737 spectra, 4,686 of them empty, with
-``shapes/ds_z0_pixels`` carrying a polygon for each phantom.
-
-**The depth.** ``_scatter_spectra_direct`` computes its row index as
-``y * n_x + x``, with no ``z`` term (the COO route it sat beside used
-``z * (n_x * n_y) + y * n_x + x``). Nothing caught that, because the
-*other* consequence of the full-grid layout did: ``obs`` was built over
-``n_y * n_x`` positions while ``X`` was sized ``n_x * n_y * n_z``, so a
-multi-plane dataset died on the length mismatch before anyone could
-notice the summing. Drop the phantom rows and those lengths line up --
-the crash disappears and the planes start silently summing onto one.
-``test_dropping_rows_alone_would_merge_z_planes`` below measures exactly
-that, with the refusal disabled, so the reason for the refusal is a
-number in the suite and not a claim in a commit message.
-
-The streaming route was never able to write depth anyway: ``__init__``
-forces ``handle_3d=False``, the table is named ``_z0``, the TIC is
-``(n_y, n_x)``, and obs is built for one plane. Refusing names a
-restriction that already existed.
+**The depth.** The scatter used to index rows by ``y * n_x + x`` with no
+``z`` term, and the obs-length mismatch that made a multi-plane dataset
+crash was the only thing stopping two planes from summing silently onto
+one row set once the phantom rows were dropped. So the route refused
+``n_z > 1`` and named the in-memory converters as the ones that wrote
+depth. They are gone, and this route writes depth the way they did: one
+table per plane by default, the whole volume as one table with
+``handle_3d=True``. ``test_two_planes_stay_apart`` below is the
+measurement that used to justify the refusal, now asserting the separation.
 """
 
 from pathlib import Path
 
+import anndata
 import numpy as np
 import pytest
-import zarr
+import spatialdata
 
 from tests.fixtures.mock_msi_generator import MockMSIConfig, MockMSIReader
 from thyra.converters.spatialdata.streaming_converter import (
@@ -60,12 +53,13 @@ def _config(n_z: int = 1, sparsity: float = 0.0) -> MockMSIConfig:
     )
 
 
-def _converter(output_path: Path, config: MockMSIConfig):
+def _converter(output_path: Path, config: MockMSIConfig, **kwargs):
     return StreamingSpatialDataConverter(
         reader=MockMSIReader(config),
         output_path=output_path,
         dataset_id="mock",
         pixel_size_um=10.0,
+        **kwargs,
     )
 
 
@@ -77,15 +71,8 @@ def _plane_totals(config: MockMSIConfig) -> dict:
     return totals
 
 
-def _x_total(store_path: Path) -> float:
-    """Sum of the stored matrix, read straight off the CSC data array."""
-    group = zarr.open_group(str(store_path / "tables" / "mock_z0"), mode="r")
-    return float(np.asarray(group["X"]["data"]).sum())
-
-
-def _n_obs(store_path: Path) -> int:
-    group = zarr.open_group(str(store_path / "tables" / "mock_z0"), mode="r")
-    return int(group["obs"]["x"].shape[0])
+def _table(store_path: Path, key: str = "mock_z0") -> anndata.AnnData:
+    return anndata.read_zarr(store_path / "tables" / key)
 
 
 def test_pcs_drops_the_empty_grid_positions(tmp_path):
@@ -96,27 +83,25 @@ def test_pcs_drops_the_empty_grid_positions(tmp_path):
     converter = _converter(tmp_path / "sparse.zarr", config)
     assert converter.convert() is True
 
-    assert _n_obs(tmp_path / "sparse.zarr") == n_spectra
+    assert _table(tmp_path / "sparse.zarr").n_obs == n_spectra
 
 
 def test_pcs_keeps_the_grid_index_as_the_row_identity(tmp_path):
-    """Dropped rows leave gaps in ``instance_id``, as they do elsewhere.
+    """Dropped rows leave gaps in ``instance_id``, as they always did.
 
-    ``_drop_empty_pixels`` subsets an AnnData, so on the other paths the
-    surviving rows keep the ``instance_id`` they were built with -- the
-    grid index, with holes where the empties were. A consumer can still
-    recover the position from it. The PCS path compacts row *offsets*,
-    because a matrix has to be dense in its rows, and must not compact
-    the identities with them.
+    The surviving rows keep the ``instance_id`` they were built with --
+    the grid index, with holes where the empties were -- so a consumer
+    can still recover the position from it. The row *offsets* compact,
+    because a matrix has to be dense in its rows; the identities do not.
     """
     config = _config(sparsity=0.25)
     out = tmp_path / "sparse.zarr"
     assert _converter(out, config).convert() is True
 
-    group = zarr.open_group(str(out / "tables" / "mock_z0"), mode="r")
-    instance_ids = [int(v) for v in np.asarray(group["obs"]["instance_id"])]
-    x_values = np.asarray(group["obs"]["x"])
-    y_values = np.asarray(group["obs"]["y"])
+    table = _table(out)
+    instance_ids = [int(v) for v in table.obs.index]
+    x_values = np.asarray(table.obs["x"])
+    y_values = np.asarray(table.obs["y"])
 
     # Gaps, not 0..n-1.
     assert instance_ids != list(range(len(instance_ids)))
@@ -130,61 +115,99 @@ def test_fully_populated_grid_is_unchanged(tmp_path):
     out = tmp_path / "dense.zarr"
     assert _converter(out, config).convert() is True
 
-    assert _n_obs(out) == _N_X * _N_Y
+    assert _table(out).n_obs == _N_X * _N_Y
 
 
-def test_streaming_refuses_more_than_one_z_plane(tmp_path):
-    """The streaming route refuses depth, and writes nothing.
+def test_two_planes_stay_apart(tmp_path):
+    """Each plane's table holds that plane's intensity and nothing else.
 
-    Before this it failed too, but only after two full passes over the
-    spectra, and with a pandas length complaint ("Length of values (9)
-    does not match length of index (18)") that says nothing about what
-    to do instead.
-    """
-    out = tmp_path / "z2.zarr"
-    converter = _converter(out, _config(n_z=2))
-
-    assert converter.convert() is False
-    assert not out.exists(), "a refused conversion must leave no store behind"
-
-
-def test_the_refusal_names_the_count_and_the_alternative(tmp_path):
-    """The message, checked where it is raised rather than where it is logged.
-
-    ``convert()`` catches everything and returns False, so the text only
-    reaches a log record; asserting on the exception keeps this
-    independent of whatever log configuration the rest of the suite has
-    left behind.
-    """
-    converter = _converter(tmp_path / "z2.zarr", _config(n_z=3))
-    converter._initialize_conversion()
-
-    with pytest.raises(ValueError, match=r"single z plane.*declares 3"):
-        converter._refuse_multiple_z_planes()
-
-
-def test_dropping_rows_alone_would_merge_z_planes(tmp_path):
-    """Why the refusal ships in the same commit as the drop.
-
-    With the refusal disabled, a two-plane dataset now *converts*, and
-    the store it produces holds both planes summed onto one set of rows
-    -- ``y * n_x + x`` ignores z, and the obs-length mismatch that used
-    to make that crash is gone once the empty rows go.
-
-    Asserted as a total rather than an error, because that is the shape
-    of the failure: the numbers are all plausible, nothing warns, and
-    the only tell is that the intensity of two planes is sitting in one.
+    This is the measurement that used to justify refusing ``n_z > 1``:
+    with a row index of ``y * n_x + x`` the two planes summed onto one
+    set of rows, every number stayed plausible, and only the total gave
+    it away. The same total now says the planes are apart.
     """
     config = _config(n_z=2)
     totals = _plane_totals(config)
     assert len(totals) == 2, "fixture must actually have two planes"
-    both_planes = totals[0] + totals[1]
 
-    out = tmp_path / "z2_unguarded.zarr"
-    converter = _converter(out, config)
-    converter._refuse_multiple_z_planes = lambda: None  # type: ignore[method-assign]
+    out = tmp_path / "z2.zarr"
+    assert _converter(out, config).convert() is True
 
-    assert converter.convert() is True, "the crash that used to stop this is gone"
-    assert _n_obs(out) == _N_X * _N_Y, "one plane's worth of rows"
-    assert _x_total(out) == pytest.approx(both_planes, rel=1e-9)
-    assert _x_total(out) != pytest.approx(totals[0], rel=1e-9)
+    sdata = spatialdata.read_zarr(str(out))
+    assert set(sdata.tables) == {"mock_z0", "mock_z1"}
+    assert set(sdata.shapes) == {"mock_z0_pixels", "mock_z1_pixels"}
+    assert set(sdata.images) == {"mock_z0_tic", "mock_z1_tic"}
+    for z in (0, 1):
+        table = _table(out, f"mock_z{z}")
+        assert table.n_obs == _N_X * _N_Y, "one plane's worth of rows"
+        assert float(table.X.sum()) == pytest.approx(totals[z], rel=1e-9)
+        assert float(np.asarray(sdata.images[f"mock_z{z}_tic"].data).sum()) == (
+            pytest.approx(totals[z], rel=1e-9)
+        )
+    assert totals[0] != pytest.approx(totals[1], rel=1e-9)
+
+
+def test_a_volume_carries_both_planes_with_a_z_term(tmp_path):
+    """``handle_3d=True``: one table, rows indexed with the z term.
+
+    Every plane's spectra are there, under the whole-volume grid index,
+    and ``obs`` says which plane each row sits on.
+    """
+    config = _config(n_z=2)
+    totals = _plane_totals(config)
+
+    out = tmp_path / "volume.zarr"
+    assert _converter(out, config, handle_3d=True).convert() is True
+
+    sdata = spatialdata.read_zarr(str(out))
+    assert set(sdata.tables) == {"mock"}
+    table = _table(out, "mock")
+    assert table.n_obs == _N_X * _N_Y * 2
+    assert float(table.X.sum()) == pytest.approx(totals[0] + totals[1], rel=1e-9)
+
+    z = np.asarray(table.obs["z"]).astype(int)
+    x = np.asarray(table.obs["x"]).astype(int)
+    y = np.asarray(table.obs["y"]).astype(int)
+    ids = np.asarray([int(v) for v in table.obs.index])
+    np.testing.assert_array_equal(ids, z * _N_X * _N_Y + y * _N_X + x)
+    for plane in (0, 1):
+        rows = table[z == plane]
+        assert float(rows.X.sum()) == pytest.approx(totals[plane], rel=1e-9)
+
+    volume = np.asarray(sdata.images["mock_tic"].data)
+    assert volume.shape == (1, 2, _N_Y, _N_X)
+
+
+class _PlaneStrippedReader(MockMSIReader):
+    """Declares two planes but acquires only the first."""
+
+    def iter_spectra(self, batch_size=None):
+        for coords, mzs, intensities in super().iter_spectra(batch_size):
+            if coords[2] == 0:
+                yield coords, mzs, intensities
+
+
+def test_a_plane_with_no_spectra_gets_no_table(tmp_path):
+    """An empty plane is left out rather than written as a 0-row table."""
+    out = tmp_path / "half.zarr"
+    converter = StreamingSpatialDataConverter(
+        reader=_PlaneStrippedReader(_config(n_z=2)),
+        output_path=out,
+        dataset_id="mock",
+        pixel_size_um=10.0,
+    )
+    assert converter.convert() is True
+
+    sdata = spatialdata.read_zarr(str(out))
+    assert set(sdata.tables) == {"mock_z0"}
+    assert set(sdata.shapes) == {"mock_z0_pixels"}
+    assert set(sdata.images) == {"mock_z0_tic"}
+
+
+def test_the_scratch_directory_is_gone_afterwards(tmp_path):
+    """The memmaps live next to the output and must not outlive the write."""
+    out = tmp_path / "clean.zarr"
+    assert _converter(out, _config()).convert() is True
+
+    leftovers = [p for p in tmp_path.iterdir() if p.name.startswith(".thyra_")]
+    assert not leftovers, leftovers

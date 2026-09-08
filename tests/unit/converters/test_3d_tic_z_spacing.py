@@ -50,10 +50,10 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
+from thyra.converters.spatialdata import SpatialDataConverter
 from thyra.converters.spatialdata.base_spatialdata_converter import (
     SPATIALDATA_AVAILABLE,
 )
-from thyra.converters.spatialdata.spatialdata_3d_converter import SpatialData3DConverter
 from thyra.core.base_converter import ZSpacingSource
 from thyra.core.base_extractor import MetadataExtractor
 from thyra.core.base_reader import BaseMSIReader
@@ -178,9 +178,10 @@ def _convert(
 ) -> Path:
     """Convert one probe grid through the 3D route; hand back the store root."""
     output_path = tmp_path / "out.zarr"
-    converter = SpatialData3DConverter(
+    converter = SpatialDataConverter(
         _VolumeProbeReader(dimensions, z_spacing_um=reader_z_spacing_um),
         output_path,
+        handle_3d=True,
         dataset_id=_DATASET_ID,
         pixel_size_um=_PIXEL_SIZE_UM,
         z_spacing_um=z_spacing_um,
@@ -457,9 +458,10 @@ class TestRejectedInput:
         """Caught in the constructor, before anything is read or written."""
         for bad in (0.0, -1.0, -0.5):
             with pytest.raises(ValueError, match="z_spacing_um must be positive"):
-                SpatialData3DConverter(
+                SpatialDataConverter(
                     _VolumeProbeReader((_N_X, _N_Y, _N_Z)),
                     tmp_path / "rejected.zarr",
+                    handle_3d=True,
                     dataset_id=_DATASET_ID,
                     pixel_size_um=_PIXEL_SIZE_UM,
                     z_spacing_um=bad,
@@ -468,9 +470,10 @@ class TestRejectedInput:
     def test_nothing_is_written_when_it_is_rejected(self, tmp_path):
         output = tmp_path / "rejected.zarr"
         with pytest.raises(ValueError):
-            SpatialData3DConverter(
+            SpatialDataConverter(
                 _VolumeProbeReader((_N_X, _N_Y, _N_Z)),
                 output,
+                handle_3d=True,
                 dataset_id=_DATASET_ID,
                 pixel_size_um=_PIXEL_SIZE_UM,
                 z_spacing_um=-1.0,

@@ -502,22 +502,14 @@ def test_discard_removes_the_declared_element(rgb_tiff: Path, tmp_path: Path):
 # ---- the converter routes ----------------------------------------------
 
 
-def _convert(route: str, reader, output_path: Path):
-    from thyra.converters.spatialdata.spatialdata_2d_converter import (
-        SpatialData2DConverter,
-    )
+def _convert(reader, output_path: Path):
     from thyra.converters.spatialdata.streaming_converter import (
         StreamingSpatialDataConverter,
     )
 
-    if route == "2d":
-        converter = SpatialData2DConverter(
-            reader, output_path, dataset_id="ds", pixel_size_um=10.0
-        )
-    else:
-        converter = StreamingSpatialDataConverter(
-            reader, output_path, dataset_id="ds", pixel_size_um=10.0, use_csc=True
-        )
+    converter = StreamingSpatialDataConverter(
+        reader, output_path, dataset_id="ds", pixel_size_um=10.0, use_csc=True
+    )
     return converter, converter.convert()
 
 
@@ -530,13 +522,10 @@ def _mock_reader(*optical_paths: Path):
     )
 
 
-@pytest.mark.parametrize("route", ["2d", "streaming"])
-def test_converters_stream_the_pixels_after_the_write(
-    rgb_tiff: Path, tmp_path: Path, route
-):
+def test_converters_stream_the_pixels_after_the_write(rgb_tiff: Path, tmp_path: Path):
     """Both write paths declare the placeholder, then fill it: the store has the pixels."""
-    output_path = tmp_path / f"{route}.zarr"
-    converter, success = _convert(route, _mock_reader(rgb_tiff), output_path)
+    output_path = tmp_path / "rgb.zarr"
+    converter, success = _convert(_mock_reader(rgb_tiff), output_path)
     assert success is True
     # Nothing is left waiting: every declared image was streamed.
     assert converter._pending_optical_images == {}
@@ -564,14 +553,13 @@ def truncated_tiff(tmp_path: Path) -> Path:
     return path
 
 
-@pytest.mark.parametrize("route", ["2d", "streaming"])
 def test_unreadable_pixels_drop_the_image_not_the_conversion(
-    truncated_tiff: Path, tmp_path: Path, route, caplog
+    truncated_tiff: Path, tmp_path: Path, caplog
 ):
     """A TIFF that cannot be decoded is skipped with a warning, as it always was."""
-    output_path = tmp_path / f"{route}.zarr"
+    output_path = tmp_path / "truncated.zarr"
     with caplog.at_level(logging.WARNING):
-        converter, success = _convert(route, _mock_reader(truncated_tiff), output_path)
+        converter, success = _convert(_mock_reader(truncated_tiff), output_path)
     assert success is True
     assert converter._pending_optical_images == {}
     assert any(
@@ -596,9 +584,7 @@ def test_same_name_keeps_the_last_file(tmp_path: Path, caplog):
     tifffile.imwrite(str(second), last)
     output_path = tmp_path / "out.zarr"
     with caplog.at_level(logging.WARNING):
-        converter, success = _convert(
-            "streaming", _mock_reader(first, second), output_path
-        )
+        converter, success = _convert(_mock_reader(first, second), output_path)
     assert success is True
     assert converter._pending_optical_images == {}
     assert any("is replaced by b_0000.tif" in r.message for r in caplog.records)

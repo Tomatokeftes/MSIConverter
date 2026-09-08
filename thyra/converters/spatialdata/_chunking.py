@@ -15,10 +15,9 @@ on the viewer. See the Ousia ADR docs/ADR-pyramid-tile-sharding.md.
 The raster policy above is passed per-array. The TABLE policy below cannot be:
 ``SpatialData.write`` hands the table straight to ``anndata.write_elem`` and
 exposes no ``dataset_kwargs`` seam, so the only supported lever is zarr's own
-config. ``table_write_config()`` is that lever, and every writer that reaches
-zarr through spatialdata (the 2D, 3D and streaming-COO converters, all via
-``_save_output``) must hold it open across the write. The streaming-PCS writer
-hand-rolls its ``create_array`` calls and sizes them itself.
+config. ``table_write_config()`` is that lever, and the one writer that
+reaches zarr through spatialdata (``BaseSpatialDataConverter._save_output``,
+which every table goes through) must hold it open across the write.
 """
 
 from contextlib import contextmanager

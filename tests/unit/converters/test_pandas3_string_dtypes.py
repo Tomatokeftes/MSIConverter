@@ -14,13 +14,10 @@ anndata's own handling instead of Thyra's workaround.
 They are still worth keeping.  The rest of the suite runs with pandas' default
 inference, so nothing else in CI would notice a regression here; every test in
 this module turns ``future.infer_string`` on for its duration and restores it
-afterwards.  Both write paths are covered: the in-memory converter (the
-default for anything under the 10 GB streaming threshold, i.e. most
-conversions) and the streaming PCS path, which hand-writes the AnnData
-layout straight to Zarr and never reaches anndata's writer at all.
+afterwards.  Every table reaches anndata's writer now -- the streaming path
+used to hand-write the AnnData layout straight to Zarr and sidestep it, which
+is why this module once covered two paths.
 """
-
-from typing import Callable, Dict
 
 import numpy as np
 import pandas as pd
@@ -30,7 +27,6 @@ from tests.fixtures.mock_msi_generator import MockMSIConfig, MockMSIReader
 from thyra.converters.spatialdata.base_spatialdata_converter import (
     SPATIALDATA_AVAILABLE,
 )
-from thyra.converters.spatialdata.spatialdata_2d_converter import SpatialData2DConverter
 from thyra.converters.spatialdata.streaming_converter import (
     StreamingSpatialDataConverter,
 )
@@ -65,18 +61,7 @@ def _small_config() -> MockMSIConfig:
     )
 
 
-def _in_memory(output_path):
-    """The default (``streaming=False``) converter."""
-    return SpatialData2DConverter(
-        reader=MockMSIReader(_small_config()),
-        output_path=output_path,
-        dataset_id="mock",
-        pixel_size_um=10.0,
-    )
-
-
-def _streaming_pcs(output_path):
-    """``streaming=True, use_csc=True`` -- the hand-written Zarr layout."""
+def _converter(output_path):
     return StreamingSpatialDataConverter(
         reader=MockMSIReader(_small_config()),
         output_path=output_path,
@@ -86,16 +71,10 @@ def _streaming_pcs(output_path):
     )
 
 
-WRITE_PATHS: Dict[str, Callable] = {
-    "in_memory": _in_memory,
-    "streaming_pcs": _streaming_pcs,
-}
-
-
 def _string_obs_table() -> pd.DataFrame:
     """An obs table shaped like the converters build it, with pandas 3 dtypes.
 
-    Mirrors what ``_create_coordinates_dataframe`` plus the ``region`` /
+    Mirrors what the converter's obs builder plus the ``region`` /
     ``instance_key`` fixups produce: a string index, a string column, a
     string-backed categorical with more than one category, and numeric
     columns that must be left alone.
@@ -111,19 +90,15 @@ def _string_obs_table() -> pd.DataFrame:
     )
 
 
-@pytest.mark.parametrize("path_name", list(WRITE_PATHS))
-def test_write_path_converts_under_infer_string(tmp_path, path_name):
-    """Both write paths must convert with pandas 3 string dtypes.
+def test_conversion_under_infer_string(tmp_path):
+    """The converter must write with pandas 3 string dtypes.
 
-    ``in_memory`` failed here before anndata 0.13 without the coercion.
+    The writer route failed here before anndata 0.13 without the coercion.
     """
-    # Own output path per case: reusing one filename makes the second
-    # conversion fail with "Destination already exists", which reads like a
-    # real regression.
-    output_path = tmp_path / f"{path_name}.zarr"
+    output_path = tmp_path / "infer_string.zarr"
 
-    converter = WRITE_PATHS[path_name](output_path)
-    assert converter.convert() is True, f"{path_name} conversion failed"
+    converter = _converter(output_path)
+    assert converter.convert() is True, "conversion failed"
 
     import spatialdata
 
@@ -143,7 +118,7 @@ def test_written_store_reads_back_with_pandas_string_index(tmp_path):
     leak ``object`` dtypes into the stored layout.
     """
     output_path = tmp_path / "readback.zarr"
-    assert _in_memory(output_path).convert() is True
+    assert _converter(output_path).convert() is True
 
     import spatialdata
 

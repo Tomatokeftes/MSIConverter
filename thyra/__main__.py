@@ -444,7 +444,6 @@ class GroupedCommand(click.Command):
             "--resample-gap-tolerance",
             "--tof-law",
         ],
-        "Performance": ["--streaming"],
         "imzML-specific": ["--spectrum-type"],
         "Bruker-specific": [
             "--use-recalibrated",
@@ -569,9 +568,9 @@ class GroupedCommand(click.Command):
         "When the source carries ion mobility per pixel rather than as a "
         "shared feature list (Bruker TDF), bin the point cloud onto a common "
         "mobility grid and write the same mobility-resolved sibling table "
-        "(default: disabled; fed from the summed table's own passes on the "
-        "streaming route, and a much larger table, built out of core so any "
-        "acquisition fits). Its marginal over channels reproduces the summed "
+        "(default: disabled; fed from the summed table's own passes, and a "
+        "much larger table, built out of core so any acquisition fits). Its "
+        "marginal over channels reproduces the summed "
         "table exactly under the default --tdf-spectrum scan_sum"
     ),
 )
@@ -583,9 +582,9 @@ class GroupedCommand(click.Command):
         "mobility slices (Bruker PASEF), also write them split apart as a "
         "demultiplexed sibling table next to the summed MSI table "
         "(default: enabled, since the summed spectrum of such a pixel mixes "
-        "unrelated fragment spectra; fed from the summed table's own passes "
-        "on the streaming route, nothing on a source that is not MS/MS). The "
-        "split adds back up to the summed table "
+        "unrelated fragment spectra; fed from the summed table's own passes, "
+        "nothing on a source that is not MS/MS). The split adds back up to "
+        "the summed table "
         "exactly under the default --tdf-spectrum scan_sum"
     ),
 )
@@ -645,7 +644,11 @@ class GroupedCommand(click.Command):
     "--streaming",
     type=click.Choice(["auto", "true", "false"]),
     default="auto",
-    help="Streaming mode for large datasets (default: auto)",
+    hidden=True,
+    help=(
+        "Deprecated no-op: every conversion streams since v3.23. Accepted "
+        "so existing scripts keep running."
+    ),
 )
 @click.option(
     "--optimize-chunks",

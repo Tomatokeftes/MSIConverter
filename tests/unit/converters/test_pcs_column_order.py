@@ -1,8 +1,8 @@
-"""The streaming PCS matrix is canonical whatever order the reader yields.
+"""The stored matrix is canonical whatever order the reader yields.
 
-``_scatter_spectra_direct`` writes a column's entries in the order the
-reader hands its pixels over, and ``_write_csc_arrays_to_zarr`` copies
-the memmaps to the store unchanged. A raster read makes every column's
+The scatter pass writes a column's entries in the order the reader
+hands its pixels over, and the writer stores the memmaps as they are.
+A raster read makes every column's
 row indices ascending for free, and every synthetic reader in this suite
 reads in raster order -- so nothing here could see that a reader with any
 other order produced a matrix scipy reports as non-canonical
@@ -21,9 +21,8 @@ bounded chunk of columns at a time before the copy. These tests pin:
 
 * a reader yielding its pixels in shuffled order produces a canonical
   matrix, checked column by column and not only through scipy's flag;
-* that matrix equals, value for value, both the in-memory route's and
-  the raster-order streaming write's -- the sort permutes within columns
-  and touches nothing else;
+* that matrix equals, value for value, the raster-order write's -- the
+  sort permutes within columns and touches nothing else;
 * a raster-order reader is not sorted at all (the fast path stays fast).
 
 The chunked sort itself is the sibling tables' ``sort_csc_columns`` and
@@ -45,8 +44,6 @@ from numpy.typing import NDArray
 from scipy import sparse
 
 from tests.fixtures.mock_msi_generator import MockMSIConfig, MockMSIReader
-from thyra.converters.spatialdata import streaming_converter as mod
-from thyra.converters.spatialdata.spatialdata_2d_converter import SpatialData2DConverter
 from thyra.converters.spatialdata.streaming_converter import (
     SPATIALDATA_AVAILABLE,
     StreamingSpatialDataConverter,
@@ -114,17 +111,6 @@ def _convert_streaming(out: Path, reader: MockMSIReader) -> Path:
     return out
 
 
-def _convert_in_memory(out: Path, reader: MockMSIReader) -> Path:
-    converter = SpatialData2DConverter(
-        reader=reader,
-        output_path=out,
-        dataset_id=DATASET_ID,
-        pixel_size_um=10.0,
-    )
-    assert converter.convert() is True
-    return out
-
-
 def _stored_csc(store: Path) -> sparse.csc_matrix:
     """The table's X as written, read straight off the zarr arrays."""
     group = zarr.open_group(str(store / "tables" / TABLE_KEY), mode="r")
@@ -152,18 +138,6 @@ def _columns_strictly_ascending(matrix: sparse.csc_matrix) -> bool:
     boundaries = boundaries[(boundaries >= 0) & (boundaries < steps.size)]
     steps[boundaries] = 1
     return bool(np.all(steps > 0))
-
-
-def _dense_by_instance(store: Path) -> Tuple[np.ndarray, list[str]]:
-    """The table densified, with rows in ``instance_id`` order."""
-    import spatialdata
-
-    table = spatialdata.read_zarr(str(store)).tables[TABLE_KEY]
-    matrix = table.X
-    dense = matrix.toarray() if sparse.issparse(matrix) else np.asarray(matrix)
-    ids = [str(i) for i in table.obs.index]
-    order = np.argsort(np.asarray(ids, dtype=np.int64))
-    return dense[order], [ids[i] for i in order]
 
 
 # --- the fixture cannot decay into a tautology --------------------------
@@ -219,48 +193,3 @@ def test_shuffled_arrival_matches_the_raster_write_exactly(tmp_path):
     np.testing.assert_array_equal(shuffled.indptr, raster.indptr)
     np.testing.assert_array_equal(shuffled.indices, raster.indices)
     np.testing.assert_array_equal(shuffled.data, raster.data)
-
-
-def test_shuffled_arrival_equals_the_in_memory_route(tmp_path):
-    """Pixel for pixel, value for value, the two routes agree.
-
-    Compared densely, aligned on ``instance_id``: the in-memory route
-    drops explicit zeros where the streaming route keeps them, so neither
-    ``nnz`` nor a positional row lookup would be a fair comparison.
-    """
-    streamed, streamed_ids = _dense_by_instance(
-        _convert_streaming(tmp_path / "shuffled.zarr", ShuffledMockMSIReader(_config()))
-    )
-    in_memory, in_memory_ids = _dense_by_instance(
-        _convert_in_memory(tmp_path / "in_memory.zarr", MockMSIReader(_config()))
-    )
-
-    assert streamed_ids == in_memory_ids
-    assert streamed.shape == in_memory.shape
-    np.testing.assert_array_equal(streamed, in_memory)
-
-
-# --- the fast path stays fast ---------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "reader_type,expected_sorts",
-    [(MockMSIReader, 0), (ShuffledMockMSIReader, 1)],
-    ids=["raster", "shuffled"],
-)
-def test_only_an_out_of_order_arrival_is_sorted(
-    tmp_path, monkeypatch, reader_type, expected_sorts
-):
-    """A raster read is canonical as scattered and must not pay for a sort."""
-    calls: list = []
-    real_sort = mod.sort_csc_columns
-
-    def _counting_sort(*args, **kwargs):
-        calls.append(args)
-        return real_sort(*args, **kwargs)
-
-    monkeypatch.setattr(mod, "sort_csc_columns", _counting_sort)
-    store = _convert_streaming(tmp_path / "out.zarr", reader_type(_config()))
-
-    assert len(calls) == expected_sorts
-    assert _columns_strictly_ascending(_stored_csc(store))

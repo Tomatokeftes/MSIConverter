@@ -1,87 +1,163 @@
 # thyra/converters/spatialdata/streaming_converter.py
 
-"""Streaming SpatialData converter with direct Zarr write.
+"""The MSI-to-SpatialData converter: two passes, every table built out of core.
 
-This converter processes MSI data in a memory-efficient streaming manner:
-- Two-pass approach: count entries per column, then scatter straight into
-  memory-mapped CSC arrays
-- Writes directly to the final output without a scipy matrix in memory
-- Writes CSC only; ask the in-memory converter for CSR
+- Pass 1 counts entries per m/z column and records which grid positions
+  carry a spectrum; pass 2 scatters straight into memory-mapped CSC
+  arrays (``csc_assembly.CscAssembly``, shared with the sibling tables).
+- Each table is an AnnData over those memmaps, parsed by spatialdata's
+  ``TableModel`` and written by spatialdata's own writer, so the matrix is
+  never a scipy object in RAM and the on-disk layout is anndata's.
+- One table per z plane (``handle_3d=False``) or one for the whole volume
+  (``handle_3d=True``), the way the in-memory converters it replaced wrote
+  them.
 """
 
-import gc
 import logging
-import shutil
-import warnings
-from pathlib import Path
 from typing import Any, Dict, Generator, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
-import zarr
 from numpy.typing import NDArray
 from tqdm import tqdm
 
 from ...resampling import ResamplingMethod
-from ._chunking import table_write_config
-from .base_spatialdata_converter import (
-    SPATIALDATA_AVAILABLE,
-    BaseSpatialDataConverter,
-    _suppress_upstream_warnings,
-)
-from .csc_assembly import sort_csc_columns
+from .base_spatialdata_converter import SPATIALDATA_AVAILABLE, BaseSpatialDataConverter
+from .csc_assembly import CscAssembly
 
 if SPATIALDATA_AVAILABLE:
-    import geopandas as gpd
     import xarray as xr
-    from spatialdata import SpatialData
-    from spatialdata.models import Image2DModel, ShapesModel
-    from spatialdata.transformations import Affine, Identity, Scale
+    from anndata import AnnData
+    from spatialdata.models import Image2DModel, Image3DModel, TableModel
+    from spatialdata.transformations import Affine, Scale
 
 logger = logging.getLogger(__name__)
 
-# Elements per chunk when building the string index arrays. Bounds the
-# transient cost of formatting to this many entries rather than the whole
-# axis; measured at 17.5 bytes per entry at peak against 88 for a one-shot
-# build, and 32 for an unchunked vectorised one.
-_INDEX_BUILD_CHUNK = 1_000_000
+
+class _TableUnit:
+    """One table of the store in the making: a z plane, or the whole volume.
+
+    Holds what the two passes accumulate for it -- the column counts and
+    the scattered matrix (``assembly``), which grid positions carry a
+    spectrum (``occupancy``) and the TIC raster -- and, once pass 1 is
+    done, the row layout: ``kept_grid`` is the grid index of each table
+    row and ``row_of_grid`` the table row of each grid position (-1 when
+    dropped as empty).
+
+    Args:
+        key: The table's element key (``{id}_z{z}`` or ``{id}``).
+        region_key: The shapes element the table annotates.
+        plane: The z plane this table covers, or ``None`` for a volume.
+        n_grid: Grid positions the table may hold rows for.
+        n_cols: Length of the mass axis.
+        tic_shape: ``(n_y, n_x)`` for a plane, ``(n_z, n_y, n_x)`` for a
+            volume.
+    """
+
+    def __init__(
+        self,
+        key: str,
+        region_key: str,
+        plane: Optional[int],
+        n_grid: int,
+        n_cols: int,
+        tic_shape: Tuple[int, ...],
+    ) -> None:
+        """Allocate the pass-1 accumulators; the matrix comes after pass 1."""
+        self.key = key
+        self.region_key = region_key
+        self.plane = plane
+        self.n_grid = int(n_grid)
+        # Every m/z bin is a column, occupied or not: the summed table's
+        # var is the mass axis, and an empty column is still a bin.
+        self.assembly = CscAssembly(n_cols, n_rows=0, keep_empty_columns=True)
+        self.occupancy = np.zeros(self.n_grid, dtype=bool)
+        self.tic = np.zeros(tic_shape, dtype=np.float64)
+        self.kept_grid: Optional[NDArray[np.int64]] = None
+        self.row_of_grid: Optional[NDArray[np.int64]] = None
+        self.n_rows = 0
+
+    def count(
+        self, grid: int, mz_indices: NDArray[np.int_], values: NDArray[np.float64]
+    ) -> None:
+        """Pass 1: one spectrum at grid position ``grid``."""
+        self.assembly.count(grid, mz_indices)
+        self.occupancy[grid] = True
+        self.tic.reshape(-1)[grid] = values.sum()
+
+    def finish_counting(self) -> None:
+        """Decide which grid positions become rows, and in what order.
+
+        Kept rows stay in grid order and keep their **grid index** as
+        ``instance_id``: the index has gaps where the empty positions
+        were, so a consumer can still recover the position from it. Only
+        the row *offsets* are compacted, because the matrix has to be
+        dense in its rows. Acquisitions are polygon-shaped and the grid
+        is their bounding box, so the corners are the usual casualties
+        (#88; on real ``pea.imzML`` 4,686 of 17,423 positions).
+        """
+        self.kept_grid = np.flatnonzero(self.occupancy).astype(np.int64)
+        self.row_of_grid = np.full(self.n_grid, -1, dtype=np.int64)
+        self.row_of_grid[self.kept_grid] = np.arange(
+            self.kept_grid.size, dtype=np.int64
+        )
+        self.n_rows = int(self.kept_grid.size)
+        self.assembly.n_rows = self.n_rows
+        self.assembly.finish_counting()
+        n_dropped = self.n_grid - self.n_rows
+        if n_dropped:
+            logger.info(
+                "%s: dropping %d empty pixel rows from obs (%d non-empty pixels "
+                "remain). These positions are inside the bounding box but "
+                "outside the acquisition polygon.",
+                self.key,
+                n_dropped,
+                self.n_rows,
+            )
 
 
 class StreamingSpatialDataConverter(BaseSpatialDataConverter):
-    """Memory-efficient streaming converter for MSI data to SpatialData format.
+    """Convert MSI data to SpatialData in two passes over the source.
 
-    One route, two passes over the reader -- **PCS** (Pre-calculated
-    Scatter). Pass 1 counts entries per column, pass 2 scatters straight
-    into memory-mapped CSC arrays and streams those to Zarr. The matrix is
-    never a scipy object in RAM, and the table's Zarr layout is written by
-    hand rather than through anndata (see :meth:`_write_csc_arrays_to_zarr`).
+    **Pass 1** resamples every spectrum onto the common mass axis, counts
+    the entries each m/z column will hold and notes which grid positions
+    carry a spectrum at all. **Pass 2** resamples every spectrum again --
+    the resampling is deterministic -- and scatters its values straight
+    to their final positions in memory-mapped CSC arrays. Each table is
+    then an AnnData over those memmaps and goes through spatialdata's
+    writer like any other element, so the matrix is never a scipy object
+    in RAM and nothing here composes a Zarr layout by hand.
 
-    There used to be a second route, COO (``use_csc=False``): count
-    non-zeros per row, write CSR components to a temporary Zarr, read them
-    back whole into a ``scipy.sparse.csr_matrix`` and ``.tocsc()`` it. It was
-    the default until v3.19 on the assumption that PCS bought memory safety
-    at a cost in speed. Measured on ``MockMSIReader``, peak process RSS
-    sampled at 20 ms, one subprocess per route, that trade did not exist:
+    Before v3.23 this was one of three converters. Two in-memory ones held
+    the matrix as COO triples for one pass and converted it at the end;
+    this one, the streaming route, hand-wrote the table's Zarr layout and
+    wrote a single plane. Measured on the real files in ``test_data/``,
+    warm, ``--no-optical``, before they were folded in (peak process RSS
+    over the whole process tree, sampled at 50 ms):
 
-    ===========  ==============  ==============
-    nnz          PCS             COO
-    ===========  ==============  ==============
-    16M          7.4 s / 540 MB  10.4 s / 655 MB
-    64M          35.6 s / 1.1 GB 58.5 s / 1.9 GB
-    ===========  ==============  ==============
+    ===================  ==========  ===================  ==================
+    dataset              spectra     one pass, in memory  two passes (this)
+    ===================  ==========  ===================  ==================
+    pea.imzML            12,737      12.2 s / 4.0 GB      15.7 s / 1.0 GB
+    bellini.imzML        (36M nnz)   8.3 s / 1.1 GB       10.8 s / 0.6 GB
+    TSF (33,800 px)      33,800      19.2 s / 5.1 GB      28.2 s / 1.3 GB
+    TDF PASEF (713 px)   713         10.7 s / 0.42 GB     10.0 s / 0.40 GB
+    ===================  ==========  ===================  ==================
 
-    Both routes iterated the reader twice, so the gap was the
-    materialise-then-convert step, and it widened with the dataset. The
-    route was removed once it had been the escape hatch for one release and
-    nothing reachable from ``convert()`` or the CLI could select it. The
-    table stays here because it is the reason there is one route and not
-    two.
+    The second pass costs a quarter to a third of a small conversion and
+    buys a peak memory that does not grow with the matrix; on a TDF the
+    fused sibling passes (D5) already made the two routes equal. Design
+    decision D11 records why the one-pass route went anyway.
 
-    Note what the numbers do *not* say: PCS is not "~200 MB regardless of
-    dataset size". Its RSS grew 540 MB -> 1.1 GB across those two points.
-    Much of that is memmap pages, which count toward working set while
-    remaining evictable -- but "bounded" was never true and is not claimed
-    here.
+    The route that preceded this one's second pass -- COO, count per row,
+    CSR to a temporary Zarr, ``.tocsc()`` in RAM -- was measured against
+    it on the mock reader before it was removed (D9): 7.4 s / 540 MB
+    against 10.4 s / 655 MB at 16M non-zeros, 35.6 s / 1.1 GB against
+    58.5 s / 1.9 GB at 64M. Note what those numbers do *not* say: peak
+    RSS is not "~200 MB regardless of dataset size". Much of it is memmap
+    pages, which count toward the working set while remaining evictable,
+    and the ``var`` frame is O(bins) -- but "bounded" was never true and
+    is not claimed here.
     """
 
     def __init__(
@@ -90,7 +166,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         use_csc: Union[bool, Literal["auto"]] = "auto",
         **kwargs,
     ):
-        """Initialize streaming converter.
+        """Initialize the converter.
 
         Args:
             *args: Arguments passed to BaseSpatialDataConverter
@@ -99,20 +175,22 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 ``True`` and ``"auto"`` both mean this route, which is the
                 only one; ``False`` used to select the COO route and now
                 raises, since there is nothing left for it to select.
-            **kwargs: Keyword arguments passed to BaseSpatialDataConverter
+            **kwargs: Keyword arguments passed to BaseSpatialDataConverter;
+                ``handle_3d=True`` writes one table for the whole volume,
+                the default writes one per z plane.
 
         Raises:
             ValueError: On ``use_csc=False``. There is one route left for it
                 to select, and falling through to it as if it had been
                 chosen is how a caller ends up with the opposite of what
-                they asked for.
+                they asked for. (``sparse_format`` is refused by the base
+                converter: CSC is the only layout, design decision D10.)
 
         Note:
             Intensity thresholding (filtering noise below a minimum value) is
             handled at the reader level via the `intensity_threshold` parameter
             passed to the reader constructor.
         """
-        kwargs["handle_3d"] = False  # Force 2D mode for now
         super().__init__(*args, **kwargs)
 
         if use_csc is False:
@@ -132,7 +210,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         )
 
     def _suppress_reader_progress(self) -> None:
-        """Suppress progress output from reader during streaming passes."""
+        """Suppress progress output from reader during the passes."""
         setattr(self.reader, "_quiet_mode", True)
 
     def _estimate_output_size_gb(self) -> float:
@@ -190,138 +268,18 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
 
         return size_gb
 
-    def convert(self) -> bool:
-        """Stream-convert MSI data to SpatialData format.
-
-        Overrides the base convert() method: the table is scattered into
-        memmapped CSC arrays and streamed to Zarr, never held as a scipy
-        matrix (see the class docstring).
-
-        Returns:
-            True if conversion was successful, False otherwise
-        """
-        try:
-            # Initialize (loads metadata, mass axis, etc.)
-            self._initialize_conversion()
-            self._refuse_multiple_z_planes()
-
-            # Diagnostic only -- nothing below depends on it. Called after
-            # _initialize_conversion() so it reports the built axis instead
-            # of guessing at it.
-            self._estimate_output_size_gb()
-
-            result = self._convert_to_csc_no_cache()
-            logger.info(
-                f"Zero-copy CSC conversion complete: {result['total_nnz']:,} non-zeros"
-            )
-            return True
-
-        except Exception as e:
-            logger.error(f"Error during zero-copy conversion: {e}")
-            import traceback
-
-            logger.error(f"Detailed traceback:\n{traceback.format_exc()}")
-            return False
-
-        finally:
-            # Scratch cleanup must run on EVERY exit path: success,
-            # exception, and KeyboardInterrupt. The route that preceded
-            # this one released its temp directory on the success path
-            # only, and a failure mid-conversion (most commonly OOM or a
-            # downstream Zarr write error) leaked it -- 79.5 GiB
-            # accumulated in one user's system temp before a manual sweep.
-            self._release_sibling_scratch()
-            self.reader.close()
-
-    def _refuse_multiple_z_planes(self) -> None:
-        """Refuse a multi-plane acquisition, which this route cannot write.
-
-        ``__init__`` forces ``handle_3d = False`` and the write path is
-        single-slice throughout: the table is named ``_z0``, the TIC image
-        is ``(n_y, n_x)``, the shapes are one polygon per (x, y), and obs
-        is built from the kept grid positions of one plane. Only the matrix
-        was ever sized ``n_x * n_y * n_z``, so ``n_z > 1`` has always ended
-        in an obs-length mismatch ("Length of values (9) does not match
-        length of index (18)"). Nothing has ever converted.
-
-        Raising here is not a new restriction, then; it names the
-        restriction instead of letting it surface as an arithmetic
-        complaint from anndata two passes later.
-
-        It is also load-bearing rather than cosmetic. The scatter indexes
-        rows by ``y * n_x + x`` with no ``z`` term. The obs-length mismatch
-        is the *only* thing that stops that: now that the empty rows are
-        dropped the lengths would line up, and a two-plane file would
-        convert cleanly with both planes summed onto one. A loud failure
-        would have become a silent wrong answer. Use the 2D or 3D
-        converter, both of which handle depth properly.
-
-        Raises:
-            ValueError: If the dataset declares more than one z plane.
-        """
-        if self._dimensions is None:
-            raise ValueError("Dimensions are not initialized")
-
-        n_z = self._dimensions[2]
-        if n_z > 1:
-            raise ValueError(
-                f"The streaming converter writes a single z plane, but this "
-                f"dataset declares {n_z}. Use SpatialData2DConverter (one "
-                f"table per plane) or SpatialData3DConverter (one volume)."
-            )
-
-    def _init_region_accumulators(self, n_cols: int) -> Tuple[
-        Optional[Dict[tuple, int]],
-        Optional[Dict[int, NDArray[np.float64]]],
-        Optional[Dict[int, int]],
-    ]:
-        """Initialise per-region accumulation structures.
-
-        Returns:
-            (region_map, region_total, region_count) -- all None when no
-            region map is available.
-        """
-        region_map = self._region_map if hasattr(self, "_region_map") else None
-        if region_map is None:
-            return None, None, None
-        unique_regions = sorted(set(region_map.values()))
-        region_total = {r: np.zeros(n_cols, dtype=np.float64) for r in unique_regions}
-        region_count: Dict[int, int] = {r: 0 for r in unique_regions}
-        return region_map, region_total, region_count
-
-    @staticmethod
-    def _accumulate_region(
-        region_map: Dict[tuple, int],
-        region_total: Dict[int, NDArray[np.float64]],
-        region_count: Dict[int, int],
-        x: int,
-        y: int,
-        mz_indices: NDArray[np.int_],
-        resampled_ints: NDArray[np.float64],
-    ) -> None:
-        """Accumulate spectrum into the appropriate region bucket."""
-        rn = region_map.get((x, y), -1)
-        if rn in region_total:
-            np.add.at(region_total[rn], mz_indices, resampled_ints)
-            region_count[rn] += 1
-
-    @staticmethod
-    def _compute_region_averages(
-        region_total: Optional[Dict[int, NDArray[np.float64]]],
-        region_count: Optional[Dict[int, int]],
-    ) -> Optional[Dict[str, NDArray[np.float64]]]:
-        """Compute per-region mean spectra from accumulators."""
-        if region_total is None or region_count is None:
-            return None
-        return {
-            str(r): total / max(region_count.get(r, 0), 1)
-            for r, total in region_total.items()
-        }
+    # ------------------------------------------------------------------
+    # The passes
+    # ------------------------------------------------------------------
 
     def _process_spectrum(
         self, mzs: np.ndarray, intensities: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """Process a single spectrum - resample and return indices/values.
+        """Resample one spectrum onto the axis: ``(bin indices, values)``.
+
+        The indices are unique and ascending on every path -- what
+        :class:`CscAssembly` requires of a row -- and carry no zeros.
+        Deterministic, which is what lets pass 2 reproduce pass 1.
 
         Note: Intensity thresholding is handled at the reader level before data
         reaches this method. This method only handles resampling and zero filtering.
@@ -336,9 +294,17 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         if not self._resampling_config:
             # No resampling - map m/z values to indices directly. Entries
             # that share a bin (a repeated m/z) are summed so the CSC never
-            # carries two values at one (row, col).
-            mz_indices = self._map_mass_to_indices(mzs)
-            return self._coalesce_duplicate_bins(mz_indices, intensities)
+            # carries two values at one (row, col), and zeros are dropped
+            # so a dense continuous-mode spectrum does not fill the matrix
+            # with explicit zeros -- which the in-memory converters never
+            # stored, and the hand-written layout did.
+            mz_indices, values = self._coalesce_duplicate_bins(
+                self._map_mass_to_indices(mzs), intensities
+            )
+            keep = values != 0
+            if not bool(keep.all()):
+                mz_indices, values = mz_indices[keep], values[keep]
+            return mz_indices, values
 
         # Optimized nearest-neighbor path; the route is resolved once in
         # __init__ because this runs once per spectrum per pass.
@@ -351,199 +317,118 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         # every bin, then mask -- was 35x the cost of reading the file.
         return self._tic_preserving_resample_sparse(mzs, intensities)
 
-    def _create_data_structures(self) -> Dict[str, Any]:
-        """Not used in streaming mode - required by ABC."""
-        raise NotImplementedError(
-            "Streaming converter uses _convert_to_csc_no_cache instead"
-        )
+    def _plan_tables(self) -> List[_TableUnit]:
+        """The tables this conversion writes: one per plane, or one volume.
 
-    def _finalize_data(self, data_structures: Dict[str, Any]) -> None:
-        """Not used in streaming mode - required by ABC.
-
-        The in-memory converters build their tables, shapes and images
-        here from an in-RAM matrix. This route has none: the table goes
-        to disk from memmaps, and the elements beside it are written by
-        :meth:`_add_tic_image_and_shapes_to_store`.
+        A plane's table indexes its rows by ``y * n_x + x`` and is named
+        ``{id}_z{z}``; the volume's by ``z * n_x * n_y + y * n_x + x`` and
+        is named ``{id}``, with ``z`` and ``spatial_z`` in ``obs``. Those
+        are the layouts the per-slice and volume converters wrote before
+        they were folded in here, kept so a store reads back the same.
         """
-        raise NotImplementedError(
-            "Streaming converter writes its elements from "
-            "_write_csc_arrays_to_zarr instead"
-        )
-
-    # ========================================================================
-    # No-Cache CSC Conversion (Optimized)
-    # Two-pass approach without disk caching - processes spectra twice
-    # but eliminates ~200GB cache file I/O
-    # ========================================================================
-
-    def _convert_to_csc_no_cache(self) -> Dict[str, Any]:
-        """Convert MSI data to CSC sparse format without disk caching.
-
-        This optimized method processes spectra twice but eliminates the
-        large cache file (~200GB for big datasets):
-
-        1. Pre-scan: Count entries per column + compute TIC + average spectrum
-           - Light pass: just resampling and counting, no disk I/O
-        2. Allocate memory-mapped files for CSC arrays
-        3. Main pass: Process spectra again and scatter directly to CSC
-           - If the reader handed its pixels over out of raster order,
-             sort each column's rows afterwards, in place on the memmap
-             (``csc_assembly.sort_csc_columns``, shared with the sibling
-             tables), so the stored matrix is canonical either way
-        4. Write CSC arrays to Zarr
-
-        This works because nearest-neighbor resampling is deterministic -
-        same input always produces same output. The 2x CPU cost of resampling
-        is far less than the disk I/O cost of caching.
-
-        Returns:
-            Dictionary with conversion statistics
-        """
-        from uuid import uuid4
-
         if self._dimensions is None:
-            raise ValueError("Dimensions not initialized")
+            raise ValueError("Dimensions are not initialized")
         if self._common_mass_axis is None:
-            raise ValueError("Common mass axis not initialized")
-
+            raise ValueError("Common mass axis is not initialized")
         n_x, n_y, n_z = self._dimensions
-        n_grid = n_x * n_y * n_z
         n_cols = len(self._common_mass_axis)
-
-        logger.info(
-            f"Streaming CSC (no-cache): {n_grid:,} grid positions x "
-            f"{n_cols:,} m/z bins"
-        )
-
-        # Create temp directory for memmap files only (no cache file)
-        temp_dir = self.output_path.parent / f".streaming_csc_{uuid4().hex[:8]}"
-        temp_dir.mkdir(parents=True, exist_ok=True)
-
-        try:
-            # The sibling tables' sinks, fed from the two passes below when
-            # the reader hands its frames over as records (design decision
-            # D5): one raw read per frame per pass for every table.
-            passes = self._fused_sibling_passes(f"{self.dataset_id}_z0")
-
-            # Step 1: Pre-scan - count entries per column (no caching)
-            logger.info("Step 1/3: Pre-scan (counting entries per column)...")
-            prescan_result = self._prescan_count_columns(
-                n_grid, n_cols, n_x, n_y, passes
-            )
-
-            col_counts = prescan_result["col_counts"]
-            total_nnz = prescan_result["total_nnz"]
-            tic_values = prescan_result["tic_values"]
-            avg_spectrum = prescan_result["avg_spectrum"]
-            pixel_count = prescan_result["pixel_count"]
-            avg_per_region = prescan_result.get("avg_spectrum_per_region")
-
-            if total_nnz == 0:
-                logger.warning("No non-zero entries found!")
-
-            kept_grid, row_of_grid = self._plan_row_layout(
-                prescan_result["occupancy"], n_grid
-            )
-            n_rows = int(kept_grid.size)
-            if passes is not None:
-                passes.finish_counting(n_rows, self._register_sibling_scratch)
-
-            # The other paths set this in _finalize_data; the root attrs
-            # builder reads it for msi_dataset_info["non_empty_pixels"],
-            # which would otherwise report the initial 0 on this route.
-            self._non_empty_pixel_count = pixel_count
-
-            # Build indptr from col_counts
-            indptr = np.zeros(n_cols + 1, dtype=np.int64)
-            indptr[1:] = np.cumsum(col_counts)
-
-            # Step 2: Allocate memory-mapped files for CSC arrays
-            logger.info(f"Step 2/3: Allocating memmap ({total_nnz:,} entries)...")
-            mm_indices, mm_data = self._allocate_csc_memmap_arrays(total_nnz, temp_dir)
-
-            # Step 3: Main pass - process and scatter directly to CSC
-            logger.info("Step 3/3: Processing spectra and scattering to CSC...")
-            rows_in_order = self._scatter_spectra_direct(
-                mm_indices, mm_data, indptr, n_x, n_y, row_of_grid, pixel_count, passes
-            )
-            if passes is not None:
-                passes.finish_scattering()
-                self._take_fused_results(passes)
-            if not rows_in_order:
-                sort_csc_columns(mm_indices, mm_data, indptr, n_rows)
-
-            # Write CSC arrays to Zarr
-            logger.info("Writing CSC arrays to Zarr...")
-            self._write_csc_arrays_to_zarr(
-                mm_indices,
-                mm_data,
-                indptr,
-                kept_grid,
+        if self.handle_3d:
+            return [
+                _TableUnit(
+                    self.dataset_id,
+                    f"{self.dataset_id}_pixels",
+                    None,
+                    n_x * n_y * n_z,
+                    n_cols,
+                    (n_z, n_y, n_x),
+                )
+            ]
+        return [
+            _TableUnit(
+                f"{self.dataset_id}_z{z}",
+                f"{self.dataset_id}_z{z}_pixels",
+                z,
+                n_x * n_y,
                 n_cols,
-                total_nnz,
-                tic_values,
-                avg_spectrum,
-                avg_per_region,
+                (n_y, n_x),
             )
+            for z in range(n_z)
+        ]
 
-            # Cleanup memmap references before deleting files
-            del mm_indices, mm_data
-            gc.collect()
-
-            logger.info(f"Streaming CSC (no-cache) complete: {total_nnz:,} non-zeros")
-
-            return {
-                "total_nnz": total_nnz,
-                "n_rows": n_rows,
-                "n_cols": n_cols,
-                "pixel_count": pixel_count,
-            }
-
-        finally:
-            # Clean up temp directory
-            if temp_dir.exists():
-                shutil.rmtree(temp_dir, ignore_errors=True)
-
-    def _plan_row_layout(
-        self, occupancy: NDArray[np.bool_], n_grid: int
-    ) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
-        """Decide which grid positions become table rows, and in what order.
-
-        The PCS path used to emit one row per grid position, where the
-        other three emit one per acquired spectrum -- acquisitions are
-        polygon-shaped but the grid is their bounding box, so the corners
-        came out as all-zero rows (#88). On real ``pea.imzML`` that is
-        17,423 rows against 12,737 spectra, 4,686 of them empty, with
-        ``shapes/`` carrying a polygon for each phantom.
-
-        Kept rows stay in grid order and keep their **grid index** as
-        ``instance_id``, which is what ``_drop_empty_pixels`` leaves
-        behind on the other paths: the index has gaps, and a consumer can
-        still recover the position from it. Only the row *offsets* are
-        compacted, because the matrix has to be dense in its rows.
-
-        Args:
-            occupancy: True per grid position carrying a spectrum.
-            n_grid: Number of grid positions.
+    def _create_data_structures(self) -> Dict[str, Any]:
+        """Plan the tables and the accumulators the two passes fill.
 
         Returns:
-            ``(kept_grid, row_of_grid)`` -- the grid index of each table
-            row, and the table row of each grid position (-1 if dropped).
+            The mapping the base workflow threads through
+            :meth:`_process_spectra`, :meth:`_finalize_data` and
+            :meth:`_save_output`: the table units, the sibling sinks (or
+            ``None``), the dataset-wide intensity accumulators, and the
+            ``tables`` / ``shapes`` / ``images`` the finalize step fills.
         """
-        kept_grid = np.flatnonzero(occupancy).astype(np.int64)
-        row_of_grid = np.full(n_grid, -1, dtype=np.int64)
-        row_of_grid[kept_grid] = np.arange(kept_grid.size, dtype=np.int64)
+        if self._common_mass_axis is None:
+            raise ValueError("Common mass axis is not initialized")
 
-        n_dropped = n_grid - int(kept_grid.size)
-        if n_dropped:
-            logger.info(
-                "Dropping %d empty pixel rows from obs (%d non-empty pixels "
-                "remain). These positions are inside the bounding box but "
-                "outside the acquisition polygon.",
-                n_dropped,
-                kept_grid.size,
-            )
-        return kept_grid, row_of_grid
+        # Diagnostic only -- nothing below depends on it. After
+        # _initialize_conversion() so it reports the built axis.
+        self._estimate_output_size_gb()
+
+        units = self._plan_tables()
+        n_cols = len(self._common_mass_axis)
+        logger.info(
+            "Streaming CSC: %s grid positions x %s m/z bins in %d table(s)",
+            f"{sum(unit.n_grid for unit in units):,}",
+            f"{n_cols:,}",
+            len(units),
+        )
+
+        # The sibling tables' sinks, fed from the two passes below when the
+        # reader hands its frames over as records (design decision D5): one
+        # raw read per frame per pass for every table. Only for a single
+        # table -- the sinks take one row space -- which every source with
+        # frame records (a Bruker TDF) has; a multi-plane source scans on
+        # its own per plane, as it always did.
+        passes = self._fused_sibling_passes(units[0].key) if len(units) == 1 else None
+
+        data_structures: Dict[str, Any] = {
+            "mode": "3d_volume" if self.handle_3d else "2d_slices",
+            "units": units,
+            "passes": passes,
+            "tables": {},
+            "shapes": {},
+            "images": {},
+            "var_df": self._create_mass_dataframe(),
+            "total_intensity": np.zeros(n_cols, dtype=np.float64),
+            "pixel_count": 0,
+            "avg_spectrum": None,
+            "avg_spectrum_per_region": None,
+        }
+
+        # Per-region accumulators for multi-region datasets
+        if self._region_map is not None:
+            unique_regions = sorted(set(self._region_map.values()))
+            data_structures["region_total_intensity"] = {
+                r: np.zeros(n_cols, dtype=np.float64) for r in unique_regions
+            }
+            data_structures["region_pixel_count"] = {r: 0 for r in unique_regions}
+
+        return data_structures
+
+    def _locate(
+        self, units: List[_TableUnit], x: int, y: int, z: int
+    ) -> Tuple[Optional[_TableUnit], int]:
+        """The table a coordinate belongs to and its grid index there.
+
+        ``(None, -1)`` for a coordinate outside the declared grid. Left
+        unchecked, a negative coordinate is a legal negative numpy index
+        and wraps silently onto an unrelated pixel; a ``z`` past the
+        planes would pick a table that does not exist.
+        """
+        n_x, n_y, n_z = self._dimensions
+        if not (0 <= x < n_x and 0 <= y < n_y and 0 <= z < n_z):
+            return None, -1
+        if self.handle_3d:
+            return units[0], z * n_x * n_y + y * n_x + x
+        return units[z], y * n_x + x
 
     def _iter_pass_spectra(
         self, passes: Any, phase: str
@@ -572,55 +457,53 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 continue
             yield frame.coords, spectrum[0], spectrum[1], frame
 
-    def _prescan_count_columns(
-        self,
-        n_grid: int,
-        n_cols: int,
-        n_x: int,
-        n_y: int,
-        passes: Any = None,
-    ) -> Dict[str, Any]:
-        """Pre-scan spectra to count entries per column without caching.
+    def _process_spectra(self, data_structures: Dict[str, Any]) -> None:
+        """Run both passes: count, size the arrays, scatter.
 
-        This is a lightweight pass that:
-        1. Counts how many entries each m/z column will have (for CSC indptr)
-        2. Computes TIC values per pixel
-        3. Accumulates total intensity for average spectrum
-        4. Records which grid positions carry a spectrum at all
-        5. Feeds the sibling tables' pass-1 sinks, when ``passes`` is given,
-           from the same frame read (see ``fused_passes.py``)
-
-        No data is cached to disk - we'll reprocess spectra in the main pass.
-
-        Args:
-            n_grid: Number of grid positions
-            n_cols: Number of m/z bins
-            n_x, n_y: Spatial dimensions
-            passes: The sibling sinks to feed, or ``None``
-
-        Returns:
-            Dictionary with col_counts, total_nnz, tic_values, avg_spectrum,
-            pixel_count and occupancy
+        Overrides the base's single pass. The pre-scan is light -- the
+        same resampling as the main pass, no disk I/O -- and the 2x CPU
+        it costs is far less than the disk I/O of caching every spectrum
+        between the passes, which is what it replaced.
         """
-        # Allocate counting arrays (very small memory footprint)
-        col_counts = np.zeros(n_cols, dtype=np.int64)
-        total_intensity = np.zeros(n_cols, dtype=np.float64)
-        tic_values = np.zeros((n_y, n_x), dtype=np.float64)
-        # Which grid positions carry a spectrum, in row-major order. The
-        # table keeps only these; see the drop in _convert_to_csc_no_cache.
-        occupancy = np.zeros(n_grid, dtype=bool)
+        units: List[_TableUnit] = data_structures["units"]
+        passes = data_structures["passes"]
 
-        total_nnz = 0
+        logger.info("Step 1/3: Pre-scan (counting entries per column)...")
+        self._count_pass(data_structures)
+
+        logger.info("Step 2/3: Allocating memory-mapped CSC arrays...")
+        for unit in units:
+            unit.finish_counting()
+            unit.assembly.allocate(
+                self._register_table_scratch("summed", unit.assembly)
+            )
+        if passes is not None:
+            passes.finish_counting(units[0].n_rows, self._register_table_scratch)
+
+        logger.info("Step 3/3: Processing spectra and scattering to CSC...")
+        self._scatter_pass(data_structures)
+        if passes is not None:
+            passes.finish_scattering()
+            self._take_fused_results(passes)
+
+    def _count_pass(self, data_structures: Dict[str, Any]) -> None:
+        """Pass 1: count entries per column, TIC, occupancy, average spectrum.
+
+        Also feeds the sibling tables' pass-1 sinks, when ``passes`` is
+        set, from the same frame read (see ``fused_passes.py``).
+        """
+        units: List[_TableUnit] = data_structures["units"]
+        passes = data_structures["passes"]
+        total_intensity: NDArray[np.float64] = data_structures["total_intensity"]
+        region_total = data_structures.get("region_total_intensity")
+        region_count = data_structures.get("region_pixel_count")
+
         pixel_count = 0
         n_out_of_bounds = 0
-
-        region_map, region_total, region_count = self._init_region_accumulators(n_cols)
-
         self._suppress_reader_progress()
-        total_spectra = self._get_total_spectra_count()
 
         with tqdm(
-            total=total_spectra,
+            total=self._get_total_spectra_count(),
             desc="Pre-scan" if passes is None else "Pre-scan + sibling tables",
             unit="spectrum",
         ) as pbar:
@@ -628,11 +511,10 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 passes, "count"
             ):
                 x, y, z = coords
+                mz_indices, values = self._process_spectrum(mzs, intensities)
+                nnz = int(mz_indices.size)
+                unit, grid = self._locate(units, x, y, z)
 
-                # Process spectrum (same resampling as main pass)
-                mz_indices, resampled_ints = self._process_spectrum(mzs, intensities)
-
-                nnz = len(mz_indices)
                 if frame is not None:
                     # The row the sinks count under is the grid position,
                     # which is the table row's own order: rows are numbered
@@ -640,130 +522,90 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                     # A spectrum that gets no row (empty, or off the grid)
                     # is a pixel the siblings skip, as their own pass
                     # skips one that is not in obs.
-                    gets_row = nnz > 0 and 0 <= y < n_y and 0 <= x < n_x
-                    passes.count(frame, (y * n_x + x) if gets_row else None)
+                    gets_row = nnz > 0 and unit is not None
+                    passes.count(frame, grid if gets_row else None)
+
                 if nnz > 0:
-                    # Accumulate for average spectrum (vectorized). Left
-                    # outside the bounds check on purpose: the average is
-                    # over every spectrum read rather than every spectrum
-                    # stored, as it is on the in-memory converters.
-                    np.add.at(total_intensity, mz_indices, resampled_ints)
+                    # The average is over every spectrum read rather than
+                    # every spectrum stored, so it sits outside the bounds
+                    # check. Indices are unique within a spectrum, so the
+                    # fancy-indexed add is exact.
+                    total_intensity[mz_indices] += values
 
                     # Column counts, TIC and occupancy all describe a
                     # spectrum that is going to get a row, so all three sit
                     # behind the bounds check: a reader yielding a
                     # coordinate outside the declared dimensions would
-                    # otherwise wrap round and land on an unrelated pixel.
-                    #
-                    # col_counts and total_nnz size the CSC arrays, and the
-                    # scatter pass skips exactly the spectra this rejects
-                    # (row_of_grid gives them no row). Counting them here
-                    # reserved slots nothing ever wrote: the memmap is
-                    # zero-filled, so they surfaced as explicit zeros at
-                    # row 0, out of order within their column, which is a
-                    # matrix scipy reports as non-canonical.
-                    if 0 <= y < n_y and 0 <= x < n_x:
-                        np.add.at(col_counts, mz_indices, 1)
-                        total_nnz += nnz
-                        tic_values[y, x] = resampled_ints.sum()
-                        occupancy[y * n_x + x] = True
+                    # otherwise wrap round and land on an unrelated pixel,
+                    # and counting it would reserve slots the scatter pass
+                    # never writes -- explicit zeros, out of order, which
+                    # scipy reports as a non-canonical matrix.
+                    if unit is not None:
+                        unit.count(grid, mz_indices, values)
                     else:
                         n_out_of_bounds += 1
 
-                    if region_map is not None:
-                        self._accumulate_region(
-                            region_map,
-                            region_total,
-                            region_count,
-                            x,
-                            y,
-                            mz_indices,
-                            resampled_ints,
-                        )
+                    if region_total is not None:
+                        region = self._region_map.get((x, y), -1)
+                        if region in region_total:
+                            region_total[region][mz_indices] += values
+                            region_count[region] += 1
 
                 pixel_count += 1
                 pbar.update(1)
 
-        # Compute average spectrum
-        avg_spectrum = total_intensity / max(pixel_count, 1)
-
+        total_nnz = sum(unit.assembly.n_nonzeros for unit in units)
+        if total_nnz == 0:
+            logger.warning("No non-zero entries found!")
         logger.info(
-            f"  Pre-scan complete: {total_nnz:,} entries across {n_cols:,} columns"
+            "  Pre-scan complete: %s entries across %s columns",
+            f"{total_nnz:,}",
+            f"{total_intensity.size:,}",
         )
         if n_out_of_bounds:
+            n_x, n_y, n_z = self._dimensions
             logger.warning(
-                "%d spectra sat outside the declared %dx%d grid and were "
+                "%d spectra sat outside the declared %dx%dx%d grid and were "
                 "skipped. Previously they were written to a wrapped-round "
                 "row index, silently overwriting an unrelated pixel.",
                 n_out_of_bounds,
                 n_x,
                 n_y,
+                n_z,
             )
 
-        return {
-            "col_counts": col_counts,
-            "total_nnz": total_nnz,
-            "tic_values": tic_values,
-            "avg_spectrum": avg_spectrum,
-            "pixel_count": pixel_count,
-            "occupancy": occupancy,
-            "avg_spectrum_per_region": self._compute_region_averages(
-                region_total, region_count
-            ),
-        }
+        # The other write paths used to set this in their finalize step;
+        # the root attrs builder reads it for msi_dataset_info.
+        self._non_empty_pixel_count = pixel_count
+        data_structures["pixel_count"] = pixel_count
+        data_structures["avg_spectrum"] = total_intensity / max(pixel_count, 1)
+        if region_total is not None:
+            data_structures["avg_spectrum_per_region"] = {
+                str(r): total / max(region_count.get(r, 0), 1)
+                for r, total in region_total.items()
+            }
 
-    def _scatter_spectra_direct(
-        self,
-        mm_indices: np.memmap,
-        mm_data: np.memmap,
-        indptr: NDArray[np.int64],
-        n_x: int,
-        n_y: int,
-        row_of_grid: NDArray[np.int64],
-        pixel_count: int,
-        passes: Any = None,
-    ) -> bool:
-        """Process spectra and scatter directly to CSC arrays.
+    def _scatter_pass(self, data_structures: Dict[str, Any]) -> None:
+        """Pass 2: resample every spectrum again and scatter it into its table.
 
-        This is the main pass that processes spectra again (same resampling
-        as pre-scan) and scatters values directly to their CSC positions.
-        With ``passes`` it also scatters the sibling tables from the same
-        frame read (see ``fused_passes.py``).
-
-        Args:
-            mm_indices: Memory-mapped array for row indices
-            mm_data: Memory-mapped array for values
-            indptr: Column pointers array (from pre-scan)
-            n_x: Number of columns in spatial grid
-            n_y: Number of rows in spatial grid
-            row_of_grid: Table row for each grid position, -1 for the
-                positions dropped as empty (from the pre-scan occupancy).
-            pixel_count: Number of spectra to process
-
-        Returns:
-            Whether every scattered row came at or after the previous one,
-            which is to say whether the reader handed its pixels over in
-            raster order. Rows are numbered in raster order, so when it
-            did, every column's row indices are already ascending and the
-            matrix is canonical as scattered; when it did not, the caller
-            sorts the columns before writing them.
+        Same resampling as the pre-scan, so the two passes agree on which
+        rows exist and how many entries each column holds; the assembly
+        checks that agreement before it hands the matrix out. With
+        ``passes`` it also scatters the sibling tables from the same
+        frame read.
         """
-        # Current write position for each column
-        write_pos = indptr[:-1].copy()
-        rows_in_order = True
-        last_row = -1
+        units: List[_TableUnit] = data_structures["units"]
+        passes = data_structures["passes"]
 
-        # Reset reader for second pass
-        # For real readers (ImzML, Bruker), iter_spectra() is a generator factory
-        # that creates a fresh iterator each time - no need to recreate the reader.
-        # For mock readers with random data, we need to reset the random seed.
+        # Reset reader for second pass. For real readers (ImzML, Bruker),
+        # iter_spectra() is a generator factory that creates a fresh
+        # iterator each time; a mock reader with random data reseeds.
         if hasattr(self.reader, "reset"):
             self.reader.reset()
-
         self._suppress_reader_progress()
 
         with tqdm(
-            total=pixel_count,
+            total=data_structures["pixel_count"],
             desc="Scatter to CSC" if passes is None else "Scatter to CSC + siblings",
             unit="spectrum",
         ) as pbar:
@@ -771,9 +613,8 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 passes, "scatter"
             ):
                 x, y, z = coords
-
-                # Process spectrum (deterministic - same result as pre-scan)
-                mz_indices, resampled_ints = self._process_spectrum(mzs, intensities)
+                mz_indices, values = self._process_spectrum(mzs, intensities)
+                unit, grid = self._locate(units, x, y, z)
 
                 # Table row for this grid position -- not the grid index
                 # itself, because the empty positions are dropped and the
@@ -781,686 +622,195 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 # that sized the columns, so the two agree by construction;
                 # a position with no row (empty, or a coordinate outside
                 # the grid, both skipped there) comes back as -1.
-                row_idx = -1
-                if len(mz_indices) > 0 and 0 <= y < n_y and 0 <= x < n_x:
-                    row_idx = int(row_of_grid[y * n_x + x])
+                row = -1
+                if mz_indices.size > 0 and unit is not None:
+                    row = int(unit.row_of_grid[grid])
 
                 if frame is not None:
-                    passes.scatter(frame, row_idx if row_idx >= 0 else None)
-
-                if row_idx >= 0:
-                    if row_idx < last_row:
-                        rows_in_order = False
-                    last_row = row_idx
-
-                    # Vectorized scatter
-                    destinations = write_pos[mz_indices]
-                    mm_indices[destinations] = row_idx
-                    mm_data[destinations] = resampled_ints
-
-                    # Increment write positions
-                    write_pos[mz_indices] += 1
+                    passes.scatter(frame, row if row >= 0 else None)
+                if row >= 0:
+                    unit.assembly.scatter(row, mz_indices, values)
 
                 pbar.update(1)
 
-        # One flush at the end. A periodic flush used to run every 100k
-        # spectra, but ``np.memmap.flush`` writes back the whole mapping
-        # synchronously, serialising disk writeback into the compute loop;
-        # the OS pager already writes dirty pages back in the background.
-        # Scatter writes each position exactly once, so nothing is dirtied
-        # twice and the deferred writeback costs the same total I/O.
-        mm_indices.flush()
-        mm_data.flush()
+        logger.info("  Scatter complete")
 
-        logger.info("  Scatter complete, memmap flushed")
-        return rows_in_order
+    # ------------------------------------------------------------------
+    # From memmaps to elements
+    # ------------------------------------------------------------------
 
-    def _allocate_csc_memmap_arrays(
-        self, total_nnz: int, temp_dir: Path
-    ) -> Tuple[np.memmap, np.memmap]:
-        """Allocate memory-mapped files for CSC indices and data arrays.
-
-        Uses numpy memmap so the OS handles memory management via virtual memory.
-        This keeps RAM usage minimal regardless of array size.
+    def _finalize_data(self, data_structures: Dict[str, Any]) -> None:
+        """Build every table, its shapes and its TIC image from the memmaps.
 
         Args:
-            total_nnz: Total number of non-zero entries
-            temp_dir: Directory for temporary files
-
-        Returns:
-            Tuple of (mm_indices, mm_data) memory-mapped arrays
-        """
-        # Ensure at least 1 element for empty datasets
-        size = max(total_nnz, 1)
-
-        # CSC indices (row indices for each non-zero) - int32 sufficient for rows
-        mm_indices = np.memmap(
-            temp_dir / "csc_indices.bin",
-            dtype=np.int32,
-            mode="w+",
-            shape=(size,),
-        )
-
-        # CSC data (values for each non-zero)
-        mm_data = np.memmap(
-            temp_dir / "csc_data.bin",
-            dtype=np.float64,
-            mode="w+",
-            shape=(size,),
-        )
-
-        logger.info(
-            f"  Allocated memmap: {size * 4 / (1024**3):.2f} GB indices + "
-            f"{size * 8 / (1024**3):.2f} GB data"
-        )
-
-        return mm_indices, mm_data
-
-    def _write_uns_provenance(self, uns_group: "zarr.Group") -> None:
-        """Write the shared provenance block into a hand-written ``uns`` group.
-
-        This path composes the Zarr layout itself, so it cannot reach
-        ``adata.uns`` the way ``_save_output`` does. It renders the same
-        mapping through anndata's own element writer instead, which is
-        what produces the ``encoding-type`` / ``encoding-version`` pairs
-        ``read_lazy`` needs -- getting those right by hand is exactly
-        what this path used to have to do, and exactly where it drifted
-        from the other one.
-
-        Only ``uns`` goes through anndata here. ``obs``/``var`` stay
-        hand-written: they carry the pandas string dtypes this path
-        exists to sidestep, whereas the provenance block is plain dicts,
-        strings, lists and numbers.
-        """
-        from anndata.io import write_elem
-
-        for key, value in self.build_uns_metadata().items():
-            write_elem(uns_group, key, value)
-
-    def _write_csc_arrays_to_zarr(
-        self,
-        mm_indices: np.memmap,
-        mm_data: np.memmap,
-        indptr: NDArray[np.int64],
-        kept_grid: NDArray[np.int64],
-        n_cols: int,
-        total_nnz: int,
-        tic_values: NDArray[np.float64],
-        avg_spectrum: NDArray[np.float64],
-        avg_spectrum_per_region: dict[str, NDArray[np.float64]] | None = None,
-    ) -> None:
-        """Write CSC arrays to Zarr store with SpatialData-compatible structure.
-
-        Creates the complete Zarr directory structure including:
-        - CSC sparse matrix (indptr, indices, data)
-        - Observation metadata (coordinates, region keys)
-        - Variable metadata (m/z values)
-        - Essential metadata and average spectrum
-
-        Reads from memmap sequentially and writes in aligned chunks for efficiency.
-
-        Args:
-            mm_indices: Memory-mapped CSC indices array.
-            mm_data: Memory-mapped CSC data array.
-            indptr: Column pointers for CSC format.
-            kept_grid: Grid index of each table row, in row order (see
-                :meth:`_plan_row_layout`). Its length is the row count.
-            n_cols: Number of columns in the matrix.
-            total_nnz: Total non-zero count.
-            tic_values: TIC image array. Full-grid, and deliberately not
-                subset with the rows: it is a dense 2D image, not a
-                per-pixel table.
-            avg_spectrum: Average spectrum.
-            avg_spectrum_per_region: Per-region mean spectra, or None.
-        """
-        slice_id = f"{self.dataset_id}_z0"
-        region_key = f"{slice_id}_pixels"
-        if self._dimensions is None:
-            raise ValueError("Dimensions not initialized")
-        n_x, n_y, _ = self._dimensions
-        n_rows = int(kept_grid.size)
-        # Decide on the sibling tables before uns is written, so the
-        # table's uns can name them (see _collect_mobility_axis), and run
-        # the raw mobility pass once for the heatmap and the grid's
-        # discovery together -- unless both were done from the summed
-        # table's own passes already (see _fused_sibling_passes). The
-        # siblings' obs mirrors this table's rows: one per kept grid
-        # position, indexed by the grid index as a string.
-        if not self._siblings_planned:
-            self._mobility_table_key = self._plan_mobility_table(slice_id)
-            self._msms_table_key = self._plan_msms_table(slice_id)
-        sibling_obs = self._sibling_obs(kept_grid, n_x, region_key)
-        self._prepare_sibling_scans(sibling_obs, z_value=0)
-
-        # Clean output directory
-        if self.output_path.exists():
-            shutil.rmtree(self.output_path)
-
-        # Create Zarr store
-        store = zarr.open_group(str(self.output_path), mode="w")
-
-        # Root attributes. Everything but ``spatialdata_attrs`` -- which
-        # describes the on-disk layout this method hand-writes, not the
-        # dataset -- comes from the shared builder, so a root attr added
-        # for the other paths reaches a PCS store too. This used to be six
-        # literals composed here and was short by ``coordinate_systems``,
-        # ``format_specific_metadata`` and ``msi_dataset_info``.
-        store.attrs["spatialdata_attrs"] = {
-            "version": "0.2",
-            "spatialdata_software_version": "0.6.1",
-        }
-        store.attrs.update(self.build_root_attrs())
-
-        # Create table structure
-        tables_group = store.create_group("tables")
-        table_group = tables_group.create_group(slice_id)
-
-        table_group.attrs["encoding-type"] = "anndata"
-        table_group.attrs["encoding-version"] = "0.1.0"
-        table_group.attrs["spatialdata-encoding-type"] = "ngff:regions_table"
-        table_group.attrs["region"] = region_key
-        table_group.attrs["region_key"] = "region"
-        table_group.attrs["instance_key"] = "instance_key"
-        table_group.attrs["version"] = "0.2"
-
-        # Empty groups required by AnnData
-        for group_name in ["layers", "obsm", "obsp", "varm", "varp"]:
-            g = table_group.create_group(group_name)
-            g.attrs["encoding-type"] = "dict"
-            g.attrs["encoding-version"] = "0.1.0"
-
-        raw_arr = table_group.create_array("raw", data=np.array(False))
-        raw_arr.attrs["encoding-type"] = "array"
-        raw_arr.attrs["encoding-version"] = "0.2.0"
-
-        # X group (CSC matrix)
-        X_group = table_group.create_group("X")
-        X_group.attrs["encoding-type"] = "csc_matrix"
-        X_group.attrs["encoding-version"] = "0.1.0"
-        X_group.attrs["shape"] = [n_rows, n_cols]
-
-        # Write indptr (small, do it directly) - use int64
-        indptr_arr = X_group.create_array(
-            "indptr",
-            data=indptr.astype(np.int64),
-            chunks=(min(len(indptr), 100_000),),
-        )
-        indptr_arr.attrs["encoding-type"] = "array"
-        indptr_arr.attrs["encoding-version"] = "0.2.0"
-
-        # Zarr chunk settings
-        z_chunk = 1_000_000
-        actual_nnz = max(total_nnz, 1)
-
-        indices_arr = X_group.create_array(
-            "indices",
-            shape=(actual_nnz,),
-            dtype=np.int32,
-            chunks=(min(actual_nnz, z_chunk),),
-        )
-        indices_arr.attrs["encoding-type"] = "array"
-        indices_arr.attrs["encoding-version"] = "0.2.0"
-        data_arr = X_group.create_array(
-            "data",
-            shape=(actual_nnz,),
-            dtype=np.float64,
-            chunks=(min(actual_nnz, z_chunk),),
-        )
-        data_arr.attrs["encoding-type"] = "array"
-        data_arr.attrs["encoding-version"] = "0.2.0"
-
-        # Sequential transfer from memmap to Zarr (aligned to chunks)
-        read_buffer_size = z_chunk * 50  # ~200 MB buffer
-
-        with tqdm(
-            total=total_nnz,
-            desc="Step 4/4: Writing to Zarr",
-            unit="entries",
-            unit_scale=True,
-        ) as pbar:
-            for start in range(0, total_nnz, read_buffer_size):
-                end = min(start + read_buffer_size, total_nnz)
-                indices_arr[start:end] = mm_indices[start:end]
-                data_arr[start:end] = mm_data[start:end]
-                pbar.update(end - start)
-
-        # obs (coordinates)
-        str_dtype = np.dtypes.StringDType()
-        obs_group = table_group.create_group("obs")
-        obs_group.attrs["encoding-type"] = "dataframe"
-        obs_group.attrs["encoding-version"] = "0.2.0"
-        obs_group.attrs["_index"] = "instance_id"
-        obs_group.attrs["column-order"] = [
-            "y",
-            "x",
-            "region",
-            "spatial_x",
-            "spatial_y",
-            "region_number",
-            "instance_key",
-        ]
-
-        # Positions of the kept rows only, recovered from their grid
-        # indices. The index stays the GRID index, gaps included, which is
-        # what _drop_empty_pixels leaves behind on the other paths -- the
-        # row offsets compact, the identities do not.
-        y_values = (kept_grid // n_x).astype(np.int32)
-        x_values = (kept_grid % n_x).astype(np.int32)
-        # Same reasoning as the var index below, but n_rows is the pixel count
-        # and stays far smaller than n_cols, so one shot needs no chunking.
-        instance_ids = kept_grid.astype(str_dtype)
-        spatial_x = x_values.astype(np.float64) * self.pixel_size_um
-        spatial_y = y_values.astype(np.float64) * self.pixel_size_um
-        region_numbers = self.build_region_numbers(x_values, y_values)
-
-        a = obs_group.create_array("y", data=y_values)
-        a.attrs["encoding-type"] = "array"
-        a.attrs["encoding-version"] = "0.2.0"
-        a = obs_group.create_array("x", data=x_values)
-        a.attrs["encoding-type"] = "array"
-        a.attrs["encoding-version"] = "0.2.0"
-        a = obs_group.create_array("region_number", data=region_numbers)
-        a.attrs["encoding-type"] = "array"
-        a.attrs["encoding-version"] = "0.2.0"
-        a = obs_group.create_array("spatial_x", data=spatial_x)
-        a.attrs["encoding-type"] = "array"
-        a.attrs["encoding-version"] = "0.2.0"
-        a = obs_group.create_array("spatial_y", data=spatial_y)
-        a.attrs["encoding-type"] = "array"
-        a.attrs["encoding-version"] = "0.2.0"
-        a = obs_group.create_array("instance_id", data=instance_ids)
-        a.attrs["encoding-type"] = "string-array"
-        a.attrs["encoding-version"] = "0.2.0"
-        a = obs_group.create_array("instance_key", data=instance_ids)
-        a.attrs["encoding-type"] = "string-array"
-        a.attrs["encoding-version"] = "0.2.0"
-
-        # Region as categorical
-        region_group = obs_group.create_group("region")
-        region_group.attrs["encoding-type"] = "categorical"
-        region_group.attrs["encoding-version"] = "0.2.0"
-        region_group.attrs["ordered"] = False
-        a = region_group.create_array(
-            "categories", data=np.array([region_key], dtype=str_dtype)
-        )
-        a.attrs["encoding-type"] = "string-array"
-        a.attrs["encoding-version"] = "0.2.0"
-        a = region_group.create_array("codes", data=np.zeros(n_rows, dtype=np.int8))
-        a.attrs["encoding-type"] = "array"
-        a.attrs["encoding-version"] = "0.2.0"
-
-        # var (mass axis)
-        var_group = table_group.create_group("var")
-        var_group.attrs["encoding-type"] = "dataframe"
-        var_group.attrs["encoding-version"] = "0.2.0"
-        var_group.attrs["_index"] = "_index"
-        # A reader whose native axis is not m/z keeps that axis here too, so
-        # this route stores the same columns as the dataframe-based ones.
-        annotations = self._validated_mass_axis_annotations()
-        var_group.attrs["column-order"] = ["mz"] + sorted(annotations)
-
-        mz_values = self._common_mass_axis
-        if mz_values is None:
-            raise RuntimeError("Common mass axis not initialized")
-        # Built in chunks rather than from a list comprehension. Materialising
-        # n_cols Python str objects first costs about 88 bytes per entry at
-        # peak, against 17.5 for this; at 10 million bins that is 883 MB
-        # versus 175 MB, on a path whose whole point is not holding the
-        # dataset in RAM. The values are identical.
-        mz_index = np.empty(n_cols, dtype=str_dtype)
-        for start in range(0, n_cols, _INDEX_BUILD_CHUNK):
-            stop = min(start + _INDEX_BUILD_CHUNK, n_cols)
-            mz_index[start:stop] = np.strings.add(
-                "mz_", np.arange(start, stop, dtype=np.int64).astype(str_dtype)
-            )
-        a = var_group.create_array("_index", data=mz_index)
-        a.attrs["encoding-type"] = "string-array"
-        a.attrs["encoding-version"] = "0.2.0"
-        a = var_group.create_array("mz", data=mz_values)
-        a.attrs["encoding-type"] = "array"
-        a.attrs["encoding-version"] = "0.2.0"
-
-        for name in sorted(annotations):
-            a = var_group.create_array(name, data=np.asarray(annotations[name]))
-            a.attrs["encoding-type"] = "array"
-            a.attrs["encoding-version"] = "0.2.0"
-
-        # uns (metadata)
-        uns_group = table_group.create_group("uns")
-        uns_group.attrs["encoding-type"] = "dict"
-        uns_group.attrs["encoding-version"] = "0.1.0"
-
-        sd_attrs = uns_group.create_group("spatialdata_attrs")
-        sd_attrs.attrs["encoding-type"] = "dict"
-        sd_attrs.attrs["encoding-version"] = "0.1.0"
-        a = sd_attrs.create_array("region", data=np.array(region_key, dtype=str_dtype))
-        a.attrs["encoding-type"] = "string"
-        a.attrs["encoding-version"] = "0.2.0"
-        a = sd_attrs.create_array(
-            "region_key", data=np.array("region", dtype=str_dtype)
-        )
-        a.attrs["encoding-type"] = "string"
-        a.attrs["encoding-version"] = "0.2.0"
-        a = sd_attrs.create_array(
-            "instance_key",
-            data=np.array("instance_key", dtype=str_dtype),
-        )
-        a.attrs["encoding-type"] = "string"
-        a.attrs["encoding-version"] = "0.2.0"
-
-        self._write_uns_provenance(uns_group)
-
-        a = uns_group.create_array("average_spectrum", data=avg_spectrum)
-        a.attrs["encoding-type"] = "array"
-        a.attrs["encoding-version"] = "0.2.0"
-
-        # Per-region mean spectra for multi-region datasets
-        if avg_spectrum_per_region is not None:
-            pr_group = uns_group.create_group("average_spectrum_per_region")
-            pr_group.attrs["encoding-type"] = "dict"
-            pr_group.attrs["encoding-version"] = "0.1.0"
-            for region_key_str, region_avg in avg_spectrum_per_region.items():
-                ra = pr_group.create_array(region_key_str, data=region_avg)
-                ra.attrs["encoding-type"] = "array"
-                ra.attrs["encoding-version"] = "0.2.0"
-
-        # Create empty images and shapes groups (will be populated below)
-        store.create_group("images")
-        store.create_group("shapes")
-
-        # Add TIC image and pixel shapes using SpatialData
-        logger.info("  Adding TIC image and pixel shapes...")
-        self._add_tic_image_and_shapes_to_store(
-            tic_values, kept_grid, n_x, n_y, slice_id, region_key, sibling_obs
-        )
-
-        # Consolidate metadata after all elements are written
-        logger.info("  Consolidating metadata...")
-        with _suppress_upstream_warnings():
-            zarr.consolidate_metadata(str(self.output_path))
-
-    @staticmethod
-    def _sibling_obs(
-        kept_grid: NDArray[np.int64], n_x: int, region_key: str
-    ) -> pd.DataFrame:
-        """The ``obs`` a sibling table mirrors on this route."""
-        kept = np.asarray(kept_grid, dtype=np.int64)
-        obs = pd.DataFrame(
-            {
-                "x": kept % n_x,
-                "y": kept // n_x,
-                "region": np.full(kept.size, region_key),
-            },
-            index=kept.astype(str),
-        )
-        obs.index.name = "instance_id"
-        return obs
-
-    def _add_tic_image_and_shapes_to_store(
-        self,
-        tic_values: NDArray[np.float64],
-        kept_grid: NDArray[np.int64],
-        n_x: int,
-        n_y: int,
-        slice_id: str,
-        region_key: str,
-        sibling_obs: Optional[pd.DataFrame] = None,
-    ) -> None:
-        """Add TIC image and pixel shapes to the Zarr store using SpatialData.
-
-        This method is called after the main table has been written to Zarr.
-        It uses SpatialData's models to create properly formatted images and
-        shapes, then writes them to the existing store.
-
-        The TIC image stays full-grid while the shapes follow the table:
-        the image is a dense raster of the bounding box, the shapes are the
-        polygons the obs rows annotate, and those are different things.
-
-        Args:
-            tic_values: 2D array of TIC values (n_y, n_x).
-            kept_grid: Grid index of each table row (see
-                :meth:`_plan_row_layout`); one shape is emitted per entry.
-            n_x: Number of pixels in x dimension.
-            n_y: Number of pixels in y dimension.
-            slice_id: Identifier for this slice (e.g., "msi_dataset_z0").
-            region_key: Region key for shapes (e.g., "msi_dataset_z0_pixels").
-            sibling_obs: The ``obs`` the sibling tables mirror, when the
-                caller already built it for the scans; built here otherwise.
+            data_structures: What the passes filled.
         """
         if not SPATIALDATA_AVAILABLE:
-            logger.warning("SpatialData not available, skipping TIC image and shapes")
-            return
+            raise ImportError("SpatialData dependencies not available")
 
-        # === Create TIC Image ===
-        y_size, x_size = tic_values.shape
+        for unit in data_structures["units"]:
+            if unit.n_rows == 0:
+                logger.warning(
+                    "%s: no position carries a spectrum; no table is written " "for it",
+                    unit.key,
+                )
+                continue
+            self._finalize_table(data_structures, unit)
 
-        # Add channel dimension (c, y, x) as required by SpatialData
-        tic_values_3d = tic_values.reshape(1, y_size, x_size)
+        # Add optical images if available
+        self._add_optical_images(data_structures)
 
-        # The image array is intrinsically in raster pixel indices.
-        # The transform to "global" expresses the conversion from raster
-        # indices into the chosen global frame:
-        #   - With FlexImaging optical alignment: Affine into optical
-        #     image pixel space. global = optical pixels.
-        #   - Without alignment: Scale into physical micrometers, so
-        #     "global" agrees with the pixel-polygon shapes (which are
-        #     stored in um). global = micrometers.
-        tic_xarray = xr.DataArray(
-            tic_values_3d,
-            dims=("c", "y", "x"),
+    def _finalize_table(
+        self, data_structures: Dict[str, Any], unit: _TableUnit
+    ) -> None:
+        """One table over its memmaps, parsed, with its shapes and TIC image."""
+        # The matrix is canonical as scattered when the reader handed its
+        # pixels over in raster order (rows are numbered in raster order,
+        # so every column's row indices are ascending); the assembly
+        # sorts each column in place otherwise, and checks that pass 2
+        # wrote every slot pass 1 counted. The constructor takes the
+        # memmaps without copying them.
+        matrix = unit.assembly.matrix()
+        logger.info("%s: %s non-zero entries (CSC)", unit.key, f"{matrix.nnz:,}")
+
+        adata = AnnData(
+            X=matrix,
+            obs=self._table_obs(unit),
+            var=data_structures["var_df"].copy(),
         )
-        # Gate on apply_optical_alignment so the wizard's opt-out
-        # path leaves the MSI TIC in micrometers (and the optical
-        # image gets the inverse-alignment treatment elsewhere).
+
+        # Add average spectrum to .uns. The dataset-wide mean, the same
+        # on every table: it is the per-pixel mean everywhere, including
+        # the per-region block below.
+        adata.uns["average_spectrum"] = data_structures["avg_spectrum"]
+        per_region = data_structures.get("avg_spectrum_per_region")
+        if per_region is not None:
+            adata.uns["average_spectrum_per_region"] = per_region
+
+        # Decide on the sibling tables first so uns can name them, then
+        # run the raw mobility pass once for the heatmap and the grid's
+        # discovery together, before uns is built -- unless both were fed
+        # from the summed table's own passes already (see
+        # _fused_sibling_passes, which also planned the siblings).
+        if not self._siblings_planned:
+            self._mobility_table_key = self._plan_mobility_table(unit.key)
+            self._msms_table_key = self._plan_msms_table(unit.key)
+        self._prepare_sibling_scans(adata.obs, z_value=unit.plane)
+
+        # Add MSI metadata to .uns
+        self._add_metadata_to_uns(adata)
+
+        # Make sure instance_key is a string column
+        adata.obs["instance_key"] = adata.obs.index.astype(str)
+
+        table = TableModel.parse(
+            adata,
+            region=unit.region_key,
+            region_key="region",
+            instance_key="instance_key",
+        )
+
+        data_structures["tables"][unit.key] = table
+        data_structures["shapes"][unit.region_key] = self._create_pixel_shapes(adata)
+        self._attach_sibling_tables(
+            data_structures, unit.key, unit.region_key, adata.obs, z_value=unit.plane
+        )
+        data_structures["images"][f"{unit.key}_tic"] = self._tic_image(unit)
+
+    def _table_obs(self, unit: _TableUnit) -> pd.DataFrame:
+        """``obs`` for the kept rows of one table.
+
+        The positions are recovered from the grid indices. A plane's table
+        carries ``y``, ``x`` and the in-plane positions; the volume's adds
+        ``z`` and ``spatial_z``, the latter from the z spacing rather than
+        the in-plane pitch so the table lands in the same micrometre frame
+        as the TIC volume's ``Scale``. Column order and dtypes are the ones
+        the two in-memory converters wrote, so a store reads back the same.
+        """
+        if unit.kept_grid is None or self._dimensions is None:
+            raise RuntimeError("The row layout is not decided yet")
+        kept = unit.kept_grid
+        n_x, n_y, n_z = self._dimensions
+
+        if unit.plane is None:
+            z_idx = kept // (n_x * n_y)
+            remainder = kept % (n_x * n_y)
+            y_idx = remainder // n_x
+            x_idx = remainder % n_x
+            obs = pd.DataFrame(
+                {
+                    "x": x_idx,
+                    "y": y_idx,
+                    "z": z_idx if n_z > 1 else np.zeros(kept.size, dtype=np.int64),
+                    "instance_id": kept.astype(str),
+                    "region": pd.Categorical(np.full(kept.size, unit.region_key)),
+                    "spatial_x": x_idx * self.pixel_size_um,
+                    "spatial_y": y_idx * self.pixel_size_um,
+                    "spatial_z": (
+                        z_idx * self.z_spacing_um
+                        if n_z > 1
+                        else np.zeros(kept.size, dtype=np.float64)
+                    ),
+                }
+            )
+        else:
+            y_idx = (kept // n_x).astype(np.int32)
+            x_idx = (kept % n_x).astype(np.int32)
+            obs = pd.DataFrame(
+                {
+                    "y": y_idx,
+                    "x": x_idx,
+                    "instance_id": kept.astype(str),
+                    "region": pd.Categorical(np.full(kept.size, unit.region_key)),
+                    "spatial_x": x_idx * self.pixel_size_um,
+                    "spatial_y": y_idx * self.pixel_size_um,
+                }
+            )
+        obs.set_index("instance_id", inplace=True)
+        # Always add per-pixel region numbers for a consistent schema.
+        obs["region_number"] = self.build_region_numbers(x_idx, y_idx)
+        return obs
+
+    def _tic_image(self, unit: _TableUnit) -> Any:
+        """The TIC raster of one table as a SpatialData image element.
+
+        Full-grid, and deliberately not subset with the rows: it is a
+        dense image of the bounding box, not a per-pixel table. The image
+        array is intrinsically in raster indices; its transformation to
+        ``"global"`` expresses the conversion into the chosen global
+        frame -- optical-image pixels when FlexImaging alignment is
+        applied, physical micrometres otherwise, so that ``"global"``
+        agrees with the pixel-polygon shapes.
+        """
+        n_z = self._dimensions[2]
+        if unit.plane is None and n_z > 1:
+            # A volume, on the axes Image3DModel declares. z gets its own
+            # spacing (see BaseMSIConverter._resolve_z_spacing). Scale
+            # pairs values with axis *names*, so ("x", "y", "z") against
+            # a (c, z, y, x) image is deliberate.
+            transform: Any = Scale(
+                [self.pixel_size_um, self.pixel_size_um, self.z_spacing_um],
+                axes=("x", "y", "z"),
+            )
+            return Image3DModel.parse(
+                xr.DataArray(unit.tic[np.newaxis, ...], dims=("c", "z", "y", "x")),
+                transformations={self.dataset_id: transform, "global": transform},
+            )
+
+        plane = unit.tic if unit.plane is not None else unit.tic[0]
+        # Gate the alignment-based affine on apply_optical_alignment. When
+        # the caller opts out (e.g. Ousia's wizard), MSI lands in pure
+        # micrometer coordinates so downstream registration is the
+        # canonical alignment step.
         if self._apply_optical_alignment and self._tic_to_image_matrix is not None:
-            tic_transform = Affine(
+            transform = Affine(
                 self._tic_to_image_matrix,
                 input_axes=("x", "y"),
                 output_axes=("x", "y"),
             )
         else:
-            tic_transform = Scale(
-                [self.pixel_size_um, self.pixel_size_um],
-                axes=("x", "y"),
-            )
-
-        tic_image = Image2DModel.parse(
-            tic_xarray,
-            transformations={
-                self.dataset_id: tic_transform,
-                "global": tic_transform,
-            },
+            transform = Scale([self.pixel_size_um, self.pixel_size_um], axes=("x", "y"))
+        return Image2DModel.parse(
+            xr.DataArray(plane[np.newaxis, ...], dims=("c", "y", "x")),
+            transformations={self.dataset_id: transform, "global": transform},
         )
-
-        # === Create Pixel Shapes ===
-        gdf = self._create_streaming_pixel_shapes(kept_grid, n_x, n_y)
-
-        shape_transform = Identity()
-        shapes = ShapesModel.parse(
-            gdf,
-            transformations={
-                self.dataset_id: shape_transform,
-                "global": shape_transform,
-            },
-        )
-
-        # === Write images and shapes via spatialdata's own element writer ===
-        #
-        # The CSC table is already hand-written to the Zarr store to keep
-        # memory bounded.  The TIC image, pixel shapes, and any optical
-        # images are small, so we let spatialdata write them through its
-        # normal element writer.  That guarantees the produced OME-NGFF
-        # metadata (``ome.version`` + ``multiscales``) matches whatever
-        # spatialdata version is installed, so ``spatialdata.read_zarr``
-        # round-trips on both the stock package and the Ousia fork.
-        #
-        # We deliberately do NOT call ``SpatialData.read(self.output_path)``
-        # first: re-reading the hand-written store coupled element writing
-        # to the hand-crafted store layout and -- combined with the
-        # swallow below -- previously let a half-written, unreadable image
-        # group pass as a successful conversion.  A fresh in-memory
-        # SpatialData pointed at the existing store writes only the named
-        # elements and leaves the hand-written table untouched.
-        #
-        # No try/except: any failure here propagates to convert(), which
-        # returns False.  A corrupt zarr must never be reported as success.
-        tic_name = f"{slice_id}_tic"
-        data_structures: Dict[str, Any] = {
-            "images": {tic_name: tic_image},
-            "shapes": {region_key: shapes},
-            "tables": {},
-        }
-
-        # The sibling tables, when the source supports one. Their obs
-        # mirrors the hand-written table's rows (see _sibling_obs).
-        if self._mobility_table_key is not None or self._msms_table_key is not None:
-            kept = np.asarray(kept_grid, dtype=np.int64)
-            if sibling_obs is None:
-                sibling_obs = self._sibling_obs(kept, n_x, region_key)
-            self._attach_sibling_tables(
-                data_structures,
-                slice_id,
-                region_key,
-                sibling_obs,
-                z_value=0,
-                # The summed table went straight to disk on this route and
-                # is not in hand; its per-pixel ion current is, because the
-                # TIC image is exactly that.
-                summed_row_totals=np.asarray(tic_values, dtype=np.float64).ravel()[
-                    kept
-                ],
-            )
-
-        # Load optical images through the base converter's path so they get
-        # the same multi-scale pyramid + chunked layout and identical
-        # transforms as the in-memory converters.  Honours
-        # self._include_optical internally.
-        self._add_optical_images(data_structures)
-
-        with _suppress_upstream_warnings():
-            # This SpatialData intentionally carries no table (the table is
-            # already on disk), so suppress the "table is annotating ...
-            # which is not present" warning for the region it annotates.
-            warnings.filterwarnings(
-                "ignore",
-                message="The table is annotating.*which is not present",
-                category=UserWarning,
-            )
-            sdata = SpatialData(
-                images=data_structures["images"],
-                shapes=data_structures["shapes"],
-                tables=data_structures["tables"],
-            )
-            sdata.path = Path(self.output_path)
-            element_names = (
-                list(data_structures["images"].keys())
-                + list(data_structures["shapes"].keys())
-                + list(data_structures["tables"].keys())
-            )
-            with table_write_config():
-                sdata.write_element(element_names, overwrite=True)
-        # The siblings were written from their memmaps; drop every
-        # reference so their scratch directories can go.
-        del sdata
-        self._release_sibling_scratch(data_structures["tables"])
-
-        # The optical images were declared as placeholders; their pixels
-        # stream into the store now that the elements exist. An unreadable
-        # TIFF is dropped from the store with a warning in there; anything
-        # else propagates, since a half-written image group is a corrupt
-        # store.
-        n_optical = self._stream_pending_optical_pixels()
-
-        logger.info(
-            f"  Wrote TIC image '{tic_name}' ({x_size}x{y_size}), "
-            f"{kept_grid.size:,} pixel shapes, and {n_optical} optical image(s)"
-        )
-
-    def _create_streaming_pixel_shapes(
-        self, kept_grid: NDArray[np.int64], n_x: int, n_y: int
-    ) -> "gpd.GeoDataFrame":
-        """Create pixel shape geometries for the streaming converter.
-
-        One polygon per table row, indexed by the same grid index obs uses,
-        so the shapes and the table stay in step. This used to walk the
-        whole bounding box, which is what put a polygon on each of real
-        ``pea``'s 4,686 phantom rows.
-
-        Args:
-            kept_grid: Grid index of each table row, in row order.
-            n_x: Number of pixels in x dimension.
-            n_y: Number of pixels in y dimension.
-
-        Returns:
-            GeoDataFrame with pixel box geometries.
-        """
-        n_rows = int(kept_grid.size)
-        y_indices = kept_grid // n_x
-        x_indices = kept_grid % n_x
-
-        from shapely import box as shapely_box_vectorized
-        from shapely.geometry import box as shapely_box_single
-
-        valid_indices: Optional[List[int]] = None
-
-        # Gate on apply_optical_alignment so the wizard's opt-out
-        # path produces pixel-polygon shapes in pure micrometer
-        # coordinates (matching the MSI TIC image, which also takes
-        # the micrometer Scale branch above).
-        if (
-            self._apply_optical_alignment
-            and self._alignment_result is not None
-            and self._alignment_result.region_mappings
-        ):
-            # Use optical alignment - transform raster coords to image pixels.
-            default_half_pixel = self._alignment_result.region_mappings[
-                0
-            ].get_half_pixel_size()
-
-            valid_geometries: List[Any] = []
-            valid_indices = []
-            for i in range(n_rows):
-                rx, ry = int(x_indices[i]), int(y_indices[i])
-                img_coords = self._alignment_result.transform_point(rx, ry)
-
-                if img_coords is not None:
-                    ix, iy = img_coords
-                    half_pixel = self._alignment_result.get_half_pixel_size(rx, ry)
-                    if half_pixel is None:
-                        half_pixel = default_half_pixel
-                    half_x, half_y = half_pixel
-                    valid_geometries.append(
-                        shapely_box_single(
-                            ix - half_x, iy - half_y, ix + half_x, iy + half_y
-                        )
-                    )
-                    valid_indices.append(int(kept_grid[i]))
-
-            n_skipped = n_rows - len(valid_indices)
-            if n_skipped > 0:
-                logger.info(
-                    f"Created {len(valid_geometries)} shapes using optical "
-                    f"alignment (skipped {n_skipped} positions the alignment "
-                    f"could not transform)"
-                )
-
-            geometries = valid_geometries
-        else:
-            # Physical micrometer coordinates
-            half_pixel_um = self.pixel_size_um / 2
-            spatial_x = x_indices * self.pixel_size_um
-            spatial_y = y_indices * self.pixel_size_um
-
-            geometries = shapely_box_vectorized(
-                spatial_x - half_pixel_um,
-                spatial_y - half_pixel_um,
-                spatial_x + half_pixel_um,
-                spatial_y + half_pixel_um,
-            )
-
-        # Create GeoDataFrame with string indices matching obs
-        if valid_indices is not None:
-            instance_ids = [str(i) for i in valid_indices]
-        else:
-            instance_ids = [str(i) for i in kept_grid.tolist()]
-        return gpd.GeoDataFrame(geometry=geometries, index=instance_ids)

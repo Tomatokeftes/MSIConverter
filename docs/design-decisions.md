@@ -488,10 +488,10 @@ wherever the file lives.
 
 **Objections considered.**
 
-- *The in-memory route still runs the standalone passes.* True, and left
-  so: that route holds the whole matrix in RAM and is taken by small
-  files, where the passes cost seconds. The streaming route is where a
-  file large enough for the passes to matter goes.
+- *The in-memory route still runs the standalone passes.* True at the
+  time, and left so: that route held the whole matrix in RAM and was taken
+  by small files, where the passes cost seconds. Moot since D11 folded it
+  into the streaming route, which feeds the sinks from its own passes.
 - *Under `vendor_centroid` the summed spectrum cannot be derived from the
   raw scans.* Correct; in that mode the record asks the library for the
   centroid as a second call per frame, and the raw read still serves the
@@ -689,10 +689,9 @@ the cost and the flags:
     Function(s) 2 hold 1274 pixels (16.6% of the image) that no other
     function covers, but MassLynx names them the lockmass function and will
     not centroid them. They stay out rather than put profile rows in a table
-    of centroids: pass --waters-spectrum profile --streaming true to convert
-    the whole image.
+    of centroids: pass --waters-spectrum profile to convert the whole image.
 
-`--streaming true` is in that sentence because, when it was written,
+`--streaming true` was in that sentence until D11 because, when it was written,
 `--streaming auto` did not notice how large the profile store is: its
 estimate assumed 10,000 peaks per spectrum whatever the source, which is
 0.57 GB for this run, while the streaming converter's own estimate once
@@ -727,13 +726,15 @@ at its own peak count, since peaks stay peaks and a finer axis does not
 multiply them. The bin count comes from the converter's own planner rather
 than a second copy of that arithmetic, which is what issue #87 was.
 
-This run now scores 296.5 GB and upgrades itself, so `--streaming true` is
-belt-and-braces rather than required. That over-states what the conversion
-really needs -- those 3.3e9 values are about 49 GB across the three COO
-arrays -- and deliberately so: the decision is one-sided, since
-under-estimating keeps a conversion in memory that had to stream and it
-dies there, while over-estimating costs at most a streaming run that would
-also have fit.
+This run then scored 296.5 GB and upgraded itself, so `--streaming true`
+became belt-and-braces rather than required. That over-stated what the
+conversion really needed -- those 3.3e9 values are about 49 GB across the
+three COO arrays -- and deliberately so: the decision was one-sided, since
+under-estimating kept a conversion in memory that had to stream and it
+died there, while over-estimating cost at most a streaming run that would
+also have fit. The estimate lasted one day: D11 removed the in-memory
+converter, and with it the gate, so every conversion streams and the flag
+selects nothing.
 
 The alternative -- forcing the whole run to the profile trace whenever a
 chunk cannot be centroided -- would keep the image whole automatically, but
@@ -845,30 +846,30 @@ failure) was the only thing it still produced. It is gone: about 750 lines
 of `streaming_converter.py`, the `chunk_size` and `temp_dir` constructor
 arguments that served only it, and its half of nine test modules.
 
-**What stays.** `use_csc` stays as a keyword because Ousia passes it;
-`True` and `"auto"` mean the one route, `False` raises and says why. The
-in-memory 2D and 3D converters stay too, and for reasons rather than
-inertia: only they write depth (the PCS scatter has no z term and refuses
-`n_z > 1`), they make one pass where PCS resamples every spectrum twice,
-and they go through spatialdata's own writer, which is what caught the
-five layout drifts the hand-written PCS store has had so far (phantom
-rows, missing root attrs, missing obs column, invented provenance, missing
-encoding attrs). Deleting the route that uses the real writer would leave
-the hand-written layout with no oracle.
+**What stayed, for a day.** `use_csc` stays as a keyword because Ousia
+passes it; `True` and `"auto"` mean the one route, `False` raises and says
+why. The in-memory 2D and 3D converters stayed too, and for reasons rather
+than inertia: only they wrote depth (the PCS scatter had no z term and
+refused `n_z > 1`), they made one pass where PCS resamples every spectrum
+twice, and they went through spatialdata's own writer, which is what caught
+the five layout drifts the hand-written PCS store had (phantom rows,
+missing root attrs, missing obs column, invented provenance, missing
+encoding attrs). Deleting the route that used the real writer would have
+left the hand-written layout with no oracle. Each of those three reasons
+was a piece of work rather than a permanent argument; D11 did the work and
+removed them.
 
 **One thing this settled by accident.** `sparse_format="csr"` was only
 honoured by COO; PCS ignored it and stored CSC. Since COO was unreachable
 from `convert()`, a streaming CSR request had been silently producing CSC
-for a release. This release made the streaming converter refuse `csr` and
-name the in-memory converter as the one that wrote it; D10 then removed the
-keyword from every route, so the refusal now comes from the base converter
-and applies to `csc` as well.
+for a release. The streaming converter now refuses `csr` and names the
+in-memory converter as the one that writes it.
 
 **Not decided here.** Whether PCS should grow a z term and route its table
 through spatialdata's writer, at which point the in-memory converters and
-the parity tests both become removable. Filed as issue #218. The second
-question left open, whether `--sparse-format` earns its place as a flag at
-all, is D10.
+the parity tests both become removable, and whether `--sparse-format`
+earns its place as a flag at all. Both were filed as issues and both are
+decided below: D10 (#219) and D11 (#218).
 
 ---
 
@@ -924,3 +925,139 @@ before any data is read.
 what it would have got anyway, also stops working and needs the argument
 deleted. That is the cost of not having a value that is accepted and
 ignored.
+
+---
+
+## D11. One converter
+
+**Status:** Implemented (2026-09-08).
+
+The in-memory 2D and 3D converters are folded into the streaming one.
+There is one converter: two passes over the source, every table scattered
+into memory-mapped CSC arrays (`csc_assembly.CscAssembly`, the engine the
+sibling tables already used, with every m/z bin a column) and written
+through spatialdata's writer as an AnnData over those memmaps. `handle_3d`
+decides the shape of the store, one table per z plane or one for the
+volume, exactly as it used to pick between the two in-memory converters.
+`SpatialData2DConverter` and `SpatialData3DConverter` are gone;
+`SpatialDataConverter` is the registered name of the one converter and
+`StreamingSpatialDataConverter` the class, kept because Ousia imports it.
+
+**The measurement D9 asked for.** Whether small datasets convert faster in
+memory had never been measured. On the real files in `test_data/` and the
+registry, warm, `--no-optical`, one subprocess per conversion, peak RSS
+summed over the process tree and sampled at 50 ms (2026-09-08, before the
+fold, so both routes are the shipped code):
+
+| dataset | spectra | one pass, in memory | two passes, streaming |
+|---|---|---|---|
+| `pea.imzML` | 12,737 | 12.2 s / 4.0 GB | 15.7 s / 1.0 GB |
+| `bellini.imzML` (36M nnz) | | 8.3 s / 1.1 GB | 10.8 s / 0.6 GB |
+| a TSF slide | 33,800 | 19.2 s / 5.1 GB | 28.2 s / 1.3 GB |
+| `tims_msms_pos_brain1` (TDF, PASEF) | 713 | 10.7 s / 0.42 GB | 10.0 s / 0.40 GB |
+
+So the claim was true, and small: the one-pass route is about 1.3x faster
+on small imzML and TSF files, at three to four times the peak memory, and
+on a TDF the fused passes (D5) had already made the two equal. Where the
+time goes on `pea.imzML`: the in-memory route spends 5.3 s in its one pass,
+0.8 s converting COO to CSC and 3.2 s writing; the streaming route 4.6 s
+counting, 5.9 s scattering and 2.2 s writing. The second pass costs more
+than the first because the scatter writes each entry to a random position
+of the memmap, where the count only increments a dense array. That is the
+lever if the second pass ever matters, and it lives inside the one route.
+
+The same files through the one converter after the fold, same harness,
+best of four runs: `pea.imzML` 15.8 s / 1.15 GB, `bellini.imzML` 10.7 s /
+0.67 GB, the TSF slide 29.1 s / 1.48 GB, the PASEF TDF 8.4 s / 0.45 GB.
+The wall time is the old streaming route's to within a second and the
+PASEF set is faster; peak memory sits 10 to 15 percent above the old
+streaming route, which is the writer's 128 MiB shard buffer and the
+`var` frame the hand-written layout wrote as bare arrays. Store sizes are
+the old in-memory route's to the megabyte, since it is the same writer.
+
+**Why one route anyway.** Three seconds on a fifteen-second conversion
+does not pay for a second code path with its own bug class (a COO
+pre-allocation sized from `total_peaks` that grew by 50 percent when the
+count was wrong, a 4 GB RSS on a 700 MB file) and its own half of every
+converter test. The three reasons D9 kept the in-memory converters were
+each a piece of work, and they are done:
+
+- *Depth.* The scatter indexes rows within a table unit -- `y * n_x + x`
+  on a plane's table, `z * n_x * n_y + y * n_x + x` on the volume's -- and
+  a multi-plane source gets one table per plane or one volume, with the
+  same element keys, `obs` columns, `instance_id` convention (the plane-
+  local grid index per plane, the volume grid index for a volume), TIC
+  images and shapes the in-memory converters wrote. The refusal of
+  `n_z > 1` is gone; the measurement that justified it now asserts the
+  planes are apart (`test_pcs_phantom_pixel_rows`).
+- *The writer.* Nothing composes a Zarr layout by hand any more. Encoding
+  attributes, root attributes, `obs`, `var` and the provenance block all
+  come from `_save_output`, which every table goes through, so the five
+  drifts D9 lists cannot recur -- there is nothing left to drift from.
+  The seam the issue asked about is `CscAssembly.matrix()`: scipy's
+  constructor takes the memmaps without copying when the index dtype is
+  the one it would have chosen, and anndata's sparse writer copies each
+  array into the store shard by shard, so the write stays out of core.
+- *The oracle.* The real writer is not an oracle when it is the only
+  writer; it is the layout. The value-level oracles stay and are the
+  guard now: `test_stored_pixel_spectrum_oracle` (computed expectation
+  per pixel, never read back), `test_out_of_grid_guard`, the 3D probe
+  readers and the sibling-table stubs. The cross-path parity suite went,
+  as the issue said it could; what survives of it checks that both table
+  shapes describe the source the same way.
+
+**What changed on disk.** Nothing in the values. Measured rather than
+claimed: the four files above were converted with the code before the
+fold down both routes and with the code after it, and every store was
+read back through spatialdata and compared element by element -- root
+attributes minus the timestamp, every table's `X` arrays, `obs`, `var`
+and `uns`, every shapes element's index, geometry and transform, every
+image's pixels and transform. Against the old in-memory route all four
+new stores are identical. Against the old streaming route they differ in
+layout details that were the in-memory route's all along -- `indptr`
+follows scipy's index-dtype rule (int32 while it fits) instead of always
+int64; `obs` string columns are anndata's nullable string arrays; the
+summed table's shards come from `table_write_config()` (128 MiB) instead
+of hand-rolled one-million-entry chunks; a raw-axis dense spectrum no
+longer stores its explicit zeros -- and in two drifts of the hand-written
+layout that nobody had listed: it stamped `spatialdata_software_version`
+with a literal `0.6.1` from whenever it was written, where the writer
+records the installed version, and it gave the sibling tables an `obs` of
+`x`, `y`, `region` and `instance_key` only, where the in-memory route
+gave them the summed table's full `obs` (`spatial_x`, `spatial_y`,
+`region_number` included), which every sibling now gets. Two things
+changed the other way. The grid table's `mobility_marginal` block
+carries the per-pixel ratio only: the per-cell deviation the in-memory
+route recorded needed the marginal and its difference from the summed
+table materialised, each the size of the summed table, and the route that
+was kept never holds either. And a single-plane FlexImaging acquisition
+converted with `handle_3d=True` now places its TIC image by the alignment
+affine like every other 2D image, where the old 3D converter scaled it in
+micrometres while putting its shapes in optical pixels, so the two
+disagreed at `"global"`.
+
+**What went with them.** `--streaming` is a hidden no-op and `streaming=`
+selects nothing: with one route the `auto` estimate has nothing to decide,
+so the sizing PR #216 landed the day before (`_values_per_spectrum`, the
+profile-versus-centroid rule, `Thresholds.STREAMING_SIZE_GB`) is gone with
+the gate it served. The refusal of a broken file still happens at the
+first metadata read, outside any try, which `_create_converter` does
+itself now. `sparse_format` went the same day (D10), which this makes
+moot twice over: the only writer of CSR was in-memory.
+
+**Objections considered.**
+
+- *Small files got slower.* By the numbers above, and said here rather
+  than hidden. Conversions of a few seconds are not what the memory
+  budget is for; conversions of hours are, and those already streamed.
+- *A second pass reads the source twice.* It always did on the route
+  that was kept, and on a cold network share a pass is bounded by the
+  mapping, not the read (D5's cold-cache measurement).
+- *The in-memory route dropped explicit zeros and the streaming one kept
+  them.* It drops them now, on the raw-axis path where they arose;
+  the resampling paths never produced any.
+
+**Known limit.** The `var` frame is still O(bins) in RAM (D8), and the
+string index it carries is built by pandas at about 125 bytes per bin: a
+raw, unresampled axis of millions of bins is the one thing that still
+scales with the source, and it is the case to resample.

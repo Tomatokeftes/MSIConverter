@@ -11,16 +11,14 @@ them stay green, which is how two wrong-data defects sat in a passing
 suite.
 
 ``test_read_lazy_contract`` is the one file that builds an independent
-expectation, but its fixture converts through ``convert_msi`` defaults --
-the in-memory path. The streaming writer had no equivalent.
+expectation, but only for a fully populated grid.
 
-This file closes that gap for both write paths. It is a regression
-net, not a bug hunt: it is expected to pass. The specific failure it
-exists to catch is on the PCS path, where ``obs`` positions come from
-``kept_grid`` (``streaming_converter._write_csc_arrays_to_zarr``) while
-X's row indices come independently from ``row_of_grid``
-(``_scatter_spectra_direct``). Should those two ever disagree, every
-pixel permutes while the row count, the instance ids, ``uns`` and the TIC
+This file closes that gap. It is a regression net, not a bug hunt: it
+is expected to pass. The specific failure it exists to catch is that
+``obs`` positions come from a table unit's ``kept_grid`` while X's row
+indices come independently from its ``row_of_grid`` (both in
+``streaming_converter``). Should those two ever disagree, every pixel
+permutes while the row count, the instance ids, ``uns`` and the TIC
 total all still agree.
 
 Four choices make the assertions load-bearing rather than decorative;
@@ -41,21 +39,20 @@ matrix is non-square too (16 rows, 40 columns), so a transpose cannot
 even produce a conformable shape.
 
 **Pixels are found by ``instance_id``, never by row offset.** v3.0.0
-compacted the row offsets on the PCS path while keeping the grid index as
-the ``instance_id``, so the two differ for every acquired position past
-the first gap -- the named pixel below is grid 11 at row 5. A positional
+compacted the row offsets while keeping the grid index as the
+``instance_id``, so the two differ for every acquired position past the
+first gap -- the named pixel below is grid 11 at row 5. A positional
 lookup would silently re-encode the pre-v3.0.0 layout and assert the
 wrong pixel.
 
-**Values are compared densely, never by ``nnz``.** The in-memory path
-drops zero intensities and stores 48 entries where the streaming paths
-keep them and store 640. Both are correct and neither count means the
-values are right.
+**Values are compared densely, never by ``nnz``.** Whether a writer drops
+zero intensities or keeps them as explicit entries is a layout choice,
+and neither count means the values are right.
 
 Each of those choices was mutation-tested, not reasoned about, and the
 grid changed as a result: at an earlier 11 acquired positions the named
 pixel sat on row 5 of 11 -- the one row a reversal maps to itself -- and
-a mutation reversing every row on the PCS path left the headline
+a mutation reversing every row left the headline
 assertion green. See
 ``TestTheFixtureCannotDecayIntoATautology`` for the guards that now
 prevent it.
@@ -87,7 +84,7 @@ TABLE_KEY = f"{DATASET_ID}_z0"
 # reversal of the rows with no fixed point, and an EVEN N_Y leaves a
 # vertical flip with none -- measured: at 11 rows the named pixel landed
 # on row 5 of 11, the one row a reversal maps to itself, and a mutation
-# that reversed every row on the PCS path sailed past the headline
+# that reversed every row sailed past the headline
 # assertion. Guarded by the tests in
 # TestTheFixtureCannotDecayIntoATautology.
 N_X, N_Y = 7, 4
@@ -134,12 +131,12 @@ TAG_BASE = 10_000.0
 # test_the_named_pixel_cannot_be_hit_by_accident.
 NAMED_PIXEL = (4, 1)
 
-# convert_msi kwargs selecting each write path. The empty mapping is the
-# in-memory converter: with streaming left at "auto" a dataset this small
-# is far below the size gate.
+# convert_msi kwargs per converted store. One route since the in-memory
+# converters were folded in; ``use_csc`` is the keyword Ousia's wizard
+# still passes, so it is exercised once.
 WRITE_PATHS: Dict[str, Dict[str, Any]] = {
-    "in_memory": {},
-    "streaming_pcs": {"streaming": True, "use_csc": True},
+    "default": {},
+    "wizard_kwargs": {"streaming": True, "use_csc": True},
 }
 
 # Both surfaces a consumer opens the store with. Ousia uses the lazy one.
@@ -245,8 +242,8 @@ class TestStoredPixelSpectrum:
     def test_named_pixel_spectrum_matches_the_acquisition(self, table):
         """The headline assertion, on one pixel named up front.
 
-        A row/identity disagreement on either streaming path permutes
-        the rows, and this pixel's row then carries some other pixel's
+        A row/identity disagreement permutes the rows, and this pixel's
+        row then carries some other pixel's
         spectrum -- a different ``TAG_CHANNEL`` value, since that channel
         is unique per pixel by construction.
         """
@@ -385,7 +382,7 @@ class TestTheFixtureCannotDecayIntoATautology:
 
         Measured, not hypothetical: at 11 acquired positions the named
         pixel landed on row 5 of 11, and a mutation reversing every row
-        on the PCS path left that row alone -- the headline assertion
+        left that row alone -- the headline assertion
         passed on a store where all ten other pixels were wrong. An even
         row count leaves a reversal no fixed point at all, so this also
         pins ``len(ACQUIRED)`` even.

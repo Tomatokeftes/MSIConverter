@@ -177,23 +177,18 @@ thyra volume.imzML output.zarr --handle-3d
 
 ---
 
-## Streaming Mode
+## Memory
 
-Thyra automatically switches to streaming mode for large datasets (estimated >10 GB).
-You can also force it:
+Every conversion streams, whatever the dataset's size: Thyra makes two passes
+over the source -- one to count, one to scatter straight into memory-mapped
+arrays next to the output -- and writes each table from those arrays, so the
+intensity matrix is never held in RAM. There is no mode to switch on; the
+`--streaming` flag older scripts pass is accepted and ignored.
 
-```bash
-# Force streaming on
-thyra large_dataset.d output.zarr --streaming true
-
-# Force streaming off
-thyra large_dataset.d output.zarr --streaming false
-```
-
-!!! info "How streaming works"
-    Streaming mode processes spectra in chunks and writes incrementally to Zarr
-    on disk, keeping memory usage roughly constant regardless of dataset size.
-    The output is identical -- only the processing strategy changes.
+!!! info "What does take memory"
+    The `var` frame (one row per m/z bin) and the transient shard buffers of
+    the write. A few hundred megabytes on a default-resampled axis; a raw,
+    unresampled axis of millions of bins is what to resample.
 
 ---
 
@@ -321,13 +316,8 @@ thyra input.imzML output.zarr --pixel-size 50
 
 ### Memory errors on large datasets
 
-Force streaming mode:
-
-```bash
-thyra large.d output.zarr --streaming true
-```
-
-Or reduce the number of resampling bins:
+The intensity matrix is never held in memory; what grows with the axis is the
+`var` frame. Reduce the number of resampling bins:
 
 ```bash
 thyra large.d output.zarr --resample-bins 20000

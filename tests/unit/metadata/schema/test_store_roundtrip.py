@@ -29,12 +29,10 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(scope="module")
 def store(tmp_path_factory):
-    from thyra.converters.spatialdata.spatialdata_2d_converter import (
-        SpatialData2DConverter,
-    )
+    from thyra.converters.spatialdata import SpatialDataConverter
 
     output = tmp_path_factory.mktemp("schema_store") / "out.zarr"
-    converter = SpatialData2DConverter(
+    converter = SpatialDataConverter(
         reader=MockMSIReader(
             MockMSIConfig(n_x=4, n_y=4, n_mz_bins=200, peaks_per_spectrum=(10, 20))
         ),
@@ -100,11 +98,9 @@ class TestStoreRoundTrip:
         assert document["MS_Analysis"]["Pixel_Size"] == {"Xaxis": 10, "Yaxis": 10}
 
     def test_resampling_step_serialises_the_config(self, tmp_path):
-        from thyra.converters.spatialdata.spatialdata_2d_converter import (
-            SpatialData2DConverter,
-        )
+        from thyra.converters.spatialdata import SpatialDataConverter
 
-        converter = SpatialData2DConverter(
+        converter = SpatialDataConverter(
             reader=MockMSIReader(
                 MockMSIConfig(n_x=4, n_y=4, n_mz_bins=200, peaks_per_spectrum=(10, 20))
             ),
@@ -122,12 +118,10 @@ class TestStoreRoundTrip:
         assert "min_mz" not in parameters
 
     def test_resolved_resampling_lands_in_the_stored_step(self, tmp_path):
-        from thyra.converters.spatialdata.spatialdata_2d_converter import (
-            SpatialData2DConverter,
-        )
+        from thyra.converters.spatialdata import SpatialDataConverter
 
         output = tmp_path / "resampled.zarr"
-        converter = SpatialData2DConverter(
+        converter = SpatialDataConverter(
             reader=MockMSIReader(
                 MockMSIConfig(n_x=4, n_y=4, n_mz_bins=200, peaks_per_spectrum=(10, 20))
             ),

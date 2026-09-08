@@ -8,9 +8,9 @@ the source's own feature list for a shared mobility axis. A pixel's
 entries can be enumerated from the source in one pass and again in a
 second, identically, so nothing ever needs to be held for the whole
 image. This module is that shape, factored out of the two tables so both
-bound their memory the same way the summed table already does on the
-streaming route (``StreamingSpatialDataConverter._convert_to_csc_no_cache``:
-pre-scan, count, scatter into a memmap).
+bound their memory the same way the summed table does (pre-scan, count,
+scatter into a memmap); the summed table itself is now one of these too,
+with every m/z bin a column (``StreamingSpatialDataConverter``).
 
 **Pass 1 -- counting.** :meth:`CscAssembly.count` takes one row's unique
 keys. A dense ``uint32`` count per key over the key span is the whole
@@ -31,8 +31,8 @@ without a sort: the ``COO -> CSC`` conversion the tables used to pay for,
 one scipy call over the whole image and the single largest phase of a
 measured grid conversion, is gone rather than tuned. A source read in
 some other order gets its columns sorted afterwards, a bounded chunk of
-columns at a time (:func:`sort_csc_columns`, which the streaming route's
-summed table shares), so the stored matrix is canonical either way.
+columns at a time (:func:`sort_csc_columns`, which the summed table
+shares), so the stored matrix is canonical either way.
 
 :meth:`matrix` wraps the memmaps as a :class:`scipy.sparse.csc_matrix`
 without copying them (index dtypes are chosen up front by scipy's own
@@ -89,10 +89,9 @@ def sort_csc_columns(
     leaves the row indices within a column unsorted, which scipy reports
     as non-canonical and which breaks every consumer that binary-searches
     a column. The columns are already grouped, so this is a sort *within*
-    columns over a bounded slice of the arrays at a time. The assembly
-    here and the streaming route's summed table
-    (``StreamingSpatialDataConverter._convert_to_csc_no_cache``) both sort
-    their memmaps with it.
+    columns over a bounded slice of the arrays at a time. Every table --
+    the summed one and its siblings -- is an assembly and sorts its
+    memmaps with it.
 
     Args:
         indices: CSC row indices, one array-like (a memmap) of the

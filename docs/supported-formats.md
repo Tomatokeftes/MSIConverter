@@ -136,9 +136,9 @@ The mobility dimension itself is not thrown away. The summed table carries
 the declared range and the `TimsCalibration` row -- and `uns["mobility_heatmap"]`,
 the dataset's mean mass-mobility frame (about 4,000 m/z bins by 256 mobility
 channels) accumulated from the raw scan read of every frame. The heatmap is
-where to look to see whether mobility separates anything; on the streaming
-route it is fed from the same frame read that builds the summed table, so it
-costs the mapping of every point onto the mass axis and no extra read, and
+where to look to see whether mobility separates anything; it is fed from the
+same frame read that builds the summed table, so it costs the mapping of
+every point onto the mass axis and no extra read, and
 `--no-mobility-heatmap` skips it. Under `scan_sum` the heatmap summed over mobility is exactly the
 stored mean spectrum; under `vendor_centroid` the two differ by what the
 centroid discards. See [Output Format](output-format.md#ion-mobility). A TSF
@@ -151,8 +151,8 @@ directly the way an imzML mobility export has; the flag bins every pixel's
 across the conversion and writes the result as `{table}_mobility` -- the same
 element, columns and sort a shared-axis source produces. The default 256
 channels over the axis' own value range are the heatmap's, so a box on the
-heatmap indexes the table's channels. On the streaming route it is fed from
-the summed table's own two passes -- one raw read per frame per pass serves
+heatmap indexes the table's channels. It is fed from the summed table's own
+two passes -- one raw read per frame per pass serves
 every table, so the grid adds no read of the source -- and it is a table
 with 1.3 to 4 times the summed table's non-zeros, built out of core, so a
 whole acquisition converts whatever its size. Under the default `--tdf-spectrum scan_sum` the table's
@@ -325,12 +325,12 @@ The log names the cost and the flags:
 Function(s) 2 hold 1274 pixels (16.6% of the image) that no other function
 covers, but MassLynx names them the lockmass function and will not centroid
 them. They stay out rather than put profile rows in a table of centroids:
-pass --waters-spectrum profile --streaming true to convert the whole image.
+pass --waters-spectrum profile to convert the whole image.
 ```
 
-Pass `--streaming true` with it: the profile store for that run is estimated
-at 74 GB against 241 MB for the centroid one, and `--streaming auto` does not
-notice, so the conversion otherwise runs out of memory.
+Budget the disk for it: the profile store for that run is estimated at 74 GB
+against 241 MB for the centroid one. Memory is not the constraint, since every
+conversion streams.
 
 A file whose converted functions carry a precursor m/z holds fragment
 spectra and reports them through `ms_analysis.fragmentation`, exactly as a
