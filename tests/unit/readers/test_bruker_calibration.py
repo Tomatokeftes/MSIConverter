@@ -63,14 +63,13 @@ class TestCalibrationMetadataReading:
             conn.close()
 
             # Create a mock BrukerReader with minimal setup
-            with patch.object(BrukerReader, "_validate_data_path"), patch.object(
-                BrukerReader, "_detect_file_type"
-            ), patch.object(BrukerReader, "_setup_components"), patch.object(
-                BrukerReader, "_initialize_sdk"
-            ), patch.object(
-                BrukerReader, "_initialize_database"
-            ), patch.object(
-                BrukerReader, "_preload_frame_num_peaks"
+            with (
+                patch.object(BrukerReader, "_validate_data_path"),
+                patch.object(BrukerReader, "_detect_file_type"),
+                patch.object(BrukerReader, "_setup_components"),
+                patch.object(BrukerReader, "_initialize_sdk"),
+                patch.object(BrukerReader, "_initialize_database"),
+                patch.object(BrukerReader, "_preload_frame_num_peaks"),
             ):
 
                 reader = BrukerReader.__new__(BrukerReader)
@@ -153,14 +152,13 @@ class TestCalibrationMetadataReading:
             conn.commit()
             conn.close()
 
-            with patch.object(BrukerReader, "_validate_data_path"), patch.object(
-                BrukerReader, "_detect_file_type"
-            ), patch.object(BrukerReader, "_setup_components"), patch.object(
-                BrukerReader, "_initialize_sdk"
-            ), patch.object(
-                BrukerReader, "_initialize_database"
-            ), patch.object(
-                BrukerReader, "_preload_frame_num_peaks"
+            with (
+                patch.object(BrukerReader, "_validate_data_path"),
+                patch.object(BrukerReader, "_detect_file_type"),
+                patch.object(BrukerReader, "_setup_components"),
+                patch.object(BrukerReader, "_initialize_sdk"),
+                patch.object(BrukerReader, "_initialize_database"),
+                patch.object(BrukerReader, "_preload_frame_num_peaks"),
             ):
 
                 reader = BrukerReader.__new__(BrukerReader)
@@ -190,14 +188,13 @@ class TestCalibrationMetadataReading:
             data_path.mkdir()
             # Don't create calibration.sqlite
 
-            with patch.object(BrukerReader, "_validate_data_path"), patch.object(
-                BrukerReader, "_detect_file_type"
-            ), patch.object(BrukerReader, "_setup_components"), patch.object(
-                BrukerReader, "_initialize_sdk"
-            ), patch.object(
-                BrukerReader, "_initialize_database"
-            ), patch.object(
-                BrukerReader, "_preload_frame_num_peaks"
+            with (
+                patch.object(BrukerReader, "_validate_data_path"),
+                patch.object(BrukerReader, "_detect_file_type"),
+                patch.object(BrukerReader, "_setup_components"),
+                patch.object(BrukerReader, "_initialize_sdk"),
+                patch.object(BrukerReader, "_initialize_database"),
+                patch.object(BrukerReader, "_preload_frame_num_peaks"),
             ):
 
                 reader = BrukerReader.__new__(BrukerReader)
@@ -223,14 +220,13 @@ class TestCalibrationMetadataReading:
             conn.close()
 
             try:
-                with patch.object(BrukerReader, "_validate_data_path"), patch.object(
-                    BrukerReader, "_detect_file_type"
-                ), patch.object(BrukerReader, "_setup_components"), patch.object(
-                    BrukerReader, "_initialize_sdk"
-                ), patch.object(
-                    BrukerReader, "_initialize_database"
-                ), patch.object(
-                    BrukerReader, "_preload_frame_num_peaks"
+                with (
+                    patch.object(BrukerReader, "_validate_data_path"),
+                    patch.object(BrukerReader, "_detect_file_type"),
+                    patch.object(BrukerReader, "_setup_components"),
+                    patch.object(BrukerReader, "_initialize_sdk"),
+                    patch.object(BrukerReader, "_initialize_database"),
+                    patch.object(BrukerReader, "_preload_frame_num_peaks"),
                 ):
 
                     reader = BrukerReader.__new__(BrukerReader)
@@ -338,28 +334,19 @@ class TestDefaultCalibrationBehavior:
         def mock_detect(self):
             self.file_type = "tsf"
 
-        with patch.object(BrukerReader, "_validate_data_path"), patch.object(
-            BrukerReader, "_detect_file_type", mock_detect
-        ), patch.object(
-            BrukerReader, "_read_calibration_metadata", return_value=None
-        ), patch.object(
-            BrukerReader, "_setup_components"
-        ), patch.object(
-            BrukerReader, "_initialize_sdk"
-        ), patch.object(
-            BrukerReader, "_initialize_database"
-        ), patch.object(
-            BrukerReader, "_detect_regions", return_value=[]
-        ), patch.object(
-            BrukerReader, "_select_region", return_value=(None, None)
-        ), patch.object(
-            BrukerReader, "_parse_mis_alignment", return_value={}
-        ), patch.object(
-            BrukerReader, "_build_positions_from_db", return_value=[]
-        ), patch.object(
-            BrukerReader, "_build_header_alignment", return_value={}
-        ), patch.object(
-            BrukerReader, "_preload_frame_num_peaks", return_value={}
+        with (
+            patch.object(BrukerReader, "_validate_data_path"),
+            patch.object(BrukerReader, "_detect_file_type", mock_detect),
+            patch.object(BrukerReader, "_read_calibration_metadata", return_value=None),
+            patch.object(BrukerReader, "_setup_components"),
+            patch.object(BrukerReader, "_initialize_sdk"),
+            patch.object(BrukerReader, "_initialize_database"),
+            patch.object(BrukerReader, "_detect_regions", return_value=[]),
+            patch.object(BrukerReader, "_select_region", return_value=(None, None)),
+            patch.object(BrukerReader, "_parse_mis_alignment", return_value={}),
+            patch.object(BrukerReader, "_build_positions_from_db", return_value=[]),
+            patch.object(BrukerReader, "_build_header_alignment", return_value={}),
+            patch.object(BrukerReader, "_preload_frame_num_peaks", return_value={}),
         ):
 
             reader = BrukerReader(Path("/fake/path.d"), use_recalibrated_state=False)
@@ -378,14 +365,13 @@ class TestRealCalibrationData:
         data_path = Path("test_data/260225_SN_L10.d")
 
         # Just test the metadata reading function directly
-        with patch.object(BrukerReader, "_validate_data_path"), patch.object(
-            BrukerReader, "_detect_file_type"
-        ), patch.object(BrukerReader, "_setup_components"), patch.object(
-            BrukerReader, "_initialize_sdk"
-        ), patch.object(
-            BrukerReader, "_initialize_database"
-        ), patch.object(
-            BrukerReader, "_preload_frame_num_peaks"
+        with (
+            patch.object(BrukerReader, "_validate_data_path"),
+            patch.object(BrukerReader, "_detect_file_type"),
+            patch.object(BrukerReader, "_setup_components"),
+            patch.object(BrukerReader, "_initialize_sdk"),
+            patch.object(BrukerReader, "_initialize_database"),
+            patch.object(BrukerReader, "_preload_frame_num_peaks"),
         ):
 
             reader = BrukerReader.__new__(BrukerReader)

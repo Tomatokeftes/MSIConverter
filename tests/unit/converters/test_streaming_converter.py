@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Generator, Optional, Tuple
 from unittest.mock import MagicMock
 
+import anndata
 import numpy as np
 import pytest
 
@@ -154,12 +155,15 @@ class MockMSIReader:
     not SPATIALDATA_AVAILABLE,
     reason="SpatialData dependencies not available",
 )
-def test_estimate_output_size_uses_real_bins_for_width_based_config():
-    """Regression for #87: when ``target_bins`` is None, the size estimator
-    must resolve the bin count via ``width_at_mz`` rather than fall back to a
-    hardcoded 10,000 placeholder. That fallback used to pick the wrong
-    streaming method as well; routing no longer depends on the estimate, so
-    what is left at stake is the number in the log.
+def test_resampling_plan_uses_real_bins_for_width_based_config():
+    """Regression for #87: when ``target_bins`` is None, the bin count must be
+    resolved from ``width_at_mz`` rather than a hardcoded 10,000 placeholder.
+
+    That fallback used to pick the wrong streaming method; there is one
+    route now, but the resolved count is what the memory guard reads
+    before the axis is built (issue #251), so an axis scored at 10,000
+    bins instead of 180,000 would be waved through by a guard sized for
+    the wrong number.
     """
     reader = MockMSIReader(
         dimensions=(50, 50, 1),
@@ -182,12 +186,10 @@ def test_estimate_output_size_uses_real_bins_for_width_based_config():
             use_csc="auto",
             resampling_config=config,
         )
-        size_gb = converter._estimate_output_size_gb()
+        _, _, _, target_bins = converter._resolve_resampling_plan()
 
-    # 2500 pixels x 180k bins x 4 bytes = ~1.68 GB. With the buggy 10k
-    # fallback it would have been ~0.09 GB.
-    assert size_gb > 1.0, (
-        f"Expected size estimate > 1 GB (resolved bins), got {size_gb:.3f} GB. "
+    assert target_bins == pytest.approx(180_000, rel=0.01), (
+        f"Expected ~180,000 bins from the 5 mDa width, got {target_bins:,}. "
         "Likely regression of #87 (10k hardcoded fallback)."
     )
 
@@ -554,7 +556,7 @@ def test_rectangular_grid():
     reason="SpatialData dependencies not available",
 )
 def test_auto_use_csc_mode_with_resampling():
-    """Test auto mode estimation with resampling config."""
+    """``use_csc="auto"`` converts, and the size it reports is the counted one."""
     reader = MockMSIReader(
         dimensions=(50, 50, 1),  # 2500 pixels
         peaks_per_spectrum=200,
@@ -576,10 +578,15 @@ def test_auto_use_csc_mode_with_resampling():
             resampling_config=resampling_config,
         )
 
-        # Estimate should use target_bins from resampling config
-        size_gb = converter._estimate_output_size_gb()
-        # 2500 * 5000 * 4 bytes = 50 MB = 0.047 GB
-        assert size_gb < 1.0, "Should be less than 1 GB"
+        assert converter.convert() is True
+
+        # The route converts on the resolved axis. What the log reports
+        # about its size is the counted non-zeros rather than the dense
+        # product of pixels and bins (issue #254, pinned in
+        # test_routing_estimate.py).
+        table = anndata.read_zarr(output_path / "tables" / "auto_resample_test_z0")
+        assert table.shape == (2500, 5000)
+        assert int(table.X.nnz) > 0
 
 
 class MockMSIReaderWithOptical(MockMSIReader):

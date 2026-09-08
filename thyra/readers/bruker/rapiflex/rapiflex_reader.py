@@ -673,6 +673,7 @@ class RapiflexReader(BrukerBaseMSIReader):
             desc="Reading Rapiflex spectra",
             unit=" spectra",
             dynamic_ncols=True,
+            disable=getattr(self, "_quiet_mode", False),
         )
 
         try:

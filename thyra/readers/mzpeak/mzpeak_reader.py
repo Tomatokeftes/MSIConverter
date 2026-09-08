@@ -586,6 +586,8 @@ class MzPeakReader(BaseMSIReader):
         self._offsets: Optional[Tuple[int, int]] = None
         self._common_axis: Optional[NDArray[np.float64]] = None
         self._announced = False
+        #: Null-pair padding points dropped by the iteration in
+        #: progress; ``iter_spectra`` clears it as it starts.
         self._dropped_points = 0
 
     # ------------------------------------------------------------------
@@ -735,6 +737,14 @@ class MzPeakReader(BaseMSIReader):
                 "mzPeak reads are row-group sized; ignoring batch_size=%s",
                 batch_size,
             )
+
+        # Per iteration, not per reader. Every conversion reads the source
+        # twice (issue #226), and a counter carried across the passes made
+        # the second pass report the sum of both -- 12 dropped points, then
+        # 24, then 36 on a third iteration of the same file. Resetting here
+        # rather than in ``reset()`` also covers a caller that iterates
+        # again without one.
+        self._dropped_points = 0
 
         data = self.archive.parquet("spectrum", "data_arrays")
         positioned = {

@@ -25,6 +25,7 @@ from thyra.converters.spatialdata.mobility_table import (
     disambiguate_labels,
     int_strings,
 )
+from thyra.errors import ConversionRefused
 
 SPAN = 1000
 
@@ -50,8 +51,9 @@ def _reference(rows, n_rows, keep_empty):
     return sparse.coo_matrix((d, (r, columns)), shape=(n_rows, occupied.size)).tocsc()
 
 
-def _build(rows, n_rows, scratch, keep_empty=False, order=None):
+def _build(rows, n_rows, scratch, keep_empty=False, order=None, merge=False):
     assembly = CscAssembly(SPAN, n_rows, keep_empty_columns=keep_empty)
+    assembly.merge_duplicates = merge
     sequence = rows if order is None else [rows[i] for i in order]
     for row, keys, _values in sequence:
         assembly.count(row, keys)
@@ -134,6 +136,117 @@ class TestAgainstScipy:
         assembly.release()
 
 
+class TestDuplicateEntries:
+    """Two spectra at one pixel are one row holding their sum.
+
+    ``coo_matrix(...).tocsc()`` -- the conversion this engine replaced --
+    summed duplicate triples. Scattering keeps both, which leaves the
+    stored matrix non-canonical: scipy and dask merge duplicates when they
+    read it, so ``read_zarr`` users cannot tell, while a consumer that
+    binary-searches ``X/indices`` sees one of the two values (issue #241).
+    The reference is the same one the rest of this file uses, because the
+    behaviour being restored is the one it describes.
+    """
+
+    def test_a_repeated_row_and_key_is_summed(self, tmp_path):
+        rows = [
+            (0, np.array([3, 20]), np.array([200.0, 1000.0])),
+            (1, np.array([3]), np.array([5.0])),
+            (0, np.array([3, 20]), np.array([1.0, 2.0])),
+        ]
+        assembly = _build(rows, 2, tmp_path / "s", merge=True)
+        matrix = assembly.matrix()
+
+        _assert_same(matrix, _reference(rows, 2, False))
+        assert matrix.nnz == 3
+        np.testing.assert_array_equal(matrix.toarray(), [[201.0, 1002.0], [5.0, 0.0]])
+        assembly.release()
+
+    def test_repeats_that_did_not_arrive_together_are_still_summed(self, tmp_path):
+        """A coordinate can recur anywhere in the file, not just next door."""
+        rows = [
+            (0, np.array([4]), np.array([1.0])),
+            (1, np.array([4]), np.array([2.0])),
+            (2, np.array([4]), np.array([3.0])),
+            (0, np.array([4]), np.array([10.0])),
+        ]
+        assembly = _build(rows, 3, tmp_path / "s", merge=True)
+        matrix = assembly.matrix()
+
+        _assert_same(matrix, _reference(rows, 3, False))
+        np.testing.assert_array_equal(matrix.toarray(), [[11.0], [2.0], [3.0]])
+        assembly.release()
+
+    @pytest.mark.parametrize("keep_empty", [False, True], ids=["occupied", "all"])
+    def test_a_duplicated_source_is_the_coo_to_csc_matrix(self, tmp_path, keep_empty):
+        """The whole matrix, against scipy, with repeats scattered through it."""
+        rng = np.random.default_rng(11)
+        rows = _rows(rng, 40)
+        repeats = [
+            (row, keys, rng.random(keys.size) + 0.5)
+            for row, keys, _v in (rows[i] for i in rng.choice(40, 12, replace=False))
+        ]
+        both = rows + repeats
+        rng.shuffle(both)
+
+        assembly = _build(both, 40, tmp_path / "s", keep_empty, merge=True)
+        _assert_same(assembly.matrix(), _reference(both, 40, keep_empty))
+        assembly.release()
+
+    def test_the_merge_survives_a_chunk_boundary(self, tmp_path):
+        """Columns are merged a bounded slice at a time, like the sort."""
+        from thyra.converters.spatialdata import csc_assembly
+
+        rng = np.random.default_rng(12)
+        rows = _rows(rng, 30)
+        both = rows + [(row, keys, values * 2) for row, keys, values in rows[:8]]
+        rng.shuffle(both)
+
+        assembly = _build(both, 30, tmp_path / "s", merge=True)
+        csc_assembly.SORT_CHUNK_ENTRIES, kept = 53, csc_assembly.SORT_CHUNK_ENTRIES
+        try:
+            matrix = assembly.matrix()
+        finally:
+            csc_assembly.SORT_CHUNK_ENTRIES = kept
+        _assert_same(matrix, _reference(both, 30, False))
+        assembly.release()
+
+    def test_nothing_repeated_leaves_the_matrix_alone(self, tmp_path):
+        """The flag is set from occupancy, which can be pessimistic per table."""
+        rows = _rows(np.random.default_rng(13), 20)
+        merged = _build(rows, 20, tmp_path / "m", merge=True).matrix()
+        plain = _build(rows, 20, tmp_path / "p").matrix()
+
+        _assert_same(merged, _reference(rows, 20, False))
+        np.testing.assert_array_equal(merged.data, plain.data)
+
+    def test_the_matrix_still_does_not_copy_the_memmaps(self, tmp_path):
+        rows = [
+            (0, np.array([2]), np.array([1.0])),
+            (0, np.array([2]), np.array([4.0])),
+            (1, np.array([2]), np.array([9.0])),
+        ]
+        assembly = _build(rows, 2, tmp_path / "s", merge=True)
+        matrix = assembly.matrix()
+        assert np.shares_memory(matrix.data, assembly._data)
+        assert np.shares_memory(matrix.indices, assembly._indices)
+        assembly.release()
+
+    def test_merging_twice_is_merging_once(self, tmp_path):
+        """``matrix()`` is not documented as single-shot; a second merge would
+        halve nothing but would rewrite the arrays from the wrong offsets."""
+        rows = [
+            (0, np.array([1]), np.array([1.0])),
+            (0, np.array([1]), np.array([2.0])),
+        ]
+        assembly = _build(rows, 1, tmp_path / "s", merge=True)
+        first = assembly.matrix().toarray()
+        second = assembly.matrix().toarray()
+        np.testing.assert_array_equal(first, [[3.0]])
+        np.testing.assert_array_equal(second, first)
+        assembly.release()
+
+
 class TestTheGuards:
     def test_the_count_array_has_a_budget_naming_the_lever(self):
         assert count_refusal(MAX_COUNT_BYTES // 4) is None
@@ -155,8 +268,11 @@ class TestTheGuards:
         assembly.allocate(tmp_path / "s")
         assembly.scatter(0, np.array([1, 2]), np.array([1.0, 1.0]))
         # Row 1 was counted and never scattered: a reserved slot nothing
-        # wrote, which must not become a silent zero at row 0.
-        with pytest.raises(RuntimeError, match="disagree"):
+        # wrote, which must not become a silent zero at row 0. A property
+        # of the source and its reader, so it is spelled as a refusal --
+        # the message is the whole explanation, and a traceback in front
+        # of it reads like a crash (issue #234's convention).
+        with pytest.raises(ConversionRefused, match="disagree"):
             assembly.matrix()
         assembly.release()
 

@@ -1,32 +1,29 @@
 # tests/unit/converters/test_routing_estimate.py
-"""The size estimate must be honest, and routing must not depend on it.
+"""The size the log reports must be the size that gets written.
 
-``_estimate_output_size_gb`` scores a dataset as
-``n_pixels * n_mz_bins * 4``. The resampling branch already resolved the
-real bin count (issue #87), but the raw-axis branch still guessed it from
-``(max_mass - min_mass) / 0.01`` -- a 10 mDa spacing the data need not have.
+**What used to be here.** ``_estimate_output_size_gb`` scored a dataset as
+``n_pixels * n_mz_bins * 4`` -- the *bounding box* by the bin count, as
+though the matrix were dense. The bin count itself had been fixed once
+already (issue #87): the raw-axis branch guessed it from ``(max_mass -
+min_mass) / 0.01``, a 10 mDa spacing the data need not have, which scored
+a continuous file carrying 4,000 points over 250-1200 m/z as though it had
+95,000. While that number drove the routing it mis-sent the largest
+datasets to the method that held the most in memory.
 
-That guess is wrong in both directions. A continuous file carrying 4,000
-points over 250-1200 m/z was scored as though it had 95,000, inflating it
-24x; a processed file whose spectra share no m/z values was scored far too
-low, which routed the very largest datasets to the method that holds the
-most in memory.
+**Why it is gone.** Fixing the bin count never fixed the *dense*. On
+``TIMS-test-data/02_tiny_longramp_1465px`` the line read
+``Estimated output size: 40.3 GB (513,339 pixels x 21,072 m/z bins)`` for
+a store of 106 MB; 2.5 GB for a 7.6 MB store, 240.7 GB for a 329 MB one
+(issue #254). Since the route stopped being chosen by size (design
+decision D11) the number selected nothing, so all it could still do was
+talk somebody out of a conversion they had room for.
 
-**The routing half of that is now history.** PCS was faster and lighter at
-every size measured, so ``"auto"`` first picked it unconditionally and
-``PCS_SIZE_THRESHOLD_GB`` went; then the COO route itself went, and with it
-the predicate. The estimate survives as a log line, and these tests survive
-with it -- an inaccurate number in a support log is a smaller problem than
-an inaccurate route, but it is still a problem, and the 24x inflation is
-the kind of thing that gets re-derived if nobody wrote down that the
-fallback is unreliable.
-
-``convert()`` runs ``_initialize_conversion()`` before reaching the
-estimate, so the axis is already built and there is nothing to guess. These
-tests pin that the built axis is preferred, that the old heuristics still
-apply when it is not available -- which is the case when the estimator is
-called directly, as the older tests in ``test_streaming_converter.py`` do --
-and that ``use_csc`` survives only as a compatibility keyword.
+Nothing has to be estimated. The pre-scan counts every entry before the
+scatter, and ``_matrix_size_gb`` reports those: eight bytes of value plus
+four or eight of row index each, which is an upper bound on what lands on
+disk because zarr compresses it. These tests pin that arithmetic, that it
+is reported per table rather than per grid position, and that neither the
+dense estimate nor the routing machinery came back.
 """
 
 from __future__ import annotations
@@ -40,6 +37,7 @@ import pytest
 
 from thyra.converters.spatialdata.streaming_converter import (
     StreamingSpatialDataConverter,
+    _TableUnit,
 )
 
 
@@ -83,58 +81,60 @@ def _converter(
     return conv
 
 
-class TestPrefersTheBuiltAxis:
-    """When the axis exists, its length is what counts."""
-
-    def test_uses_real_axis_length(self):
-        n_pixels = 10_000
-        axis = np.linspace(250.0, 1200.0, 4_000)
-        conv = _converter((100, 100, 1), axis=axis)
-
-        expected = n_pixels * 4_000 * 4 / (1024**3)
-        assert conv._estimate_output_size_gb() == pytest.approx(expected, rel=1e-9)
-
-    def test_real_axis_beats_the_raw_heuristic(self):
-        """The heuristic would say 95,000 bins; the axis says 4,000."""
-        axis = np.linspace(250.0, 1200.0, 4_000)
-        conv = _converter((100, 100, 1), axis=axis)
-        with_axis = conv._estimate_output_size_gb()
-
-        conv._common_mass_axis = None
-        without_axis = conv._estimate_output_size_gb()
-
-        # (1200 - 250) / 0.01 = 95,000, i.e. 23.75x the real count.
-        assert without_axis == pytest.approx(with_axis * 95_000 / 4_000, rel=1e-6)
-
-    def test_real_axis_beats_the_resampling_plan_too(self):
-        """A built axis is authoritative even when resampling is configured."""
-        axis = np.linspace(250.0, 1200.0, 1_000)
-        conv = _converter(
-            (100, 100, 1),
-            axis=axis,
-            resampling_config={"method": "nearest_neighbor", "target_bins": 500_000},
-        )
-        expected = 10_000 * 1_000 * 4 / (1024**3)
-        assert conv._estimate_output_size_gb() == pytest.approx(expected, rel=1e-9)
+def _unit(n_grid: int, n_cols: int, rows: dict[int, int]) -> _TableUnit:
+    """A table whose pre-scan found ``rows[grid]`` entries at each position."""
+    unit = _TableUnit("t", "t_pixels", 0, n_grid, n_cols, (1, n_grid))
+    for grid, n_entries in rows.items():
+        keys = np.arange(n_entries, dtype=np.int64)
+        unit.count(grid, keys, np.ones(n_entries))
+    unit.finish_counting()
+    return unit
 
 
-class TestFallbacksStillApply:
-    """Without a built axis, the previous behaviour is unchanged."""
+class TestTheReportedSize:
+    """It is the counted entries, not the bounding box."""
 
-    def test_raw_heuristic_when_no_axis_and_no_resampling(self):
-        conv = _converter((100, 100, 1), mass_range=(250.0, 1200.0), axis=None)
-        expected = 10_000 * 95_000 * 4 / (1024**3)
-        assert conv._estimate_output_size_gb() == pytest.approx(expected, rel=1e-9)
+    def test_entries_times_twelve_bytes(self):
+        conv = _converter((4, 1, 1), axis=np.linspace(250.0, 1200.0, 50))
+        unit = _unit(4, 50, {0: 10, 1: 7, 3: 3})
 
-    def test_resampling_plan_when_no_axis(self):
-        conv = _converter(
-            (50, 50, 1),
-            mass_range=(100.0, 1000.0),
-            axis=None,
-            resampling_config={"method": "nearest_neighbor", "target_bins": 5_000},
-        )
-        expected = 2_500 * 5_000 * 4 / (1024**3)
-        assert conv._estimate_output_size_gb() == pytest.approx(expected, rel=1e-9)
+        assert unit.assembly.n_nonzeros == 20
+        expected = 20 * (8 + 4) / 1024**3
+        assert conv._matrix_size_gb([unit]) == pytest.approx(expected, rel=1e-12)
+
+    def test_empty_positions_cost_nothing(self):
+        """The bounding box is mostly empty on a polygon-shaped acquisition."""
+        conv = _converter((1000, 1000, 1), axis=np.linspace(250.0, 1200.0, 21_072))
+        unit = _unit(1_000_000, 21_072, {5: 4})
+
+        # Dense arithmetic would have said 1e6 x 21072 x 4 = 78 GB.
+        assert conv._matrix_size_gb([unit]) < 1e-6
+
+    def test_several_tables_are_added_up(self):
+        conv = _converter((4, 1, 2), axis=np.linspace(250.0, 1200.0, 50))
+        units = [_unit(4, 50, {0: 6}), _unit(4, 50, {1: 9})]
+
+        expected = (6 + 9) * (8 + 4) / 1024**3
+        assert conv._matrix_size_gb(units) == pytest.approx(expected, rel=1e-12)
+
+    def test_nothing_counted_is_zero(self):
+        conv = _converter((4, 1, 1), axis=np.linspace(250.0, 1200.0, 50))
+        assert conv._matrix_size_gb([_unit(4, 50, {})]) == 0.0
+
+
+class TestTheDenseEstimateIsGone:
+    """Left behind, somebody would fix its bin count again instead of it."""
+
+    def test_the_estimator_is_gone(self):
+        assert not hasattr(StreamingSpatialDataConverter, "_estimate_output_size_gb")
+
+    def test_the_route_machinery_is_gone(self):
+        """A leftover predicate or constant would read as a live gate.
+
+        Left behind, the next person tunes it and nothing happens.
+        """
+        for name in ("PCS_SIZE_THRESHOLD_GB", "_should_use_pcs", "_stream_build_coo"):
+            assert not hasattr(StreamingSpatialDataConverter, name), name
 
 
 class TestUseCscIsCompatibilityOnly:
@@ -149,7 +149,7 @@ class TestUseCscIsCompatibilityOnly:
     @pytest.mark.parametrize("value", ["auto", True])
     def test_auto_and_true_are_accepted(self, value):
         conv = _converter((10, 10, 1), use_csc=value)
-        assert conv._estimate_output_size_gb() >= 0.0
+        assert conv._matrix_size_gb([]) == 0.0
 
     def test_false_names_the_removed_route(self):
         with pytest.raises(ValueError, match=r"COO route, which has been removed"):
@@ -165,24 +165,3 @@ class TestUseCscIsCompatibilityOnly:
         """
         with pytest.raises(ValueError, match=r"sparse_format was removed"):
             _converter((10, 10, 1), sparse_format="csr")
-
-    def test_the_route_machinery_is_gone(self):
-        """A leftover predicate or constant would read as a live gate.
-
-        Left behind, the next person tunes it and nothing happens.
-        """
-        for name in ("PCS_SIZE_THRESHOLD_GB", "_should_use_pcs", "_stream_build_coo"):
-            assert not hasattr(StreamingSpatialDataConverter, name), name
-
-
-class TestDegenerate:
-    """Empty and tiny axes must not raise."""
-
-    def test_empty_axis_is_zero_sized(self):
-        conv = _converter((10, 10, 1), axis=np.array([]))
-        assert conv._estimate_output_size_gb() == 0.0
-
-    def test_single_bin_axis(self):
-        conv = _converter((10, 10, 1), axis=np.array([500.0]))
-        expected = 100 * 1 * 4 / (1024**3)
-        assert conv._estimate_output_size_gb() == pytest.approx(expected, rel=1e-9)

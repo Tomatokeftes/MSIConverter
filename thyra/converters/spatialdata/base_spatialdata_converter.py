@@ -1,5 +1,20 @@
 # thyra/converters/spatialdata/base_spatialdata_converter.py
 
+"""The SpatialData write path every converter shares.
+
+**Exceptions are logged as text here, never as objects.** Every
+``logger.warning("...: %s", str(e))`` in this file could read ``e`` and
+render the same line -- but a log record keeps its arguments, a handler
+that keeps records keeps the record, and an exception object drags along
+its traceback, the frames reachable through ``tb_frame.f_back`` and every
+memmap those frames hold. The finalize path builds each table's AnnData
+over the CSC scratch memmaps, so one retained record is enough to keep the
+scratch directory mapped, and Windows will not delete a mapped file: the
+directory survives the conversion and the user is told to remove it by
+hand. pytest's ``caplog`` retains records, and so does Ousia's per-session
+log capture, which is the consumer that met it (issue #249).
+"""
+
 import json
 import logging
 import warnings
@@ -35,6 +50,32 @@ from ...utils.zarr_atomic_write import install_windows_atomic_write_retry
 from ._chunking import image_chunks, table_write_config
 
 logger = logging.getLogger(__name__)
+
+
+#: Axis entries differenced at once by :func:`_bin_width_range`. 32 MB of
+#: float64 at a time; read at call time so a test can shrink it.
+BIN_WIDTH_CHUNK = 1 << 22
+
+
+def _bin_width_range(axis: NDArray[np.float64]) -> Tuple[float, float]:
+    """The narrowest and widest gap between consecutive axis entries.
+
+    Chunked, because the obvious ``np.diff(axis)`` allocates a second
+    array the length of the axis to produce two numbers for a log line --
+    1.6 GB of it on the 200M-bin axis issue #251 measures. Chunks overlap
+    by one entry so no gap falls between two of them.
+    """
+    axis = np.asarray(axis, dtype=np.float64)
+    if axis.size < 2:
+        return 0.0, 0.0
+    low = np.inf
+    high = -np.inf
+    for start in range(0, axis.size - 1, BIN_WIDTH_CHUNK):
+        stop = min(start + BIN_WIDTH_CHUNK + 1, axis.size)
+        widths = np.diff(axis[start:stop])
+        low = min(low, float(widths.min()))
+        high = max(high, float(widths.max()))
+    return low, high
 
 
 @contextmanager
@@ -1172,7 +1213,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             # spectra. But it is not a debug-level event -- the whole
             # point of the block is that a consumer can say where the
             # data came from, so losing it has to be visible in the log.
-            logger.warning("Could not read metadata for uns provenance: %s", e)
+            logger.warning("Could not read metadata for uns provenance: %s", str(e))
             return {}
 
         uns: Dict[str, Any] = {}
@@ -1181,7 +1222,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             self._collect_optional_sections(uns, comp_meta)
             self._collect_region_info(uns)
         except Exception as e:
-            logger.warning("Could not build the full uns provenance block: %s", e)
+            logger.warning("Could not build the full uns provenance block: %s", str(e))
 
         self._collect_msi_metadata_block(uns, comp_meta)
         self._collect_mobility_axis(uns)
@@ -1207,7 +1248,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 try:
                     self._fragmentation_schedule = describe()
                 except Exception as e:  # pragma: no cover - reader-defined
-                    logger.warning("Could not describe the fragmentation: %s", e)
+                    logger.warning("Could not describe the fragmentation: %s", str(e))
                     self._fragmentation_schedule = None
             self._warn_if_precursors_merge()
         return self._fragmentation_schedule
@@ -1273,7 +1314,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 return
             axis = self.reader.get_mobility_axis()
         except Exception as e:  # pragma: no cover - reader-defined
-            logger.warning("Could not describe the mobility axis: %s", e)
+            logger.warning("Could not describe the mobility axis: %s", str(e))
             return
         if axis is None:
             return
@@ -1311,7 +1352,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             if not getattr(self.reader, "has_ion_mobility", False):
                 return None
         except Exception as e:  # pragma: no cover - reader-defined
-            logger.warning("Could not inspect the mobility axis: %s", e)
+            logger.warning("Could not inspect the mobility axis: %s", str(e))
             return None
         if self._common_mass_axis is None:
             logger.warning(
@@ -1327,7 +1368,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 n_spectra=self._get_total_spectra_count(),
             )
         except Exception as e:
-            logger.error("Could not build the mass-mobility heatmap: %s", e)
+            logger.error("Could not build the mass-mobility heatmap: %s", str(e))
             self._mobility_heatmap_block = None
         return self._mobility_heatmap_block
 
@@ -1350,7 +1391,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 return None
             shared = bool(self.reader.has_shared_mobility_axis)
         except Exception as e:  # pragma: no cover - reader-defined
-            logger.warning("Could not inspect the mobility axis: %s", e)
+            logger.warning("Could not inspect the mobility axis: %s", str(e))
             return None
         from .mobility_table import mobility_table_key
 
@@ -1396,7 +1437,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         try:
             measured = mobility_grid_range(self.reader)
         except Exception as e:  # pragma: no cover - reader-defined
-            logger.warning("Could not read the mobility axis values: %s", e)
+            logger.warning("Could not read the mobility axis values: %s", str(e))
             return None
         lower, upper = self._mobility_bounds
         if measured is None and (lower is None or upper is None):
@@ -1415,7 +1456,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 self._mobility_bins,
             )
         except ValueError as e:
-            logger.warning("No mobility-resolved table: %s", e)
+            logger.warning("No mobility-resolved table: %s", str(e))
             return None
         refusal = grid_refusal(self.reader, self._common_mass_axis, grid)
         if refusal is not None:
@@ -1476,7 +1517,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             if not getattr(self.reader, "has_ion_mobility", False):
                 return
         except Exception as e:  # pragma: no cover - reader-defined
-            logger.warning("Could not inspect the mobility axis: %s", e)
+            logger.warning("Could not inspect the mobility axis: %s", str(e))
             return
         if self._common_mass_axis is None:
             return
@@ -1500,7 +1541,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 ),
             )
         except Exception as e:
-            logger.error("Could not scan the mobility spectra: %s", e)
+            logger.error("Could not scan the mobility spectra: %s", str(e))
             if heatmap is not None:
                 self._mobility_heatmap_built = True
                 self._mobility_heatmap_block = None
@@ -1534,7 +1575,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 int(len(obs)),
             )
         except MemoryError as e:
-            logger.warning("No mobility-resolved table: %s", e)
+            logger.warning("No mobility-resolved table: %s", str(e))
             return None
 
     def _new_sibling_scratch(self, prefix: str) -> Path:
@@ -1585,7 +1626,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                     n_grid,
                 )
             except MemoryError as e:
-                logger.warning("No mobility-resolved table: %s", e)
+                logger.warning("No mobility-resolved table: %s", str(e))
         msms = None
         if self._msms_table_key is not None:
             msms = new_msms_accumulator(self.reader, self._common_mass_axis, n_grid)
@@ -1701,7 +1742,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 scratch=scratch,
             )
         except Exception as e:
-            logger.error("Could not build the mobility-resolved table: %s", e)
+            logger.error("Could not build the mobility-resolved table: %s", str(e))
             return None
 
     def _build_msms_sibling(
@@ -1733,7 +1774,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 accumulator=accumulator,
             )
         except Exception as e:
-            logger.error("Could not build the demultiplexed MS/MS table: %s", e)
+            logger.error("Could not build the demultiplexed MS/MS table: %s", str(e))
             return None
 
     @staticmethod
@@ -1762,7 +1803,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         try:
             block = _current_ratio_block(table, summed_key, summed)
         except Exception as e:  # pragma: no cover - defensive
-            logger.debug("Could not compare the mobility marginal: %s", e)
+            logger.debug("Could not compare the mobility marginal: %s", str(e))
             return
         if block is None:
             return
@@ -1825,7 +1866,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         try:
             block = _current_ratio_block(table, summed_key, summed)
         except Exception as e:  # pragma: no cover - defensive
-            logger.debug("Could not compare the demultiplexed current: %s", e)
+            logger.debug("Could not compare the demultiplexed current: %s", str(e))
             return
         if block is None:
             return
@@ -1889,7 +1930,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             )
             uns[MSI_METADATA_UNS_KEY] = meta.to_uns_dict()
         except Exception as e:
-            logger.warning("Could not build the msi_metadata block: %s", e)
+            logger.warning("Could not build the msi_metadata block: %s", str(e))
 
     def _processing_provenance(self) -> List[Any]:
         """The processing steps this conversion performed, oldest first.
@@ -2321,10 +2362,12 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         if self._common_mass_axis is None:
             raise RuntimeError("Common mass axis is None after assignment")
 
-        # Calculate bin sizes for informative logging
-        bin_widths = np.diff(self._common_mass_axis)
-        min_bin_size = np.min(bin_widths) * 1000  # Convert to mDa
-        max_bin_size = np.max(bin_widths) * 1000  # Convert to mDa
+        # Bin sizes for the log line, in chunks. ``np.diff`` over the whole
+        # axis is another float64 array of its length -- 1.6 GB on a 200M
+        # bin axis, allocated for two numbers in one INFO line (#251).
+        min_bin_size, max_bin_size = _bin_width_range(self._common_mass_axis)
+        min_bin_size *= 1000  # Convert to mDa
+        max_bin_size *= 1000
 
         logger.info(
             f"Resampled mass axis created: {len(self._common_mass_axis)} bins, "
@@ -2427,7 +2470,18 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             raise
 
     def _setup_mass_axis(self) -> None:
-        """Set up the common mass axis (resampled or raw)."""
+        """Set up the common mass axis (resampled or raw), and refuse one too wide.
+
+        The width is checked *before* the resampled axis is built, from
+        the bin count the plan resolved. Everything the conversion holds
+        per bin -- the axis, ``total_intensity``, ``avg_spectrum``, the
+        ``var`` frame, the count array, the column pointers -- comes to
+        about 200 bytes, so a wide axis is expensive long before the count
+        array's own 1 GiB ceiling notices: 200M bins on a six-pixel
+        dataset passed that ceiling and took 67.5 GB (issue #251). A raw
+        axis is checked too, after the reader hands it over, since the
+        per-bin structures are still ahead of it.
+        """
         config_status = "SET" if self._resampling_config else "NOT SET"
         logger.info(f"Mass axis mode: resampling_config={config_status}")
         if self._resampling_config:
@@ -2436,6 +2490,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 "Building RESAMPLED mass axis (resampling enabled) - "
                 "will NOT iterate through all spectra"
             )
+            self._refuse_wide_mass_axis(self._resolve_resampling_plan()[3])
             self._build_resampled_mass_axis()
             if self._common_mass_axis is None:
                 raise RuntimeError(
@@ -2462,12 +2517,26 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 raise ConversionRefused(
                     "Common mass axis is empty. Cannot proceed with conversion."
                 )
+            self._refuse_wide_mass_axis(len(self._common_mass_axis))
             logger.info(
                 f"Using raw mass axis with "
                 f"{len(self._common_mass_axis)} unique m/z values"
             )
 
         self._refuse_non_finite_axis()
+
+    def _refuse_wide_mass_axis(self, n_bins: int) -> None:
+        """Refuse a mass axis whose per-bin cost will not fit in memory.
+
+        Raises:
+            ConversionRefused: When the projection exceeds the fraction of
+                free memory a conversion may take.
+        """
+        from .csc_assembly import mass_axis_refusal
+
+        refusal = mass_axis_refusal(int(n_bins))
+        if refusal is not None:
+            raise ConversionRefused(refusal)
 
     def _refuse_non_finite_axis(self) -> None:
         """Refuse a mass axis carrying NaN or infinity.
@@ -3849,7 +3918,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         try:
             essential = self.reader.get_essential_metadata()
         except Exception as e:
-            logger.debug("Could not read coordinate offsets: %s", e)
+            logger.debug("Could not read coordinate offsets: %s", str(e))
             return None
         offsets = getattr(essential, "coordinate_offsets", None)
         if offsets is None:

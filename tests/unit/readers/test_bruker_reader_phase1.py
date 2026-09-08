@@ -32,9 +32,11 @@ class TestBrukerReader:
         mock_sdk_functions.return_value = mock_sdk
         mock_sdk.open_file.return_value = MagicMock()
 
-        with patch.object(Path, "exists", return_value=True), patch.object(
-            Path, "is_dir", return_value=True
-        ), patch("sqlite3.connect") as mock_connect:
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+            patch("sqlite3.connect") as mock_connect,
+        ):
 
             # Mock database connection
             mock_conn = MagicMock()
@@ -78,9 +80,11 @@ class TestBrukerReader:
         mock_sdk.open_file.return_value = MagicMock()
 
         # Mock database connection
-        with patch("sqlite3.connect") as mock_connect, patch.object(
-            Path, "exists", return_value=True
-        ), patch.object(Path, "is_dir", return_value=True):
+        with (
+            patch("sqlite3.connect") as mock_connect,
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+        ):
 
             mock_conn = MagicMock()
             mock_connect.return_value = mock_conn
@@ -285,9 +289,11 @@ class TestReaderInterface:
         mock_sdk_functions.return_value = mock_sdk
         mock_sdk.open_file.return_value = MagicMock()
 
-        with patch("sqlite3.connect") as mock_connect, patch.object(
-            Path, "exists", return_value=True
-        ), patch.object(Path, "is_dir", return_value=True):
+        with (
+            patch("sqlite3.connect") as mock_connect,
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+        ):
 
             mock_conn = MagicMock()
             mock_connect.return_value = mock_conn
@@ -323,9 +329,11 @@ class TestIntensityThresholdFiltering:
         mock_sdk_functions.return_value = mock_sdk
         mock_sdk.open_file.return_value = MagicMock()
 
-        with patch("sqlite3.connect") as mock_connect, patch.object(
-            Path, "exists", return_value=True
-        ), patch.object(Path, "is_dir", return_value=True):
+        with (
+            patch("sqlite3.connect") as mock_connect,
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+        ):
 
             mock_conn = MagicMock()
             mock_connect.return_value = mock_conn
@@ -366,9 +374,11 @@ class TestIntensityThresholdFiltering:
         mock_sdk_functions.return_value = mock_sdk
         mock_sdk.open_file.return_value = MagicMock()
 
-        with patch("sqlite3.connect") as mock_connect, patch.object(
-            Path, "exists", return_value=True
-        ), patch.object(Path, "is_dir", return_value=True):
+        with (
+            patch("sqlite3.connect") as mock_connect,
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+        ):
 
             mock_conn = MagicMock()
             mock_connect.return_value = mock_conn

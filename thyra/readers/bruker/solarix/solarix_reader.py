@@ -549,6 +549,7 @@ class SolarixReader(BrukerBaseMSIReader):
             unit=" spectra",
             total=self._summary["n_spectra"],
             dynamic_ncols=True,
+            disable=getattr(self, "_quiet_mode", False),
         )
         try:
             for spectrum_id, x, y, num_peaks, mz_blob, intensity_blob in pbar:

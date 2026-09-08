@@ -132,6 +132,17 @@ class BaseMSIConverter(ABC):
     def convert(self) -> bool:
         """Template method defining the conversion workflow.
 
+        An interrupt is a failed conversion, not a separate kind of exit.
+        ``KeyboardInterrupt`` is caught here so the caller gets ``False``
+        and the CLI's ``_handle_post_conversion`` runs, renaming the
+        partial store to ``.failed`` and leaving the output path free for
+        a retry -- which is what ``docs/cli.md`` promises of *any* failed
+        conversion. Before this it propagated past ``except Exception``,
+        click printed ``Aborted!``, and an interrupted run left an
+        unopenable store where a finished one belongs, a blocked retry,
+        and (on a whole-slide mobility grid) 18 GB of scratch memmaps
+        nothing came back to remove (issue #245).
+
         Returns:
         --------
         bool: True if conversion was successful, False otherwise.
@@ -158,6 +169,18 @@ class BaseMSIConverter(ABC):
 
             logger.error("%s", str(e))
             logger.debug("Refusal raised at:\n%s", traceback.format_exc())
+            return False
+        except KeyboardInterrupt:
+            # No ``as e``: the exception is cleared when this block ends,
+            # and with it the traceback whose frames still hold the tables
+            # built over the CSC scratch memmaps. Windows will not delete a
+            # mapped file, so letting those frames go here is what lets the
+            # scratch directories go in the converter's own cleanup.
+            logger.error(
+                "Conversion interrupted. Nothing usable was written: any "
+                "partial store is moved aside and the scratch directories "
+                "are removed."
+            )
             return False
         except Exception as e:
             logger.error(f"Error during conversion: {e}")
