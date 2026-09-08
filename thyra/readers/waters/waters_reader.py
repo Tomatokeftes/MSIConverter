@@ -23,6 +23,7 @@ from ...core.msms import (
     IsolationWindow,
 )
 from ...core.registry import register_reader
+from ...errors import ConversionRefused
 from ...metadata.extractors.waters_extractor import WatersMetadataExtractor
 from .imaging_grid import ImagingGrid, build_imaging_grid, regrid_for_functions
 from .instrument import WatersInstrument, identify_waters_instrument
@@ -143,7 +144,9 @@ class WatersReader(BaseMSIReader):
     def _validate_raw_directory(self) -> None:
         """Validate that data_path is a Waters .raw directory with _FUNC*.DAT files."""
         if not self.data_path.is_dir():
-            raise ValueError(f"Waters .raw path must be a directory: {self.data_path}")
+            raise ConversionRefused(
+                f"Waters .raw path must be a directory: {self.data_path}"
+            )
 
         # Check for _FUNC*.DAT files (case-insensitive)
         func_files = list(self.data_path.glob("_FUNC[0-9][0-9][0-9].DAT"))
@@ -158,7 +161,7 @@ class WatersReader(BaseMSIReader):
                 and f.name.upper().endswith(".DAT")
             ]
         if not func_files:
-            raise ValueError(
+            raise ConversionRefused(
                 f"No _FUNC*.DAT files found in {self.data_path}. "
                 "Is this a valid Waters .raw directory?"
             )
@@ -195,7 +198,7 @@ class WatersReader(BaseMSIReader):
         missing = [f for f in range(n_functions) if f not in present]
         if not missing:
             return
-        raise ValueError(
+        raise ConversionRefused(
             f"{self.data_path.name} declares {n_functions} function(s) but "
             f"{len(missing)} of them have no data file: "
             f"{', '.join(f'_FUNC{f + 1:03d}.DAT' for f in missing)}. "
@@ -226,7 +229,7 @@ class WatersReader(BaseMSIReader):
         if not self._ml.is_imaging_file(self._handle):
             self._ml.close_file(self._handle)
             self._handle = None
-            raise ValueError(
+            raise ConversionRefused(
                 f"{self.data_path} is not a Waters imaging file. "
                 "The native library reports no imaging data."
             )
@@ -251,7 +254,7 @@ class WatersReader(BaseMSIReader):
         if not self._ms_functions:
             self._ml.close_file(self._handle)
             self._handle = None
-            raise ValueError(
+            raise ConversionRefused(
                 f"No MS functions found in {self.data_path}. "
                 f"Function types: {self._function_types}"
             )
@@ -721,7 +724,7 @@ class WatersReader(BaseMSIReader):
                         )
 
         if not all_mzs:
-            raise ValueError("No spectra found to build common mass axis")
+            raise ConversionRefused("No spectra found to build common mass axis")
 
         combined = np.concatenate(all_mzs)
         self._common_mass_axis_cache = np.unique(combined)

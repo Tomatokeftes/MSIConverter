@@ -4,6 +4,7 @@ from typing import Dict, Optional, Tuple
 
 import numpy as np
 
+from ..errors import ConversionRefused
 from .mass_axis import (
     BaseAxisGenerator,
     FTICRAxisGenerator,
@@ -93,7 +94,7 @@ class CommonAxisBuilder:
         """
         if axis_type is AxisType.TOF:
             if tof_law is None:
-                raise ValueError("AxisType.TOF needs tof_law=(A, B)")
+                raise ConversionRefused("AxisType.TOF needs tof_law=(A, B)")
             generator: BaseAxisGenerator = TOFAxisGenerator(*tof_law)
         else:
             generator_map: Dict[AxisType, BaseAxisGenerator] = {
@@ -105,7 +106,7 @@ class CommonAxisBuilder:
             }
 
             if axis_type not in generator_map:
-                raise ValueError(f"Unsupported axis type: {axis_type}")
+                raise ConversionRefused(f"Unsupported axis type: {axis_type}")
 
             generator = generator_map[axis_type]
 

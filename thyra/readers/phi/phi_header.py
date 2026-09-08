@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from ...errors import ConversionRefused
+
 logger = logging.getLogger(__name__)
 
 SOFH_MAGIC = b"SOFH"
@@ -168,12 +170,12 @@ def _read_header_text(path: Path) -> str:
         probe = handle.read(_MAX_HEADER_PROBE)
 
     if not probe.startswith(SOFH_MAGIC):
-        raise ValueError(
+        raise ConversionRefused(
             f"Not a PHI SmartSoft-TOF raw file (missing SOFH magic): {path}"
         )
     end = probe.find(EOFH_MARKER)
     if end == -1:
-        raise ValueError(f"Malformed PHI header, no EOFH terminator: {path}")
+        raise ConversionRefused(f"Malformed PHI header, no EOFH terminator: {path}")
     return probe[:end].decode("latin-1")
 
 
@@ -200,11 +202,13 @@ def _parse_raster(
 def _validate_header(header: PhiHeader, path: Path) -> None:
     """Reject headers whose numbers cannot describe a real acquisition."""
     if header.image_pixels <= 0:
-        raise ValueError(f"PHI header declares a non-positive ImagePixels: {path}")
+        raise ConversionRefused(
+            f"PHI header declares a non-positive ImagePixels: {path}"
+        )
     if header.mass_slope <= 0:
-        raise ValueError(f"PHI header declares a non-positive Mass/Time: {path}")
+        raise ConversionRefused(f"PHI header declares a non-positive Mass/Time: {path}")
     if header.stop_flight_time_us <= header.start_flight_time_us:
-        raise ValueError(
+        raise ConversionRefused(
             f"PHI header flight-time range is empty: {header.start_flight_time_us} "
             f"to {header.stop_flight_time_us} us in {path}"
         )
@@ -236,7 +240,9 @@ def parse_phi_header(path: Path) -> PhiHeader:
         if name not in entries
     ]
     if missing:
-        raise ValueError(f"PHI header is missing required field '{missing[0]}': {path}")
+        raise ConversionRefused(
+            f"PHI header is missing required field '{missing[0]}': {path}"
+        )
 
     raster_um, raster_calibration = _parse_raster(entries, lmig)
 

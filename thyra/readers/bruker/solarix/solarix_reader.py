@@ -40,6 +40,7 @@ from tqdm import tqdm
 
 from ....core.base_extractor import MetadataExtractor
 from ....core.registry import register_reader
+from ....errors import ConversionRefused
 from ..base_bruker_reader import BrukerBaseMSIReader
 from ..mis_parser import parse_mis_file
 
@@ -147,7 +148,7 @@ class SolarixReader(BrukerBaseMSIReader):
     def _validate_layout(self) -> None:
         """Refuse anything that is not a solariX imaging .d directory."""
         if not self.data_path.is_dir():
-            raise ValueError(
+            raise ConversionRefused(
                 f"solariX format requires a .d directory, got: {self.data_path}"
             )
         peaks = self.data_path / "peaks.sqlite"
@@ -155,7 +156,7 @@ class SolarixReader(BrukerBaseMSIReader):
             if (self.data_path / "ser").exists() and (
                 self.data_path / "ImagingInfo.xml"
             ).exists():
-                raise ValueError(
+                raise ConversionRefused(
                     f"solariX .d directory without peaks.sqlite: "
                     f"{self.data_path}. The acquisition holds raw transients "
                     "(ser) but no processed peak store, which is what Thyra "
@@ -163,7 +164,7 @@ class SolarixReader(BrukerBaseMSIReader):
                     "software (DataAnalysis, SCiLS Lab, or flexImaging) and "
                     "convert the imzML file instead."
                 )
-            raise ValueError(
+            raise ConversionRefused(
                 f"Not a solariX imaging .d directory (no peaks.sqlite): "
                 f"{self.data_path}"
             )
@@ -180,7 +181,7 @@ class SolarixReader(BrukerBaseMSIReader):
         try:
             return sqlite3.connect(uri, uri=True)
         except sqlite3.Error as exc:
-            raise ValueError(
+            raise ConversionRefused(
                 f"Cannot open {self._peaks_path} read-only: {exc}"
             ) from exc
 
@@ -189,7 +190,7 @@ class SolarixReader(BrukerBaseMSIReader):
         try:
             rows = self._conn.execute("SELECT Key, Value FROM Properties").fetchall()
         except sqlite3.Error as exc:
-            raise ValueError(
+            raise ConversionRefused(
                 f"peaks.sqlite has no readable Properties table in "
                 f"{self.data_path}: {exc}"
             ) from exc
@@ -206,7 +207,7 @@ class SolarixReader(BrukerBaseMSIReader):
         schema_type = self._properties.get("SchemaType")
         major = self._properties.get("SchemaVersionMajor")
         if str(schema_type) != "Imaging" or str(major) != "1":
-            raise ValueError(
+            raise ConversionRefused(
                 f"Unsupported peaks.sqlite schema in {self.data_path}: "
                 f"SchemaType={schema_type!r}, SchemaVersionMajor={major!r} "
                 "(this reader supports SchemaType='Imaging', "
@@ -229,7 +230,7 @@ class SolarixReader(BrukerBaseMSIReader):
                 "FROM AcquisitionKeys"
             ).fetchall()
         except sqlite3.Error as exc:
-            raise ValueError(
+            raise ConversionRefused(
                 f"peaks.sqlite has no readable AcquisitionKeys table in "
                 f"{self.data_path}: {exc}"
             ) from exc
@@ -251,7 +252,9 @@ class SolarixReader(BrukerBaseMSIReader):
         ).fetchone()
         n_spectra = int(row[0] or 0)
         if n_spectra == 0:
-            raise ValueError(f"peaks.sqlite holds no spectra in {self.data_path}")
+            raise ConversionRefused(
+                f"peaks.sqlite holds no spectra in {self.data_path}"
+            )
         return {
             "n_spectra": n_spectra,
             "x_min": int(row[1]),
@@ -271,7 +274,9 @@ class SolarixReader(BrukerBaseMSIReader):
             "COALESCE(RegionNumber, 0) FROM Spectra ORDER BY Id"
         ).fetchall()
         if not rows:
-            raise ValueError(f"peaks.sqlite holds no spectra in {self.data_path}")
+            raise ConversionRefused(
+                f"peaks.sqlite holds no spectra in {self.data_path}"
+            )
 
         arr = np.asarray(rows, dtype=np.int64)
         self._spectra_index = {
@@ -420,7 +425,7 @@ class SolarixReader(BrukerBaseMSIReader):
                 float(self._properties["MzAcqRangeUpper"]),
             )
         except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError(
+            raise ConversionRefused(
                 f"peaks.sqlite Properties carry no usable MzAcqRangeLower/"
                 f"MzAcqRangeUpper in {self.data_path}: {exc}"
             ) from exc
@@ -479,7 +484,7 @@ class SolarixReader(BrukerBaseMSIReader):
                 if mzs.size:
                     chunks.append(mzs)
             if not chunks:
-                raise ValueError(
+                raise ConversionRefused(
                     f"Cannot build a mass axis: no peaks in {self.data_path}"
                 )
             self._common_mass_axis = np.unique(np.concatenate(chunks))
@@ -505,7 +510,7 @@ class SolarixReader(BrukerBaseMSIReader):
         expected = num_peaks * itemsize
         actual = len(blob) if blob is not None else 0
         if actual != expected:
-            raise ValueError(
+            raise ConversionRefused(
                 f"Corrupt {column} blob in Spectra row Id={spectrum_id} of "
                 f"{self._peaks_path}: NumPeaks={num_peaks} implies "
                 f"{expected} bytes, found {actual}"

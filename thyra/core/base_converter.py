@@ -12,6 +12,7 @@ from pandas import DataFrame
 from scipy import sparse
 from tqdm import tqdm
 
+from ..errors import ConversionRefused
 from .base_reader import BaseMSIReader
 
 if TYPE_CHECKING:
@@ -90,7 +91,9 @@ class BaseMSIConverter(ABC):
         if z_spacing_um is not None and (
             not isinstance(z_spacing_um, (int, float)) or z_spacing_um <= 0
         ):
-            raise ValueError(f"z_spacing_um must be positive, got {z_spacing_um}")
+            raise ConversionRefused(
+                f"z_spacing_um must be positive, got {z_spacing_um}"
+            )
 
         self.reader = reader
         self.output_path = Path(output_path)
@@ -141,6 +144,21 @@ class BaseMSIConverter(ABC):
             success = self._save_output(data_structures)
 
             return success
+        except ConversionRefused as e:
+            # The other half of issue #234: convert_msi's catch-all was
+            # not the only one. This one runs first for anything raised
+            # inside the workflow -- the axis plan, the reader's refusal
+            # of a frame -- so a refusal reaching it has to be presented
+            # as a refusal here too, or nothing downstream ever sees it.
+            #
+            # ``str(e)`` rather than ``e`` for the reason issue #249 gives:
+            # a retained log record would hold the exception's traceback
+            # and through it the reader, whose files then stay open.
+            import traceback
+
+            logger.error("%s", str(e))
+            logger.debug("Refusal raised at:\n%s", traceback.format_exc())
+            return False
         except Exception as e:
             logger.error(f"Error during conversion: {e}")
             import traceback
@@ -159,7 +177,7 @@ class BaseMSIConverter(ABC):
 
             self._dimensions = essential.dimensions
             if any(d <= 0 for d in self._dimensions):
-                raise ValueError(
+                raise ConversionRefused(
                     f"Invalid dimensions: {self._dimensions}. All dimensions "
                     f"must be positive."
                 )
@@ -191,7 +209,7 @@ class BaseMSIConverter(ABC):
             # Load mass axis separately (still expensive operation)
             self._common_mass_axis = self.reader.get_common_mass_axis()
             if len(self._common_mass_axis) == 0:
-                raise ValueError(
+                raise ConversionRefused(
                     "Common mass axis is empty. Cannot proceed with " "conversion."
                 )
 
@@ -203,6 +221,10 @@ class BaseMSIConverter(ABC):
             logger.info(f"Total spectra: {self._n_spectra}")
             logger.info(f"Estimated memory: {self._estimated_memory_gb:.2f} GB")
             logger.info(f"Common mass axis length: {len(self._common_mass_axis)}")
+        except ConversionRefused:
+            # Said once, by whoever catches it. Re-prefixing a refusal
+            # with the stage it came from adds nothing a user can act on.
+            raise
         except Exception as e:
             logger.error(f"Error during initialization: {e}")
             raise
@@ -256,17 +278,29 @@ class BaseMSIConverter(ABC):
     def _log_z_spacing(self) -> None:
         """Report the resolved z spacing, warning when it was assumed.
 
-        Silent for anything that is not a volume: a 2D conversion has no
+        Quiet for a 2D conversion nobody asked to make 3D: it has no
         slice-to-slice distance to get wrong, and warning about one on
         every ordinary dataset would train people to ignore the message
         on the datasets where it matters.
+
+        A single-slice acquisition converted *with* ``--handle-3d`` is
+        the exception. It is not a volume either -- one plane has no
+        spacing -- but the flags were given, and docs/cli.md promises
+        that ``--handle-3d`` says what it recorded and that a
+        ``--z-spacing`` doing nothing "is logged as ignored rather than
+        silently accepted". Both promises were skipped here, because
+        ``_is_volume`` is false for ``n_z == 1`` and this method returned
+        at DEBUG (issue #256).
         """
         if not self._is_volume:
-            logger.debug(
-                "Not a multi-slice volume; z spacing (%g um, %s) is unused.",
-                self.z_spacing_um,
-                self.z_spacing_source.value,
-            )
+            if self.handle_3d:
+                self._log_single_plane_volume()
+            else:
+                logger.debug(
+                    "Not a multi-slice volume; z spacing (%g um, %s) is unused.",
+                    self.z_spacing_um,
+                    self.z_spacing_source.value,
+                )
             return
 
         if self.z_spacing_source is ZSpacingSource.ASSUMED_ISOTROPIC:
@@ -288,6 +322,36 @@ class BaseMSIConverter(ABC):
                 self.z_spacing_source.value,
                 self.z_spacing_um,
                 self.pixel_size_um,
+            )
+
+    def _log_single_plane_volume(self) -> None:
+        """Say that 3D handling found one plane, and what that costs.
+
+        The conversion is not refused: a one-plane volume is a legal
+        store and the flag is often part of a batch script that also
+        converts real stacks. What changes is that it says so, and names
+        the ``--z-spacing`` it is dropping, instead of writing a store
+        whose keys differ from the 2D run's with nothing in the log.
+        """
+        planes = self._dimensions[2] if self._dimensions else 0
+        if self._z_spacing_um_arg is not None:
+            logger.warning(
+                "3D handling was asked for and this acquisition has %d plane, "
+                "so the volume has no z extent and the z spacing of %g um is "
+                "ignored: it is neither applied nor recorded. The store is "
+                "written as a volume of one plane, which changes the element "
+                "keys (no _z0 suffix) but not the values.",
+                planes,
+                self._z_spacing_um_arg,
+            )
+        else:
+            logger.info(
+                "3D handling was asked for and this acquisition has %d plane. "
+                "One plane has no slice-to-slice distance, so no z spacing is "
+                "recorded. The store is written as a volume of one plane, "
+                "which changes the element keys (no _z0 suffix) but not the "
+                "values.",
+                planes,
             )
 
     @abstractmethod
@@ -632,7 +696,7 @@ class BaseMSIConverter(ABC):
         bad = diffs > max_diff
         if np.any(bad):
             worst = int(np.argmax(diffs))
-            raise ValueError(
+            raise ConversionRefused(
                 f"{int(np.count_nonzero(bad))} of {mzs.size} m/z values have "
                 f"no common mass axis entry within {max_diff:g} (worst: m/z "
                 f"{mzs[worst]!r} is {diffs[worst]:.6g} from nearest axis "

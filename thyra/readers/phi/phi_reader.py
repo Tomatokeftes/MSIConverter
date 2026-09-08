@@ -19,6 +19,7 @@ from numpy.typing import NDArray
 from ...core.base_extractor import MetadataExtractor
 from ...core.base_reader import BaseMSIReader
 from ...core.registry import register_reader
+from ...errors import ConversionRefused
 from .event_stream import BlockIndex, iter_event_batches, scan_blocks
 from .mass_axis import PhiMassAxis, build_mass_axis
 from .phi_header import PhiHeader, parse_phi_header
@@ -65,7 +66,7 @@ class PhiReader(BaseMSIReader):
         super().__init__(data_path, intensity_threshold=intensity_threshold, **kwargs)
 
         if not self.data_path.is_file():
-            raise ValueError(
+            raise ConversionRefused(
                 f"PHI .raw must be a file, not a directory: {self.data_path}. "
                 "Waters .raw data is a directory and is handled by WatersReader."
             )
@@ -225,7 +226,7 @@ class PhiReader(BaseMSIReader):
 
         keys = keys[:filled]
         if keys.size == 0:
-            raise ValueError(
+            raise ConversionRefused(
                 f"No usable ion events in {self.data_path}. All {dropped} records "
                 "fell outside the mass axis or the pixel grid."
             )

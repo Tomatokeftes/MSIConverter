@@ -329,7 +329,12 @@ class TestSyntheticFixture:
         assert "resolved_table" not in axis
 
         heat = table.uns["mobility_heatmap"]
-        assert set(heat) == {"mz_edges", "mobility_edges", "counts"}
+        assert set(heat) == {
+            "mz_edges",
+            "mobility_edges",
+            "counts",
+            "current_ratio",
+        }
         counts = np.asarray(heat["counts"])
         mz_edges = np.asarray(heat["mz_edges"])
         mobility_edges = np.asarray(heat["mobility_edges"])
@@ -349,11 +354,17 @@ class TestSyntheticFixture:
         if mode == "scan_sum":
             # Lossless sum: the heatmap over mobility IS the mean spectrum.
             np.testing.assert_allclose(marginal, mean_spectrum, rtol=1e-6)
+            assert heat["current_ratio"] == pytest.approx(1.0, abs=1e-6)
         else:
             # The vendor centroid discards part of the current the raw
             # cloud carries; the heatmap is built from the cloud.
             assert marginal.sum() >= mean_spectrum.sum() * (1 - 1e-6)
             assert marginal.sum() > 0
+        # Either way the store says which case it is, rather than leaving
+        # it to be found by subtraction (issue #253).
+        assert heat["current_ratio"] == pytest.approx(
+            marginal.sum() / mean_spectrum.sum(), rel=1e-6
+        )
 
     def test_heatmap_can_be_switched_off(self, tmp_path):
         _open("scan_sum").close()

@@ -2,8 +2,11 @@
 Common test fixtures for thyra tests.
 """
 
+import logging
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator, List
 
 import numpy as np
 import pytest
@@ -13,6 +16,51 @@ from pyimzml.ImzMLWriter import ImzMLWriter
 TEST_DIR = Path(__file__).parent.resolve()
 # Test data directory
 DATA_DIR = TEST_DIR / "data"
+
+
+@pytest.fixture
+def thyra_logs():
+    """A context manager collecting records from a named Thyra logger.
+
+    Deliberately not ``caplog``. ``setup_logging`` sets
+    ``propagate = False`` on the ``thyra`` logger and that is
+    process-global: once any test in the session has invoked the CLI,
+    caplog's root handler never sees another Thyra record. A caplog
+    assertion on Thyra's own logging therefore passes alone and fails in
+    the full suite, which is the worst way for a test to be wrong.
+    Attaching a handler to the named logger sidesteps propagation, so the
+    result does not depend on which tests ran first.
+
+    Usage::
+
+        with thyra_logs("thyra.cli", logging.WARNING) as records:
+            ...
+        assert [r.getMessage() for r in records] == [...]
+    """
+
+    @contextmanager
+    def capture(
+        logger_name: str = "thyra", level: int = logging.INFO
+    ) -> Iterator[List[logging.LogRecord]]:
+        collected: List[logging.LogRecord] = []
+
+        class _Collector(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                collected.append(record)
+
+        logger = logging.getLogger(logger_name)
+        handler = _Collector(level=level)
+        previous = logger.level
+        logger.addHandler(handler)
+        if previous > level or previous == logging.NOTSET:
+            logger.setLevel(level)
+        try:
+            yield collected
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(previous)
+
+    return capture
 
 
 @pytest.fixture

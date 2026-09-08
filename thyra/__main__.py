@@ -12,12 +12,18 @@ from typing import Literal, Optional, Tuple  # noqa: E402
 import click  # noqa: E402
 
 from thyra import __version__  # noqa: E402
-from thyra.convert import convert_msi  # noqa: E402
+from thyra.convert import convert_msi, dataset_id_problem  # noqa: E402
 from thyra.core.registry import detect_format  # noqa: E402
 from thyra.resampling.mobility_grid import MOBILITY_CHANNELS  # noqa: E402
 from thyra.utils.logging_config import setup_logging  # noqa: E402
 
-logger = logging.getLogger(__name__)
+# Not ``__name__``: under ``python -m thyra`` that is "__main__", and
+# setup_logging configures the "thyra" logger with propagate=False, so
+# every line the CLI itself logged went to Python's last-resort handler
+# instead -- absent from --log-file entirely, and "Conversion completed
+# successfully" appeared in 0 of 67 successful runs (issue #258). The
+# console-script entry point was unaffected, which is why it survived.
+logger = logging.getLogger("thyra.cli")
 
 # Configure Dask to use new query planning (silences legacy DataFrame warning)
 os.environ["DASK_DATAFRAME__QUERY_PLANNING"] = "True"
@@ -97,8 +103,12 @@ def _validate_basic_params(pixel_size: Optional[float], dataset_id: str) -> None
         raise click.BadParameter(
             "Pixel size must be a finite positive number", param_hint="pixel_size"
         )
-    if not dataset_id.strip():
-        raise click.BadParameter("Dataset ID cannot be empty", param_hint="dataset_id")
+    # Emptiness used to be the whole check, so an id with a space or a
+    # slash was refused by SpatialData only at the write, after both
+    # passes over the source (issue #250).
+    problem = dataset_id_problem(dataset_id)
+    if problem is not None:
+        raise click.BadParameter(problem, param_hint="dataset_id")
 
 
 def _validate_positive_int(value: Optional[int], param_name: str, label: str) -> None:
@@ -150,6 +160,40 @@ def _validate_resampling_params(
         )
 
 
+def _validate_mobility_grid_params(
+    mobility_bins: int,
+    mobility_min: Optional[float],
+    mobility_max: Optional[float],
+) -> None:
+    """Validate the mobility grid's own numbers.
+
+    Unchecked, ``--mobility-bins 0`` reached the grid builder and
+    ``--mobility-min 2 --mobility-max 1`` an empty range, both on a
+    source where the flags do apply (issue #260). The edges are
+    positions on the mobility axis rather than quantities, so unlike
+    every other float option here they may be zero or negative; only
+    their order and finiteness are checked.
+    """
+    if mobility_bins <= 0:
+        raise click.BadParameter(
+            "A mobility grid needs at least one channel", param_hint="mobility_bins"
+        )
+    for value, hint in ((mobility_min, "mobility_min"), (mobility_max, "mobility_max")):
+        if value is not None and not isfinite(value):
+            raise click.BadParameter(
+                "Mobility grid edges must be finite numbers", param_hint=hint
+            )
+    if (
+        mobility_min is not None
+        and mobility_max is not None
+        and mobility_min >= mobility_max
+    ):
+        raise click.BadParameter(
+            "--mobility-min must be below --mobility-max: the grid bins the "
+            "range between them"
+        )
+
+
 def _validate_tof_law(tof_law: Optional[Tuple[float, float]]) -> None:
     """Validate ``--tof-law A B``: both non-negative, not both zero.
 
@@ -198,9 +242,30 @@ def _validate_input_path(input: Path) -> None:
 
 
 def _validate_output_path(output: Path) -> None:
-    """Validate output path."""
+    """Validate output path.
+
+    The existence check alone let an output whose parent is a regular
+    file through: the reader was opened and the mass axis built before
+    the scratch directory's ``mkdir`` failed with a raw ``WinError 183``
+    that named a file the user had not asked about (issue #255). The
+    store is a directory tree, so the deepest ancestor that exists has
+    to be a directory Thyra may write into; the ones above it are
+    created on the way, as they always were.
+    """
     if output.exists():
         raise click.BadParameter(f"Output path already exists: {output}")
+
+    ancestor = next((p for p in output.parents if p.exists()), None)
+    if ancestor is None:
+        return
+    if not ancestor.is_dir():
+        raise click.BadParameter(
+            f"Cannot write {output}: {ancestor} is a file, not a directory. "
+            "The output is a Zarr store, which is a directory tree, so every "
+            "part of its path above it has to be a directory."
+        )
+    if not os.access(ancestor, os.W_OK):
+        raise click.BadParameter(f"Cannot write {output}: {ancestor} is not writable")
 
 
 def _display_calibration_info(input: Path, use_recalibrated: bool) -> None:
@@ -341,6 +406,102 @@ def _build_reader_options(
     if waters_spectrum is not None:
         options["use_centroid"] = waters_spectrum == "centroid"
     return options
+
+
+#: How each detected format is spelled in a message. ``detect_format``
+#: returns a registry key, and "a imzml source" is not what anyone calls
+#: the file they handed over.
+FORMAT_NAMES = {
+    "imzml": "imzML",
+    "mzpeak": "mzPeak",
+    "bruker": "Bruker timsTOF (.d)",
+    "solarix": "Bruker solariX (.d)",
+    "rapiflex": "Bruker Rapiflex",
+    "waters": "Waters .raw",
+    "phi": "PHI SmartSoft-TOF",
+}
+
+#: Options that only reach one family of sources, and the detected
+#: formats each does reach. docs/cli.md has always said the vendor groups
+#: are "ignored on other formats", but nothing said so at the time: every
+#: one of these was accepted on an imzML input and produced a store
+#: byte-identical to the plain run, with no log line (issue #260).
+#: ``--tof-law`` on a non-tof axis and ``--msms-table`` on imzML already
+#: set the precedent of saying it out loud; these follow.
+IGNORED_ELSEWHERE: dict[str, Tuple[str, Tuple[str, ...]]] = {
+    "region": ("--region", ("bruker",)),
+    "tdf_spectrum": ("--tdf-spectrum", ("bruker",)),
+    "waters_spectrum": ("--waters-spectrum", ("waters",)),
+    "use_recalibrated": ("--use-recalibrated/--no-recalibrated", ("bruker",)),
+    "interactive_calibration": ("--interactive-calibration", ("bruker", "solarix")),
+    "spectrum_type": ("--spectrum-type", ("imzml",)),
+    "mobility_grid": ("--mobility-grid/--no-mobility-grid", ("bruker",)),
+    "mobility_bins": ("--mobility-bins", ("bruker",)),
+    "mobility_min": ("--mobility-min", ("bruker",)),
+    "mobility_max": ("--mobility-max", ("bruker",)),
+}
+
+#: The three options that size the grid ``--mobility-grid`` builds. They
+#: do nothing without it, which docs/cli.md says and nothing else did.
+GRID_SIZING_FLAGS = ("mobility_bins", "mobility_min", "mobility_max")
+
+
+def _format_name(input_format: str) -> str:
+    """How to spell a detected format in a message."""
+    return FORMAT_NAMES.get(input_format, input_format)
+
+
+def _given_on_the_command_line(ctx: Optional[click.Context], name: str) -> bool:
+    """Whether ``name`` was typed, rather than left at its default.
+
+    Reads click's parameter source rather than comparing against the
+    default, so ``--use-recalibrated`` (whose default is on) and
+    ``--mobility-bins 256`` (whose default is the value) are recognised
+    as given while an untouched option stays quiet.
+    """
+    if ctx is None:
+        return False
+    source = ctx.get_parameter_source(name)
+    return source is click.core.ParameterSource.COMMANDLINE
+
+
+def _warn_ignored_flags(
+    ctx: Optional[click.Context], input_format: str, mobility_grid: bool
+) -> None:
+    """Name every option given on a source, or in a run, that ignores it.
+
+    Args:
+        ctx: The click context of the running command, or ``None`` when
+            the function is called outside one (a direct unit test).
+        input_format: What ``detect_format`` said the source is.
+        mobility_grid: Whether a mobility grid table was asked for, which
+            is what the three grid-sizing options size.
+    """
+    if ctx is None:
+        return
+    source_name = _format_name(input_format)
+    for name, (spelling, formats) in IGNORED_ELSEWHERE.items():
+        if input_format in formats or not _given_on_the_command_line(ctx, name):
+            continue
+        logger.warning(
+            "%s is ignored on %s input: it only applies to %s. The store is "
+            "written as though it had not been given.",
+            spelling,
+            source_name,
+            " or ".join(_format_name(f) for f in formats),
+        )
+
+    if mobility_grid:
+        return
+    for name in GRID_SIZING_FLAGS:
+        spelling, formats = IGNORED_ELSEWHERE[name]
+        if input_format not in formats or not _given_on_the_command_line(ctx, name):
+            continue
+        logger.warning(
+            "%s is ignored without --mobility-grid: it sizes the mobility "
+            "grid, and no grid table is being written.",
+            spelling,
+        )
 
 
 def _parse_streaming_option(streaming: str) -> bool | Literal["auto"]:
@@ -892,6 +1053,7 @@ def main(
         intensity_threshold, "intensity_threshold", "Intensity threshold"
     )
     _validate_positive_float(z_spacing, "z_spacing", "Z spacing")
+    _validate_mobility_grid_params(mobility_bins, mobility_min, mobility_max)
     _validate_input_path(input)
     _validate_output_path(output)
 
@@ -911,6 +1073,18 @@ def main(
 
     # If input folder has multiple .d datasets, let the user choose
     input = _select_bruker_dataset(input)
+
+    # Before any work: say which of the given options this source ignores.
+    # Detection failures are left to the conversion, which reports them
+    # with the guidance the registry writes for each format.
+    try:
+        detected_format = detect_format(input)
+    except Exception:
+        detected_format = ""
+    if detected_format:
+        _warn_ignored_flags(
+            click.get_current_context(silent=True), detected_format, mobility_grid
+        )
 
     # Display calibration info if requested (Bruker datasets only)
     if interactive_calibration and input.is_dir() and input.suffix.lower() == ".d":

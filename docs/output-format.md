@@ -195,6 +195,35 @@ print(f"Non-zero: {X.nnz:,} ({X.nnz / (X.shape[0] * X.shape[1]) * 100:.2f}%)")
     consumer can binary-search a column's indices directly, and scipy reports
     `has_sorted_indices` as true without a `sort_indices()` pass.
 
+!!! note "Every stored intensity is a real, non-negative number"
+    Non-finite and negative intensities are dropped from a spectrum before it
+    is resampled, and the conversion says how many at `WARNING` the first time
+    it happens.
+
+    A NaN is not a measurement, and one of them makes every aggregate over its
+    column NaN -- the average spectrum, the TIC image, any ion image. A
+    negative value is a baseline subtraction that overshot rather than a
+    smaller measurement, and nothing that reads a store treats it as signal: a
+    TIC, an ion image and a mean spectrum all read it as removing current that
+    was never there.
+
+    Dropping them before either resampling method runs is also what makes the
+    two agree. Given a negative value, `nearest_neighbor` stored it (leaving
+    the pixel with a TIC of 0) while `tic_preserving` found a non-positive
+    total for the spectrum and zeroed the whole thing, so the same file
+    converted two ways gave two different stores with nothing in either saying
+    why.
+
+    The sibling tables built from the raw scans -- the mobility grid, the
+    demultiplexed MS/MS split -- drop the same points by the same rule, so a
+    grid's marginal over channels still reproduces the summed table's column
+    on a source that carries them.
+
+    Zero is not affected by this; the sparse write drops explicit zeros as it
+    always did. A source whose m/z values are non-finite is refused outright
+    instead, since those values *are* `var["mz"]` and dropping them would
+    desynchronise every index paired with them.
+
 ### Ion Images
 
 To visualise the spatial distribution of a specific m/z value:
@@ -283,6 +312,7 @@ panel draws.
 | `mz_edges` | `float64[m + 1]`: bin edges on the common m/z axis, which is coarsened by an integer factor to about 4,000 bins (`m` is the axis length itself when it is shorter) |
 | `mobility_edges` | `float64[k + 1]`, **`k = 256`**: equal-width bins in the axis unit, ascending, spanning the axis `values` |
 | `counts` | `float32[m, k]`: mean intensity per bin over pixels |
+| `current_ratio` | `float`: what fraction of `uns["average_spectrum"]`'s ion current the heatmap holds -- 1.0 under `scan_sum`, about 0.85 under `vendor_centroid` |
 
 `k = 256` is fixed on purpose: the mobility grid table below defaults to the
 same 256 channels over the same edges -- literally the same constant and the
@@ -294,7 +324,7 @@ mobility, `counts.sum(axis=1)`, equals `uns["average_spectrum"]` coarsened to
 `mz_edges`. Under `vendor_centroid` it does not: the centroid keeps only the current
 inside the peaks its picker assigns (87 to 96 percent on the acquisitions
 measured, see [Design Decisions](design-decisions.md#d1-which-spectrum-a-reader-takes))
-and merges bins, while the heatmap is built from every raw point. On a Bruker source the heatmap costs one extra
+and merges bins, while the heatmap is built from every raw point. Which case a given store is in is recorded rather than left to be found by subtraction: `current_ratio` is the heatmap's total over the stored mean spectrum's, the same number `uns["mobility_marginal"]` carries for the grid table, and the conversion says it at `WARNING` when it is not 1. On a Bruker source the heatmap costs one extra
 library call per frame (about a millisecond); `--no-mobility-heatmap` skips
 it.
 

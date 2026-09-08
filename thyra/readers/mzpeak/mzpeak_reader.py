@@ -60,6 +60,7 @@ from numpy.typing import NDArray
 
 from ...core.base_reader import BaseMSIReader
 from ...core.registry import register_reader
+from ...errors import ConversionRefused
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from ...core.base_extractor import MetadataExtractor
@@ -196,23 +197,25 @@ class MzPeakArchive:
         self._null_count_cached = False
 
         if not zipfile.is_zipfile(self.path):
-            raise ValueError(
+            raise ConversionRefused(
                 f"Not an mzPeak archive (not a ZIP container): {self.path}"
             )
 
         self._zip = zipfile.ZipFile(self.path)
         self._members = set(self._zip.namelist())
         if INDEX_MEMBER not in self._members:
-            raise ValueError(
+            raise ConversionRefused(
                 f"Not an mzPeak archive (no {INDEX_MEMBER} member): {self.path}"
             )
 
         try:
             index = json.loads(self._zip.read(INDEX_MEMBER))
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise ValueError(f"Malformed {INDEX_MEMBER} in {self.path}: {exc}") from exc
+            raise ConversionRefused(
+                f"Malformed {INDEX_MEMBER} in {self.path}: {exc}"
+            ) from exc
         if not isinstance(index, dict):
-            raise ValueError(
+            raise ConversionRefused(
                 f"Malformed {INDEX_MEMBER} in {self.path}: expected a JSON "
                 f"object, found {type(index).__name__}"
             )
@@ -237,7 +240,7 @@ class MzPeakArchive:
         roles: Dict[Tuple[str, str], dict] = {}
         entries = index.get("files")
         if not isinstance(entries, list):
-            raise ValueError(
+            raise ConversionRefused(
                 f"Malformed {INDEX_MEMBER} in {self.path}: 'files' must be a "
                 f"list, found {type(entries).__name__}"
             )
@@ -276,7 +279,7 @@ class MzPeakArchive:
         found = self.entry(entity_type, data_kind)
         if found is None:
             available = sorted(f"{e}/{k}" for e, k in self._roles)
-            raise ValueError(
+            raise ConversionRefused(
                 f"mzPeak archive {self.path} has no "
                 f"'{entity_type}/{data_kind}' member. Present roles: "
                 f"{', '.join(available) or 'none'}"
@@ -340,7 +343,7 @@ class MzPeakArchive:
             return "point"
         if "chunk" in fields:
             return "chunk"
-        raise ValueError(
+        raise ConversionRefused(
             f"{self.path} has an unrecognised mzPeak data layout: expected a "
             f"top-level 'point' or 'chunk' column, found {fields}."
         )
@@ -389,7 +392,7 @@ class MzPeakArchive:
 
         columns = self.position_columns()
         if columns is None:
-            raise ValueError(
+            raise ConversionRefused(
                 f"{self.path} is not an imaging mzPeak archive: its scans "
                 f"member declares no {IMS_POSITION_X}/{IMS_POSITION_Y} "
                 f"position columns. Thyra converts imaging acquisitions only."
@@ -433,7 +436,7 @@ class MzPeakArchive:
             )
         spectrum_index, counts = spectrum_index[keep], counts[keep]
         if spectrum_index.size == 0:
-            raise ValueError(f"{self.path} contains no positioned spectra.")
+            raise ConversionRefused(f"{self.path} contains no positioned spectra.")
 
         rows = np.array([lookup[int(s)] for s in spectrum_index], dtype=np.int64)
         raw = np.stack([xs[rows], ys[rows]], axis=1)
@@ -687,7 +690,7 @@ class MzPeakReader(BaseMSIReader):
             axis = np.union1d(axis, np.unique(mzs))
 
         if axis.size == 0:
-            raise ValueError(
+            raise ConversionRefused(
                 f"{self.data_path} yielded no m/z values; the archive has no "
                 f"usable signal data."
             )

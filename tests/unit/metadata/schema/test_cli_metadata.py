@@ -1,12 +1,17 @@
 ﻿"""The `thyra validate` / `thyra export-metaspace` subcommands."""
 
 import json
+import shutil
+import sys
+import tempfile
+from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
 
 from thyra.metadata.schema import build_msi_metadata
 from thyra.metadata.schema.cli import export_metaspace_command, validate_command
+from thyra.utils.windows_paths import WINDOWS_MAX_PATH, to_extended_length_path
 
 
 def _make_runner() -> CliRunner:
@@ -159,3 +164,79 @@ class TestDispatcher:
         out = capsys.readouterr().out
         assert "INPUT" in out and "OUTPUT" in out
         assert "export-metaspace" in out
+
+
+class TestTheStorePathIsPreparedInsideTheCommand:
+    """Issue #257: click's existence check ran before the path was prepared.
+
+    The converter writes a store to a deep Windows path through an
+    extended-length path, so ``os.path.exists`` on the plain spelling is
+    False and ``click.Path(exists=True)`` refused a store the CLI itself
+    had just written -- while ``validate_store`` on the prepared path
+    validated it fine.
+    """
+
+    def test_a_missing_path_is_still_a_usage_error(self, runner, tmp_path):
+        result = runner.invoke(validate_command, [str(tmp_path / "nope.zarr")])
+        assert result.exit_code == 2
+
+    def test_the_prepared_path_is_what_gets_read(self, tmp_path, monkeypatch):
+        """Proven by preparation that redirects: the command must follow it."""
+        from thyra.metadata.schema import cli as cli_module
+
+        real = _write_doc(tmp_path, name="real.json")
+        typed = tmp_path / "typed.json"
+
+        monkeypatch.setattr(
+            cli_module, "prepare_zarr_read_path", lambda path: real, raising=True
+        )
+        assert cli_module._resolve_store_path(typed) == real
+
+    def test_export_prepares_it_too(self, runner, tmp_path, monkeypatch):
+        from thyra.metadata.schema import cli as cli_module
+
+        real = _write_doc(tmp_path, name="real.json")
+        monkeypatch.setattr(
+            cli_module, "prepare_zarr_read_path", lambda path: real, raising=True
+        )
+
+        result = runner.invoke(
+            export_metaspace_command, [str(tmp_path / "typed.json"), "-o", "-"]
+        )
+        assert result.exit_code == 0, result.output
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the 260 character limit")
+class TestAPathPastTheWindowsLimit:
+    """The case the issue reproduced: a path click cannot even stat."""
+
+    @pytest.fixture
+    def deep_document(self):
+        base = Path(tempfile.mkdtemp(prefix="thyra_deep_cli_"))
+        try:
+            deep = base
+            while len(str(deep / "metadata.json")) <= WINDOWS_MAX_PATH:
+                deep = deep / "nested_directory_segment"
+                to_extended_length_path(deep).mkdir()
+            document = deep / "metadata.json"
+            to_extended_length_path(document).write_text(
+                json.dumps(
+                    build_msi_metadata(
+                        None, pixel_size_um=(20.0, 20.0), source_format="imzml"
+                    ).to_uns_dict()
+                ),
+                encoding="utf-8",
+            )
+            if document.exists():
+                # A machine with LongPathsEnabled=1 -- the GitHub Windows
+                # runner is one -- resolves the plain path fine, so the
+                # case this reproduces cannot occur on it.
+                pytest.skip("Windows long-path support is on; the limit does not apply")
+            yield document
+        finally:
+            shutil.rmtree(to_extended_length_path(base), ignore_errors=True)
+
+    def test_validate_reaches_it(self, runner, deep_document):
+        result = runner.invoke(validate_command, [str(deep_document)])
+        assert result.exit_code == 0, result.output
+        assert "OK" in result.output

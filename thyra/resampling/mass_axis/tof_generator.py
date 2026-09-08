@@ -45,6 +45,7 @@ from typing import Tuple
 
 import numpy as np
 
+from ...errors import ConversionRefused
 from ..types import AxisType, MassAxis
 from .base_generator import BaseAxisGenerator
 
@@ -66,7 +67,7 @@ def tof_fwhm_mda(mz, a: float, b: float):
 
 def _check_law(a: float, b: float) -> None:
     if not (np.isfinite(a) and np.isfinite(b)) or a < 0 or b < 0 or (a == 0 and b == 0):
-        raise ValueError(
+        raise ConversionRefused(
             f"A TOF width law needs A >= 0 and B >= 0 with at least one of them "
             f"positive; got A={a!r}, B={b!r}"
         )

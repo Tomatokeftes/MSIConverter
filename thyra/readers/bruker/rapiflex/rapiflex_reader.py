@@ -42,6 +42,7 @@ from tqdm import tqdm
 
 from ....core.base_extractor import MetadataExtractor
 from ....core.registry import register_reader
+from ....errors import ConversionRefused
 from ....metadata.types import ComprehensiveMetadata, EssentialMetadata
 from ..base_bruker_reader import BrukerBaseMSIReader
 
@@ -264,12 +265,12 @@ class RapiflexReader(BrukerBaseMSIReader):
         folder = self.data_path
 
         if not folder.is_dir():
-            raise ValueError(f"Rapiflex path must be a directory: {folder}")
+            raise ConversionRefused(f"Rapiflex path must be a directory: {folder}")
 
         # Find .dat file
         dat_files = list(folder.glob("*.dat"))
         if not dat_files:
-            raise ValueError(f"No .dat file found in {folder}")
+            raise ConversionRefused(f"No .dat file found in {folder}")
         if len(dat_files) > 1:
             logger.warning(f"Multiple .dat files found, using first: {dat_files[0]}")
         self._dat_path = dat_files[0]
@@ -279,14 +280,14 @@ class RapiflexReader(BrukerBaseMSIReader):
         if info_files:
             self._info_path = info_files[0]
         else:
-            raise ValueError(f"No *_info.txt file found in {folder}")
+            raise ConversionRefused(f"No *_info.txt file found in {folder}")
 
         # Find _poslog.txt file
         poslog_files = list(folder.glob("*_poslog.txt"))
         if poslog_files:
             self._poslog_path = poslog_files[0]
         else:
-            raise ValueError(f"No *_poslog.txt file found in {folder}")
+            raise ConversionRefused(f"No *_poslog.txt file found in {folder}")
 
         # Find .mis file (optional)
         mis_files = list(folder.glob("*.mis"))
@@ -457,7 +458,7 @@ class RapiflexReader(BrukerBaseMSIReader):
     def _parse_positions(self) -> None:
         """Parse coordinate information from _poslog.txt file."""
         if not self._poslog_path:
-            raise ValueError("Position log file not found")
+            raise ConversionRefused("Position log file not found")
 
         self._positions = []
 
@@ -494,13 +495,13 @@ class RapiflexReader(BrukerBaseMSIReader):
     def _parse_dat_header(self) -> None:
         """Parse the .dat file header and offset table."""
         if not self._dat_path:
-            raise ValueError("Data file not found")
+            raise ConversionRefused("Data file not found")
 
         with open(self._dat_path, "rb") as f:
             # Read fixed 48-byte header
             header_data = f.read(48)
             if len(header_data) < 48:
-                raise ValueError("Invalid .dat file: header too short")
+                raise ConversionRefused("Invalid .dat file: header too short")
 
             # Parse header fields
             vals = struct.unpack("<12I", header_data)
@@ -526,7 +527,7 @@ class RapiflexReader(BrukerBaseMSIReader):
                     f.read(n_raster_positions * 4), dtype=np.uint32
                 ).copy()
             else:
-                raise ValueError("Invalid raster dimensions in header")
+                raise ConversionRefused("Invalid raster dimensions in header")
 
         logger.debug(
             f"Parsed .dat header: {self._header['n_datapoints']} datapoints, "
@@ -582,9 +583,11 @@ class RapiflexReader(BrukerBaseMSIReader):
             n_points = self.n_datapoints
 
             if n_points == 0:
-                raise ValueError("Cannot create mass axis: n_datapoints is 0")
+                raise ConversionRefused("Cannot create mass axis: n_datapoints is 0")
             if mass_start >= mass_end:
-                raise ValueError(f"Invalid mass range: {mass_start} to {mass_end}")
+                raise ConversionRefused(
+                    f"Invalid mass range: {mass_start} to {mass_end}"
+                )
 
             self._mz_axis = np.linspace(mass_start, mass_end, n_points)
 

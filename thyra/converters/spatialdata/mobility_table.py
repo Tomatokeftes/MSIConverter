@@ -52,6 +52,7 @@ from numpy.typing import NDArray
 from scipy import sparse
 
 from ...core.base_reader import BaseMSIReader
+from ...errors import ConversionRefused
 from ...resampling.mobility_grid import MobilityGrid
 from .csc_assembly import (
     CscAssembly,
@@ -300,7 +301,7 @@ class _SharedFeatureAxis:
         )
         if not on_axis.all():
             first = int(np.flatnonzero(~on_axis)[0])
-            raise ValueError(
+            raise ConversionRefused(
                 f"Pixel {coords}: (m/z {mzs[first]}, mobility {mobility[first]}) "
                 "is not on the shared feature axis"
             )

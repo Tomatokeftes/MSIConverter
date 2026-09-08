@@ -21,6 +21,7 @@ import pandas as pd
 from numpy.typing import NDArray
 from tqdm import tqdm
 
+from ...errors import ConversionRefused
 from ...resampling import ResamplingMethod
 from .base_spatialdata_converter import SPATIALDATA_AVAILABLE, BaseSpatialDataConverter
 from .csc_assembly import CscAssembly
@@ -194,7 +195,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         super().__init__(*args, **kwargs)
 
         if use_csc is False:
-            raise ValueError(
+            raise ConversionRefused(
                 "use_csc=False selected the streaming COO route, which has been "
                 "removed: the PCS route was faster and lighter at every size "
                 "measured. Pass use_csc=True or leave it out."
@@ -291,6 +292,10 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         Returns:
             Tuple of (mz_indices, resampled_intensities) with zeros filtered out
         """
+        # Before either resampling method, so both are handed the same
+        # spectrum and cannot disagree about it (issue #248).
+        mzs, intensities = self._drop_unusable_intensities(mzs, intensities)
+
         if not self._resampling_config:
             # No resampling - map m/z values to indices directly. Entries
             # that share a bin (a repeated m/z) are summed so the CSC never
