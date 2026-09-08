@@ -28,10 +28,10 @@ class ImagingGrid:
     y_index_map: Dict[float, int]  # position (um) -> 0-based y index
     pixel_count_x: int
     pixel_count_y: int
-    pixel_size_x: float  # in micrometers
-    pixel_size_y: float  # in micrometers
-    lateral_width: float  # max_x - min_x in micrometers
-    lateral_height: float  # max_y - min_y in micrometers
+    pixel_size_x: float  # raster pitch in um; 0.0 when the axis has one position
+    pixel_size_y: float  # raster pitch in um; 0.0 when the axis has one position
+    lateral_width: float  # max_x - min_x in um, so centre-to-centre, not edge-to-edge
+    lateral_height: float  # max_y - min_y in um, so centre-to-centre, not edge-to-edge
     scan_map: Dict[Tuple[int, int], ScanInfoData] = field(repr=False)
 
     @property
@@ -157,14 +157,28 @@ def build_imaging_grid(
             f"image -- Thyra has no raster to build from it."
         )
 
-    # Calculate pixel sizes (from ImagingMetadata.java lines 146-148)
+    # Laser positions are pixel *centres*, so the span from the first to the
+    # last is N - 1 pitches, not N. This used to divide by the count, which
+    # mixed a centre-to-centre extent with an edge-to-edge one and reported
+    # a pitch low by exactly 1/N -- independently per axis, so a square
+    # raster came out anisotropic: measured, a 30 um acquisition gave
+    # 29.66 x 28.93 and a 100 um one gave 99.40 x 97.83. Nothing caught it
+    # because _determine_pixel_size keeps only x, so the disagreement
+    # between the two axes never reached anywhere it would look wrong.
+    # See issue #217. (mzmine, which this file translates, computes the
+    # extent the other way round -- lateralWidth = count * pixelWidth -- and
+    # has the divide-by-count form commented out in ImagingParameters.java.)
+    #
+    # An axis with a single position has no interval to measure, and keeps
+    # 0.0: waters_extractor turns that into pixel_size=None, which becomes
+    # the actionable "Pixel size not found in metadata. Use --pixel-size"
+    # refusal rather than a fabricated number. Aborted single-line scans
+    # (the share holds 138x1 and 48x1) take that path.
     lateral_width = sorted_x[-1] - sorted_x[0] if pixel_count_x > 1 else 0.0
     lateral_height = sorted_y[-1] - sorted_y[0] if pixel_count_y > 1 else 0.0
 
-    pixel_size_x = lateral_width / pixel_count_x if pixel_count_x > 1 else lateral_width
-    pixel_size_y = (
-        lateral_height / pixel_count_y if pixel_count_y > 1 else lateral_height
-    )
+    pixel_size_x = lateral_width / (pixel_count_x - 1) if pixel_count_x > 1 else 0.0
+    pixel_size_y = lateral_height / (pixel_count_y - 1) if pixel_count_y > 1 else 0.0
 
     logger.info(
         f"Built imaging grid: {pixel_count_x}x{pixel_count_y} pixels, "

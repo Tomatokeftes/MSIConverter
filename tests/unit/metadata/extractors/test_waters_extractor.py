@@ -51,8 +51,9 @@ def _make_grid_and_ml(n_x=3, n_y=2, n_peaks=5):
 
     lateral_width = x_positions[-1] - x_positions[0] if n_x > 1 else 0.0
     lateral_height = y_positions[-1] - y_positions[0] if n_y > 1 else 0.0
-    pixel_size_x = lateral_width / n_x if n_x > 1 else 0.0
-    pixel_size_y = lateral_height / n_y if n_y > 1 else 0.0
+    # Extent over intervals, matching build_imaging_grid; see issue #217.
+    pixel_size_x = lateral_width / (n_x - 1) if n_x > 1 else 0.0
+    pixel_size_y = lateral_height / (n_y - 1) if n_y > 1 else 0.0
 
     grid = ImagingGrid(
         x_index_map=x_index_map,
