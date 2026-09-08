@@ -444,7 +444,7 @@ class GroupedCommand(click.Command):
             "--resample-gap-tolerance",
             "--tof-law",
         ],
-        "Performance": ["--streaming", "--sparse-format"],
+        "Performance": ["--streaming"],
         "imzML-specific": ["--spectrum-type"],
         "Bruker-specific": [
             "--use-recalibrated",
@@ -653,15 +653,6 @@ class GroupedCommand(click.Command):
     hidden=True,
     help="Deprecated no-op, accepted so existing scripts keep running.",
 )
-@click.option(
-    "--sparse-format",
-    type=click.Choice(["csc", "csr"]),
-    default="csc",
-    help=(
-        "Sparse matrix format: csc or csr (default: csc). The streaming "
-        "route writes csc only, so csr needs --streaming false."
-    ),
-)
 # -- Resampling (advanced) --
 @click.option(
     "--resample-method",
@@ -836,7 +827,6 @@ def main(
     mass_axis_type: str,
     tof_law: Optional[Tuple[float, float]],
     spectrum_type: str,
-    sparse_format: str,
     include_optical: bool,
     mobility_table: bool,
     mobility_heatmap: bool,
@@ -938,7 +928,6 @@ def main(
         z_spacing_um=z_spacing,
         resampling_config=resampling_config,
         reader_options=reader_options,
-        sparse_format=sparse_format,
         include_optical=include_optical,
         streaming=_parse_streaming_option(streaming),
         region=region,

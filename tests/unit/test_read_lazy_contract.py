@@ -176,8 +176,8 @@ class TestEncodingMetadata:
 
         assert isinstance(x_group, zarr.Group), "X must stay a Group, not an Array"
         assert set(x_group.keys()) == {"data", "indices", "indptr"}
-        # Both are legitimate: the streaming writer emits csr, the others csc.
-        assert x_group.attrs["encoding-type"] in {"csc_matrix", "csr_matrix"}
+        # CSC is the only layout any route writes since sparse_format went.
+        assert x_group.attrs["encoding-type"] == "csc_matrix"
         # anndata matches this exactly; '0.2.0' raises IORegistryError.
         assert x_group.attrs["encoding-version"] == "0.1.0"
         assert list(x_group.attrs["shape"]) == [len(COORDINATES), N_MZ]

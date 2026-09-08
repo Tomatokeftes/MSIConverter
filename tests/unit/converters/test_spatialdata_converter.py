@@ -694,111 +694,71 @@ class TestSpatialDataConverter:
         assert csr1[pixel_idx1, mz_indices1[1]] == 250.0
 
 
-class TestSparseFormat:
-    """Test sparse matrix format configuration (CSC vs CSR)."""
+class TestSparseFormatIsGone:
+    """CSC is the one layout written, and ``sparse_format`` no longer selects.
 
-    def test_default_sparse_format_is_csc(self, temp_dir):
-        """Test that the default sparse format is CSC."""
-        output_path = temp_dir / "test_output.zarr"
-        mock_reader = create_mock_reader_with_dimensions((3, 3, 1))
+    The keyword chose between CSC and CSR until v3.22, honoured by the
+    in-memory converters only -- so its meaning depended on ``streaming``,
+    and on the streaming route a ``csr`` request had spent a release
+    silently producing CSC. It is removed rather than mirrored: every
+    consumer here reads columns, and a caller who wants rows can call
+    ``X.tocsr()`` on what they read back for one conversion in memory.
 
-        converter = SpatialDataConverter(
-            mock_reader,
-            output_path,
-            dataset_id="test_dataset",
-            pixel_size_um=2.5,
-        )
+    Removing it from the signature is not enough on its own. An unknown
+    keyword falls through ``**kwargs`` into ``BaseMSIConverter.options``
+    without a word, which would reproduce exactly the silent-CSC failure
+    the removal was meant to end, so passing it has to raise.
+    """
 
-        assert converter._sparse_format == "csc"
-
-    def test_sparse_format_csc(self, temp_dir):
-        """Test converter with explicit CSC sparse format."""
-        output_path = temp_dir / "test_output.zarr"
-        mock_reader = create_mock_reader_with_dimensions((3, 3, 1))
-
-        converter = SpatialDataConverter(
-            mock_reader,
-            output_path,
-            dataset_id="test_dataset",
-            pixel_size_um=2.5,
-            sparse_format="csc",
-        )
-
-        assert converter._sparse_format == "csc"
-
-    def test_sparse_format_csr(self, temp_dir):
-        """Test converter with CSR sparse format."""
-        output_path = temp_dir / "test_output.zarr"
-        mock_reader = create_mock_reader_with_dimensions((3, 3, 1))
-
-        converter = SpatialDataConverter(
-            mock_reader,
-            output_path,
-            dataset_id="test_dataset",
-            pixel_size_um=2.5,
-            sparse_format="csr",
-        )
-
-        assert converter._sparse_format == "csr"
-
-    def test_sparse_format_case_insensitive(self, temp_dir):
-        """Test that sparse format parameter is case-insensitive."""
-        output_path = temp_dir / "test_output.zarr"
-        mock_reader = create_mock_reader_with_dimensions((3, 3, 1))
-
-        converter = SpatialDataConverter(
-            mock_reader,
-            output_path,
-            dataset_id="test_dataset",
-            sparse_format="CSC",
-        )
-
-        assert converter._sparse_format == "csc"
-
-    def test_invalid_sparse_format_raises_error(self, temp_dir):
-        """Test that an invalid sparse format raises ValueError."""
+    def test_the_keyword_is_refused_rather_than_swallowed(self, temp_dir):
         import pytest
 
-        output_path = temp_dir / "test_output.zarr"
         mock_reader = create_mock_reader_with_dimensions((3, 3, 1))
 
-        with pytest.raises(ValueError, match="sparse_format must be 'csc' or 'csr'"):
+        with pytest.raises(ValueError, match=r"sparse_format was removed"):
             SpatialDataConverter(
                 mock_reader,
-                output_path,
+                temp_dir / "test_output.zarr",
                 dataset_id="test_dataset",
-                sparse_format="invalid",
+                pixel_size_um=2.5,
+                sparse_format="csr",
             )
 
-    def test_sparse_format_3d_converter(self, temp_dir):
-        """Test sparse format is passed to 3D converter."""
-        output_path = temp_dir / "test_output.zarr"
-        mock_reader = create_mock_reader_with_dimensions((3, 3, 2))
+    def test_csc_is_refused_too(self, temp_dir):
+        """Even the value that matches what is written.
 
+        Accepting ``"csc"`` would leave a keyword that does nothing, which
+        is the shape of option this removal is clearing out. The error
+        costs the caller one deleted argument.
+        """
+        import pytest
+
+        mock_reader = create_mock_reader_with_dimensions((3, 3, 1))
+
+        with pytest.raises(ValueError, match=r"sparse_format was removed"):
+            SpatialDataConverter(
+                mock_reader,
+                temp_dir / "test_output.zarr",
+                dataset_id="test_dataset",
+                sparse_format="csc",
+            )
+
+    def test_the_selector_is_gone_from_the_converters(self, temp_dir):
+        """A leftover ``_sparse_format`` would read as a live choice.
+
+        Left behind, the next person sets it and the branch that consumed
+        it no longer exists.
+        """
+        mock_reader = create_mock_reader_with_dimensions((3, 3, 1))
         converter = SpatialDataConverter(
             mock_reader,
-            output_path,
+            temp_dir / "test_output.zarr",
             dataset_id="test_dataset",
-            handle_3d=True,
-            sparse_format="csr",
+            pixel_size_um=2.5,
         )
 
-        assert converter._sparse_format == "csr"
-
-    def test_sparse_format_2d_converter(self, temp_dir):
-        """Test sparse format is passed to 2D converter."""
-        output_path = temp_dir / "test_output.zarr"
-        mock_reader = create_mock_reader_with_dimensions((3, 3, 2))
-
-        converter = SpatialDataConverter(
-            mock_reader,
-            output_path,
-            dataset_id="test_dataset",
-            handle_3d=False,
-            sparse_format="csr",
-        )
-
-        assert converter._sparse_format == "csr"
+        assert not hasattr(converter, "_sparse_format")
+        assert "sparse_format" not in converter.options
 
 
 class TestNormalizeResamplingConfig:

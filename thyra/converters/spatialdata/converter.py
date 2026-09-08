@@ -29,7 +29,6 @@ class SpatialDataConverter:
         handle_3d: bool = False,
         pixel_size_detection_info: Optional[Dict[str, Any]] = None,
         resampling_config: Optional[Dict[str, Any]] = None,
-        sparse_format: str = "csc",
         **kwargs: Any,
     ):
         """Create appropriate converter based on handle_3d parameter and data dimensions.
@@ -44,7 +43,6 @@ class SpatialDataConverter:
             pixel_size_detection_info: Optional metadata about pixel size
                 detection
             resampling_config: Optional resampling configuration dict
-            sparse_format: Sparse matrix format ('csc' or 'csr', default: 'csc')
             **kwargs: Additional keyword arguments
 
         Returns:
@@ -64,7 +62,6 @@ class SpatialDataConverter:
                 pixel_size_um=pixel_size_um,
                 pixel_size_detection_info=pixel_size_detection_info,
                 resampling_config=resampling_config,
-                sparse_format=sparse_format,
                 **kwargs,
             )
         elif dimensions[2] == 1:
@@ -76,7 +73,6 @@ class SpatialDataConverter:
                 pixel_size_um=pixel_size_um,
                 pixel_size_detection_info=pixel_size_detection_info,
                 resampling_config=resampling_config,
-                sparse_format=sparse_format,
                 **kwargs,
             )
         else:
@@ -88,7 +84,6 @@ class SpatialDataConverter:
                 pixel_size_um=pixel_size_um,
                 pixel_size_detection_info=pixel_size_detection_info,
                 resampling_config=resampling_config,
-                sparse_format=sparse_format,
                 **kwargs,
             )
 

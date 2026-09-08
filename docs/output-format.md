@@ -183,10 +183,11 @@ print(f"Non-zero: {X.nnz:,} ({X.nnz / (X.shape[0] * X.shape[1]) * 100:.2f}%)")
 ```
 
 !!! tip "Sparse format"
-    The default storage is CSC (Compressed Sparse Column), which is fast for
-    extracting ion images (column = one m/z across all pixels). If you need fast
-    per-pixel access, convert with `--sparse-format csr --streaming false`;
-    only the in-memory converter writes CSR.
+    The storage is CSC (Compressed Sparse Column) on every route, which is fast
+    for extracting ion images (column = one m/z across all pixels). If you need
+    fast per-pixel access, call `X.tocsr()` on the matrix you read back -- that
+    is one conversion in memory, and it is why there is no format choice at
+    write time.
 
     The stored matrix is canonical: within every column the row indices are in
     ascending order, whatever order the source delivered its pixels in (a

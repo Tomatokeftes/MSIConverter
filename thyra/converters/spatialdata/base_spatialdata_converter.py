@@ -707,7 +707,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         z_spacing_um: Optional[float] = None,
         pixel_size_detection_info: Optional[Dict[str, Any]] = None,
         resampling_config: Optional[Union[Dict[str, Any], ResamplingConfig]] = None,
-        sparse_format: str = "csc",
         include_optical: bool = True,
         apply_optical_alignment: bool = True,
         write_mobility_table: bool = True,
@@ -738,7 +737,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             pixel_size_detection_info: Optional metadata about pixel size
                 detection
             resampling_config: Optional resampling configuration dict
-            sparse_format: Sparse matrix format ('csc' or 'csr', default: 'csc')
             include_optical: Whether to include optical images in output
                 (default: True)
             write_mobility_table: When the reader shares one set of
@@ -794,9 +792,21 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
 
         Raises:
             ImportError: If SpatialData dependencies are not available
-            ValueError: If pixel_size_um is not positive or dataset_id is
-                empty
+            ValueError: If pixel_size_um is not positive, dataset_id is
+                empty, or ``sparse_format`` is passed
         """
+        # ``sparse_format`` chose between CSC and CSR until v3.22. CSC is now
+        # the only layout written, so the keyword has nothing left to select --
+        # but an unknown keyword lands in ``self.options`` without a word, and a
+        # caller who asked for CSR would get CSC and no signal. That is the
+        # failure this removal was meant to end, so say it instead.
+        if "sparse_format" in kwargs:
+            raise ValueError(
+                "sparse_format was removed: every converter writes CSC, which "
+                "is the layout an ion image reads down. Drop the argument; for "
+                "row-wise access call X.tocsr() on the matrix you read back."
+            )
+
         # Check if SpatialData is available
         if not SPATIALDATA_AVAILABLE:
             error_msg = (
@@ -850,7 +860,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             if resampling_config is not None
             else None
         )
-        self._sparse_format = sparse_format.lower()
         self._include_optical = include_optical
         self._apply_optical_alignment = apply_optical_alignment
         # Filled by _build_resampled_mass_axis(); consumed by
@@ -902,10 +911,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         self._msms_table_key: Optional[str] = None
         self._fragmentation_schedule: Any = None
         self._fragmentation_read = False
-        if self._sparse_format not in ("csc", "csr"):
-            raise ValueError(
-                f"sparse_format must be 'csc' or 'csr', got '{sparse_format}'"
-            )
 
         # Metadata caches (populated lazily during conversion). These have
         # to exist before _setup_resampling below: its strategy selection

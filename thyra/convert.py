@@ -384,7 +384,6 @@ def _create_converter(
     handle_3d: bool,
     pixel_size_detection_info: Dict[str, Any],
     resampling_config: Optional[Dict[str, Any]] = None,
-    sparse_format: str = "csc",
     include_optical: bool = True,
     apply_optical_alignment: bool = True,
     streaming: Union[bool, Literal["auto"]] = "auto",
@@ -400,7 +399,6 @@ def _create_converter(
         "z_spacing_um": z_spacing_um,
         "pixel_size_detection_info": pixel_size_detection_info,
         "resampling_config": resampling_config,
-        "sparse_format": sparse_format,
         "include_optical": include_optical,
         "apply_optical_alignment": apply_optical_alignment,
         **kwargs,
@@ -483,7 +481,6 @@ def convert_msi(
     z_spacing_um: Optional[float] = None,
     resampling_config: Optional[Dict[str, Any]] = None,
     reader_options: Optional[Dict[str, Any]] = None,
-    sparse_format: str = "csc",
     include_optical: bool = True,
     apply_optical_alignment: bool = True,
     streaming: Union[bool, Literal["auto"]] = "auto",
@@ -565,9 +562,6 @@ def convert_msi(
               files where it disagrees with what detection would
               have chosen, because the representation feeds
               instrument and axis-type selection.
-        sparse_format: Sparse matrix format ('csc' or 'csr'). The
-            streaming converter writes CSC only and refuses 'csr'; pass
-            streaming=False to write CSR.
         include_optical: Include optical images (default: True)
         apply_optical_alignment: If True (default) and the MSI source
             carries FlexImaging Area metadata, MSI elements are placed
@@ -659,7 +653,6 @@ def convert_msi(
             handle_3d,
             pixel_size_detection_info,
             resampling_config,
-            sparse_format,
             include_optical=include_optical,
             apply_optical_alignment=apply_optical_alignment,
             streaming=streaming,

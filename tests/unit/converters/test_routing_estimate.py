@@ -155,14 +155,15 @@ class TestUseCscIsCompatibilityOnly:
         with pytest.raises(ValueError, match=r"COO route, which has been removed"):
             _converter((10, 10, 1), use_csc=False)
 
-    def test_csr_is_refused_rather_than_stored_as_csc(self):
-        """The route has no CSR layout.
+    def test_sparse_format_is_refused_by_the_base(self):
+        """The keyword is gone from every converter, not just this one.
 
-        It used to accept ``sparse_format="csr"`` and store CSC anyway,
-        which nothing reported; a caller who asked for row access got the
-        opposite. The refusal names the converter that does write CSR.
+        This route used to accept ``sparse_format="csr"`` and store CSC
+        anyway, which nothing reported; a caller who asked for row access
+        got the opposite. Now no route takes the keyword, and the base
+        refuses it rather than letting ``**kwargs`` eat it in silence.
         """
-        with pytest.raises(ValueError, match=r"CSC only.*streaming=False"):
+        with pytest.raises(ValueError, match=r"sparse_format was removed"):
             _converter((10, 10, 1), sparse_format="csr")
 
     def test_the_route_machinery_is_gone(self):
