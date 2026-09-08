@@ -3,9 +3,22 @@
 name: Create Release & Publish to PyPI
 
 on:
-  push:
-    branches:
-      - main
+  # Deliberately NOT `push: [main]`. `semantic-release version` computes the
+  # bump from every commit since the last tag, so it batches by nature; the
+  # push trigger was the only thing turning one merge into one release. Ten
+  # fixes merged over a week now ship as one patch version with ten changelog
+  # lines under one heading, instead of ten versions and ten PyPI uploads.
+  # Merge cadence and release cadence are independent now, which is the point.
+  #
+  # The cron is the safety net, not the mechanism: it releases whatever has
+  # accumulated and no-ops (released=false) when nothing since the last tag was
+  # a feat/fix/perf. Cut a release the moment you want one instead of waiting
+  # for it -- `gh workflow run release.yml`, or the Run workflow button.
+  #
+  # GitHub disables `schedule` on a repository with no activity for 60 days.
+  # If releases ever go quiet for that long, check this trigger first.
+  schedule:
+    - cron: '0 6 * * 1'  # Mondays, 06:00 UTC
   release:
     types: [published]
   workflow_dispatch:
@@ -27,20 +40,33 @@ on:
 # steps leaves the repo tagged-but-not-bumped, which is far worse than a queued
 # run. Nothing here is safe to interrupt.
 #
-# The group is keyed on the event as well as the ref so a publish-only
-# workflow_dispatch is not stuck behind a push run -- it never calls
-# semantic-release (the release job is `if: github.event_name == 'push'`), so it
-# has nothing to race with. Only push-to-main runs need to serialise.
+# The group used to be keyed on the event as well as the ref, so a publish-only
+# workflow_dispatch would not queue behind a push run. That key is now WRONG and
+# must not come back: a workflow_dispatch without `publish_only` calls
+# semantic-release, exactly as a scheduled run does, so keying on the event puts
+# two version-creating runs in different groups and lets them race -- the very
+# failure this block exists to prevent. One group, everything serialises.
+#
+# The cost is that a publish-only dispatch can queue behind a release run. It is
+# small and getting smaller: with the push trigger gone, a run's Tests gate is
+# satisfied on the first poll (main's tip merged hours ago and its test run has
+# long since finished) rather than waiting minutes for a run that started at the
+# same instant, so a release run now takes about as long as it takes to install
+# semantic-release.
 concurrency:
-  group: release-${{ github.event_name }}-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    # Skip this job if triggered by release event or manual publish
-    if: github.event_name == 'push'
+    # Cut a version from whatever has accumulated on main: on the cron, or on
+    # demand. Never on the `release` event, where the tag already exists, and
+    # never on a publish-only dispatch, which exists precisely to skip this job.
+    if: |
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish_only != true)
     permissions:
       contents: write
       pull-requests: write
@@ -226,15 +252,23 @@ jobs:
           # main moved while we waited then $RELEASE_SHA is no longer the tip,
           # the checkout is stale, and `semantic-release version` would die on
           # "Upstream branch 'origin/main' has changed!" -- the failure the tip
-          # checkout above was added to end. Stand down cleanly instead: the
-          # merge that moved main queued its own release run behind this one,
-          # and semantic-release bumps from every commit since the last tag, so
-          # that run covers these commits too. Nothing is dropped by yielding.
+          # checkout above was added to end. Stand down cleanly instead.
+          #
+          # Yielding used to be self-healing: the merge that moved main was a
+          # push, so it queued its own release run behind this one. Without the
+          # push trigger nothing queues, so a yield here means no release until
+          # the next cron or the next `gh workflow run release.yml`. That is a
+          # delay, never a loss -- the commits stay on main and semantic-release
+          # bumps from every commit since the last tag, so the next run covers
+          # them. The window is also far narrower than it was: the gate above
+          # now clears on its first poll, so main has to move inside this job's
+          # first minute for the yield to fire at all.
           git fetch origin +refs/heads/main:refs/remotes/origin/main
           TIP=$(git rev-parse refs/remotes/origin/main)
           if [ "$TIP" != "$RELEASE_SHA" ]; then
             echo "No release: main moved $RELEASE_SHA -> $TIP while waiting for tests."
-            echo "The queued run for $TIP releases these commits."
+            echo "Nothing is queued to pick these up -- re-run this workflow to"
+            echo "release $TIP, or leave them for the Monday cron."
             echo "released=false" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -270,11 +304,17 @@ jobs:
     name: Publish to PyPI
     runs-on: ubuntu-latest
     needs: [release]
-    # Run if: semantic-release created a release, OR a release was published, OR manual dispatch
-    # Use always() to allow running even when 'release' job is skipped
+    # Run if: the release job cut a version, OR a release was published, OR this
+    # is a publish-only dispatch. always() is what lets this run at all when the
+    # `release` job is skipped -- a skipped dependency otherwise skips this too.
+    #
+    # The first clause carries no event check. `released` is set only by a run
+    # of the release job that actually created a tag, so it already implies the
+    # trigger was one that cuts versions; naming the event as well is how the
+    # push-trigger removal could have silently disabled publishing.
     if: |
       always() && (
-        (github.event_name == 'push' && needs.release.outputs.released == 'true') ||
+        needs.release.outputs.released == 'true' ||
         github.event_name == 'release' ||
         (github.event_name == 'workflow_dispatch' && inputs.publish_only == true)
       )

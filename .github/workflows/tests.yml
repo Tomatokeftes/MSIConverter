@@ -3,9 +3,15 @@ name: Tests
 on:
   # Kept narrow on purpose -- only main, never every push to every feature
   # branch, whose PRs the trigger below already covers. Without this, NOTHING
-  # ran the suite against main: a release is cut from a push to main
-  # (release.yml) and publishes to PyPI, so v3.0.0 shipped from a commit no
-  # test job had ever seen.
+  # ran the suite against main, and releases publish to PyPI from main's tip, so
+  # v3.0.0 shipped from a commit no test job had ever seen.
+  #
+  # This trigger is load-bearing for releases and must not be narrowed further.
+  # release.yml gates on a completed run of THIS workflow for the exact commit
+  # it is about to release, and it fails closed: drop this trigger and every
+  # release blocks for 30 minutes and then errors, rather than shipping
+  # ungated. Releases no longer run on push, so this is the only thing that
+  # gives main's tip a test run to be gated on.
   push:
     branches: [ main ]
   # Deliberately unfiltered. `branches:` on a pull_request trigger matches the
