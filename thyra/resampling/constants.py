@@ -35,12 +35,6 @@ class Thresholds:
     # Profile data typically has >5000 points per spectrum
     PROFILE_PEAK_DENSITY = 5000
 
-    # Dataset size threshold for streaming converter (GB)
-    STREAMING_SIZE_GB = 10
-
-    # Dataset size threshold for PCS method in streaming converter (GB)
-    PCS_SIZE_GB = 30
-
 
 class SpectrumType:
     """Spectrum type string constants."""

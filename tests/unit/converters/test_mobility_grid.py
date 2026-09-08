@@ -4,9 +4,9 @@ The grid itself is exercised on hand-picked values first: edges, channel
 assignment, the clamp band, and the alignment with the mass-mobility
 heatmap that the whole 256-channel anchor exists for. Then a stub reader
 whose pixels each carry their own ``(m/z, 1/K0, intensity)`` cloud -- a
-Bruker TDF in miniature, no SDK and no committed data -- goes down the
-in-memory and streaming write routes, so the marginal invariant, the
-``uns`` blocks and the refusals are checked on a real store.
+Bruker TDF in miniature, no SDK and no committed data -- is converted,
+so the marginal invariant, the ``uns`` blocks and the refusals are
+checked on a real store.
 """
 
 from pathlib import Path
@@ -448,18 +448,13 @@ def _stub_obs():
 spatialdata = pytest.importorskip("spatialdata")
 
 
-def _convert(reader: BaseMSIReader, out: Path, streaming: bool, **kwargs):
+def _convert(reader: BaseMSIReader, out: Path, **kwargs):
+    from thyra.converters.spatialdata.streaming_converter import (
+        StreamingSpatialDataConverter as Converter,
+    )
     from thyra.utils.windows_paths import prepare_zarr_output_path
 
     out = prepare_zarr_output_path(out, "stub")
-    if streaming:
-        from thyra.converters.spatialdata.streaming_converter import (
-            StreamingSpatialDataConverter as Converter,
-        )
-    else:
-        from thyra.converters.spatialdata.spatialdata_2d_converter import (
-            SpatialData2DConverter as Converter,
-        )
 
     converter = Converter(reader, out, dataset_id="stub", pixel_size_um=10.0, **kwargs)
     assert converter.convert(), "conversion reported failure"
@@ -487,20 +482,17 @@ def _row(table, x: int, y: int) -> np.ndarray:
     )
 
 
-@pytest.mark.parametrize("streaming", [False, True], ids=["in-memory", "streaming"])
 class TestGridTable:
-    def test_off_by_default_the_store_is_exactly_what_it_was(self, tmp_path, streaming):
+    def test_off_by_default_the_store_is_exactly_what_it_was(self, tmp_path):
         reader = GridStubReader()
-        sdata = _read(_convert(reader, tmp_path / "s.zarr", streaming))
+        sdata = _read(_convert(reader, tmp_path / "s.zarr"))
         assert set(sdata.tables) == {"stub_z0"}
         # The heatmap still costs its one pass; the grid costs none.
         assert reader.mobility_passes == 1
 
-    def test_on_request_the_sibling_appears(self, tmp_path, streaming):
+    def test_on_request_the_sibling_appears(self, tmp_path):
         reader = GridStubReader()
-        sdata = _read(
-            _convert(reader, tmp_path / "s.zarr", streaming, mobility_grid=True)
-        )
+        sdata = _read(_convert(reader, tmp_path / "s.zarr", mobility_grid=True))
         assert set(sdata.tables) == {"stub_z0", "stub_z0_mobility"}
         # The grid's discovery shares the heatmap's pass; only the scatter
         # is a pass of its own. Two reads of the raw points in all.
@@ -510,11 +502,9 @@ class TestGridTable:
         assert list(summed.obs.index) == list(grid.obs.index)
         assert set(grid.obs["region"].astype(str)) == {"stub_z0_pixels"}
 
-    def test_var_is_the_frozen_contract(self, tmp_path, streaming):
+    def test_var_is_the_frozen_contract(self, tmp_path):
         sdata = _read(
-            _convert(
-                GridStubReader(), tmp_path / "s.zarr", streaming, mobility_grid=True
-            )
+            _convert(GridStubReader(), tmp_path / "s.zarr", mobility_grid=True)
         )
         var = sdata.tables["stub_z0_mobility"].var
         # Exactly the columns the shared-axis mechanism writes; a consumer
@@ -540,13 +530,9 @@ class TestGridTable:
             "mz2_im68",
         ]
 
-    def test_the_marginal_reproduces_the_summed_table_per_pixel(
-        self, tmp_path, streaming
-    ):
+    def test_the_marginal_reproduces_the_summed_table_per_pixel(self, tmp_path):
         sdata = _read(
-            _convert(
-                GridStubReader(), tmp_path / "s.zarr", streaming, mobility_grid=True
-            )
+            _convert(GridStubReader(), tmp_path / "s.zarr", mobility_grid=True)
         )
         summed = sdata.tables["stub_z0"]
         grid = sdata.tables["stub_z0_mobility"]
@@ -556,11 +542,9 @@ class TestGridTable:
             np.add.at(marginal, mz_index, _row(grid, x, y))
             np.testing.assert_allclose(marginal, _row(summed, x, y), rtol=0, atol=1e-12)
 
-    def test_the_mobility_dimension_buys_a_split(self, tmp_path, streaming):
+    def test_the_mobility_dimension_buys_a_split(self, tmp_path):
         sdata = _read(
-            _convert(
-                GridStubReader(), tmp_path / "s.zarr", streaming, mobility_grid=True
-            )
+            _convert(GridStubReader(), tmp_path / "s.zarr", mobility_grid=True)
         )
         grid = sdata.tables["stub_z0_mobility"]
         columns = np.flatnonzero(grid.var["mz_index"].to_numpy() == 0)
@@ -570,11 +554,9 @@ class TestGridTable:
         second = np.asarray(grid.X[:, columns[1]].todense()).ravel()
         assert not np.allclose(first, second)
 
-    def test_the_uns_blocks_round_trip(self, tmp_path, streaming):
+    def test_the_uns_blocks_round_trip(self, tmp_path):
         sdata = _read(
-            _convert(
-                GridStubReader(), tmp_path / "s.zarr", streaming, mobility_grid=True
-            )
+            _convert(GridStubReader(), tmp_path / "s.zarr", mobility_grid=True)
         )
         summed = sdata.tables["stub_z0"]
         grid = sdata.tables["stub_z0_mobility"]
@@ -601,35 +583,27 @@ class TestGridTable:
         # thing that says which mechanism filled the table.
         assert "mobility_grid" not in summed.uns
 
-    def test_the_marginal_ratio_is_recorded_not_only_asserted(
-        self, tmp_path, streaming
-    ):
+    def test_the_marginal_ratio_is_recorded_not_only_asserted(self, tmp_path):
         sdata = _read(
-            _convert(
-                GridStubReader(), tmp_path / "s.zarr", streaming, mobility_grid=True
-            )
+            _convert(GridStubReader(), tmp_path / "s.zarr", mobility_grid=True)
         )
         block = sdata.tables["stub_z0_mobility"].uns["mobility_marginal"]
         assert str(block["summed_table"]) == "stub_z0"
         assert float(block["current_ratio"]) == pytest.approx(1.0)
         assert float(block["current_ratio_pixel_min"]) == pytest.approx(1.0)
         assert float(block["current_ratio_pixel_max"]) == pytest.approx(1.0)
-        if streaming:
-            # The streaming route writes the summed table straight to disk
-            # and never holds it, so the per-column deviation -- which
-            # needs both matrices -- is the one field it cannot state.
-            assert "max_relative_deviation" not in block
-        else:
-            assert float(block["max_relative_deviation"]) < 1e-12
-            assert float(block["max_absolute_deviation"]) < 1e-9
+        # The per-cell deviation went with the in-memory converters: it
+        # needed the marginal and its difference from the summed table
+        # materialised, each the size of the summed table (D11). The
+        # per-pixel ratio is one bounded pass over each memmap.
+        assert "max_relative_deviation" not in block
+        assert "max_absolute_deviation" not in block
 
-    def test_the_metadata_block_names_the_grid(self, tmp_path, streaming):
+    def test_the_metadata_block_names_the_grid(self, tmp_path):
         from thyra.metadata.schema import read_msi_metadata_blocks
         from thyra.utils.windows_paths import prepare_zarr_read_path
 
-        out = _convert(
-            GridStubReader(), tmp_path / "s.zarr", streaming, mobility_grid=True
-        )
+        out = _convert(GridStubReader(), tmp_path / "s.zarr", mobility_grid=True)
         blocks = read_msi_metadata_blocks(prepare_zarr_read_path(out))
         mobility = blocks["stub_z0"]["ms_analysis"]["ion_mobility"]
         assert mobility["resolved_table"] == "stub_z0_mobility"
@@ -640,24 +614,21 @@ class TestGridTable:
             "n_channels": MOBILITY_CHANNELS,
         }
 
-    def test_validate_accepts_the_table(self, tmp_path, streaming):
+    def test_validate_accepts_the_table(self, tmp_path):
         from thyra.metadata.schema import check_store_var_conventions
         from thyra.utils.windows_paths import prepare_zarr_read_path
 
-        out = _convert(
-            GridStubReader(), tmp_path / "s.zarr", streaming, mobility_grid=True
-        )
+        out = _convert(GridStubReader(), tmp_path / "s.zarr", mobility_grid=True)
         results = check_store_var_conventions(prepare_zarr_read_path(out))
         assert results, "no tables were checked"
         for issues in results.values():
             assert [i for i in issues if i.severity == "error"] == []
 
-    def test_the_channel_count_and_range_can_be_overridden(self, tmp_path, streaming):
+    def test_the_channel_count_and_range_can_be_overridden(self, tmp_path):
         sdata = _read(
             _convert(
                 GridStubReader(),
                 tmp_path / "s.zarr",
-                streaming,
                 mobility_grid=True,
                 mobility_bins=8,
                 mobility_min=1.0,
@@ -674,20 +645,17 @@ class TestGridTable:
         # Coarser channels merge the 1.201/1.207 pair into one feature.
         assert grid.n_vars == 4
 
-    def test_a_source_with_no_axis_values_gets_no_table(self, tmp_path, streaming):
+    def test_a_source_with_no_axis_values_gets_no_table(self, tmp_path):
         sdata = _read(
             _convert(
                 GridStubReader(with_values=False),
                 tmp_path / "s.zarr",
-                streaming,
                 mobility_grid=True,
             )
         )
         assert set(sdata.tables) == {"stub_z0"}
 
-    def test_a_source_over_the_var_ceiling_gets_no_table(
-        self, tmp_path, streaming, monkeypatch
-    ):
+    def test_a_source_over_the_var_ceiling_gets_no_table(self, tmp_path, monkeypatch):
         # The count decides, so the ceiling is lowered to below the count
         # this fixture reaches rather than the axis being blown up to a
         # size no test should convert.
@@ -695,30 +663,24 @@ class TestGridTable:
 
         monkeypatch.setattr(module, "MAX_GRID_VAR_ENTRIES", 4)
         sdata = _read(
-            _convert(
-                GridStubReader(), tmp_path / "s.zarr", streaming, mobility_grid=True
-            )
+            _convert(GridStubReader(), tmp_path / "s.zarr", mobility_grid=True)
         )
         assert set(sdata.tables) == {"stub_z0"}
 
     def test_a_source_at_the_var_ceiling_still_gets_its_table(
-        self, tmp_path, streaming, monkeypatch
+        self, tmp_path, monkeypatch
     ):
         import thyra.converters.spatialdata.mobility_table as module
 
         monkeypatch.setattr(module, "MAX_GRID_VAR_ENTRIES", 5)
         sdata = _read(
-            _convert(
-                GridStubReader(), tmp_path / "s.zarr", streaming, mobility_grid=True
-            )
+            _convert(GridStubReader(), tmp_path / "s.zarr", mobility_grid=True)
         )
         assert sdata.tables["stub_z0_mobility"].n_vars == 5
 
-    def test_a_source_without_mobility_gets_no_table(self, tmp_path, streaming):
+    def test_a_source_without_mobility_gets_no_table(self, tmp_path):
         sdata = _read(
-            _convert(
-                _NoMobilityReader(), tmp_path / "s.zarr", streaming, mobility_grid=True
-            )
+            _convert(_NoMobilityReader(), tmp_path / "s.zarr", mobility_grid=True)
         )
         assert set(sdata.tables) == {"stub_z0"}
         assert "mobility_grid" not in sdata.tables["stub_z0"].uns

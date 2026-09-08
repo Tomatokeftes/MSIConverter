@@ -35,8 +35,8 @@ Both mechanisms are built in two passes over the source through
 the occupied features, then scatter each pixel's values straight into
 memmapped CSC arrays -- so the table's memory is bounded by its feature
 space and one pixel, never by its size. That is the same shape the
-summed table takes on the streaming route, and it is what lets a whole
-acquisition convert rather than the few hundred frames that fit in RAM.
+summed table takes, and it is what lets a whole acquisition convert
+rather than the few hundred frames that fit in RAM.
 
 Mobility is a feature coordinate: nothing here touches ``obs`` beyond
 copying it, and nothing enters a coordinate system.

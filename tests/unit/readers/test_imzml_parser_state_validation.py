@@ -24,7 +24,7 @@ import pytest
 from pyimzml.compression import ZlibCompression
 from pyimzml.ImzMLParser import ImzMLParser
 
-from thyra.convert import _should_use_streaming
+from thyra.convert import _create_converter
 from thyra.preview import preview_msi
 from thyra.readers.imzml import imzml_reader as imzml_reader_module
 from thyra.readers.imzml.imzml_reader import ImzMLReader
@@ -491,33 +491,34 @@ class TestARefusedFileIsNotParsedTwice:
         assert len(constructions) == 1
 
 
-class TestStreamingDecisionDoesNotSwallowRefusals:
-    """``_should_use_streaming`` used to hide the first validator failure."""
+class TestConverterCreationDoesNotSwallowRefusals:
+    """The first metadata read must fail loudly, not at DEBUG.
 
-    def test_metadata_failure_propagates(self):
+    ``_should_use_streaming`` used to make that read and once hid the
+    validator's failure behind a size estimate; the size gate is gone,
+    and ``_create_converter`` now makes the read itself, outside any
+    try, for the same reason: the converter's constructor extracts the
+    same metadata inside a try that logs at DEBUG.
+    """
+
+    def test_metadata_failure_propagates(self, temp_dir):
         class _RefusingReader:
             def get_essential_metadata(self):
                 raise ValueError("imzML spectrum 3 declares a m/z array ending at ...")
 
+        from thyra.core.base_converter import PixelSizeSource
+
         with pytest.raises(ValueError, match="spectrum 3"):
-            _should_use_streaming("auto", _RefusingReader())
-
-    def test_unusable_dimensions_still_fall_back_quietly(self):
-        """The legitimate "could not estimate size" case is unchanged."""
-
-        class _Shapeless:
-            def get_essential_metadata(self):
-                return type("Meta", (), {"dimensions": None})()
-
-        assert _should_use_streaming("auto", _Shapeless()) is False
-
-    def test_explicit_streaming_never_touches_the_reader(self):
-        class _Exploding:
-            def get_essential_metadata(self):
-                raise AssertionError("must not be called")
-
-        assert _should_use_streaming(True, _Exploding()) is True
-        assert _should_use_streaming(False, _Exploding()) is False
+            _create_converter(
+                "spatialdata",
+                _RefusingReader(),
+                temp_dir / "out.zarr",
+                "ds",
+                10.0,
+                PixelSizeSource.USER_PROVIDED,
+                False,
+                {},
+            )
 
 
 class TestPreviewReportsARefusedFile:

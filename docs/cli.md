@@ -49,8 +49,8 @@ thyra input.imzML output.zarr && python analyse.py output.zarr
 | `--include-optical / --no-optical` | enabled | Include optical images in output |
 | `--mobility-table / --no-mobility-table` | enabled | Also write the mobility-resolved sibling table when the source shares one set of (m/z, ion mobility) features across pixels (see [Output Format](output-format.md#ion-mobility)) |
 | `--mobility-heatmap / --no-mobility-heatmap` | enabled | When the source has an ion mobility dimension, store the mean mass-mobility frame on the summed table as `uns["mobility_heatmap"]`; on a Bruker TDF it is fed from the summed table's own passes, on other sources it is one extra pass (see [Output Format](output-format.md#ion-mobility)) |
-| `--mobility-grid / --no-mobility-grid` | **disabled** | When the source carries ion mobility per pixel rather than as a shared feature list (Bruker TDF), bin the point cloud onto a common mobility grid and write the same mobility-resolved sibling table; fed from the summed table's own two passes on the streaming route (no extra read of the source), a much larger table built out of core so any acquisition fits; its marginal reproduces the summed table exactly under the default `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#the-same-table-from-a-common-mobility-grid)) |
-| `--msms-table / --no-msms-table` | enabled | When the source isolates several precursors per pixel in disjoint mobility slices (Bruker PASEF), also write them split apart as a demultiplexed sibling table; fed from the summed table's own two passes on the streaming route (no extra read of the source); the split adds back up to the summed table exactly under the default `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#demultiplexed-msms-table)) |
+| `--mobility-grid / --no-mobility-grid` | **disabled** | When the source carries ion mobility per pixel rather than as a shared feature list (Bruker TDF), bin the point cloud onto a common mobility grid and write the same mobility-resolved sibling table; fed from the summed table's own two passes (no extra read of the source), a much larger table built out of core so any acquisition fits; its marginal reproduces the summed table exactly under the default `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#the-same-table-from-a-common-mobility-grid)) |
+| `--msms-table / --no-msms-table` | enabled | When the source isolates several precursors per pixel in disjoint mobility slices (Bruker PASEF), also write them split apart as a demultiplexed sibling table; fed from the summed table's own two passes (no extra read of the source); the split adds back up to the summed table exactly under the default `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#demultiplexed-msms-table)) |
 
 ### Examples
 
@@ -134,8 +134,7 @@ thyra tims_data.d output.zarr --mobility-grid --mobility-bins 512     --mobility
 ```
 
 !!! note "The grid table is built out of core"
-    Like the summed table on the streaming route, the grid table is built in
-    two passes: the first counts the occupied `(m/z bin, channel)` cells and
+    Like the summed table, the grid table is built in two passes: the first counts the occupied `(m/z bin, channel)` cells and
     the second scatters every pixel straight into memmapped CSC arrays in a
     scratch directory next to the output (`.thyra_mobility_*`, removed once
     the table is written). On a Bruker TDF those are the summed table's own
@@ -266,32 +265,27 @@ thyra input.imzML output.zarr \
 
 ## Performance
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--streaming [auto\|true\|false]` | `auto` | Streaming mode for large datasets |
+No options. Every conversion streams and every table is CSC, so the two
+flags that used to live here select nothing.
 
-!!! info "Streaming mode"
-    - **`auto`** (default) -- Thyra estimates dataset size and enables streaming
-      for datasets over ~10 GB.
-    - **`true`** -- Force streaming. Useful if auto-detection underestimates.
-    - **`false`** -- Force standard (in-memory) conversion.
+!!! info "Every conversion streams"
+    There is no streaming mode to switch on: every conversion makes two passes
+    over the source -- one to count, one to scatter straight into memory-mapped
+    CSC arrays -- and writes each table from those arrays, so the matrix is
+    never held in RAM whatever the dataset's size. The in-memory converter
+    that used to handle small datasets was folded into this one in v3.23 (see
+    [Design Decisions](design-decisions.md#d11-one-converter)); on a small
+    file the second pass costs about a third of the run.
 
-    Streaming makes two passes over the source and scatters straight into
-    memory-mapped CSC arrays, so the matrix is never held in RAM. The output
-    is identical to standard mode.
-
-### Examples
-
-```bash
-# Force streaming for a large dataset
-thyra large.d output.zarr --streaming true
-```
+!!! warning "`--streaming` is deprecated"
+    `--streaming auto|true|false` used to pick the converter. It is still
+    accepted so existing scripts keep running, but it selects nothing.
 
 !!! warning "`--sparse-format` was removed in v3.22"
-    Every route now writes CSC, so there is nothing left to choose and the
-    option is gone rather than kept as a no-op. It was only ever honoured by
-    the in-memory converters, which made its meaning depend on `--streaming`;
-    on the streaming route a `csr` request spent a release silently producing
+    Every table is CSC, so there is nothing left to choose and the option is
+    gone rather than kept as a no-op. It was only ever honoured by the
+    in-memory converters, which made its meaning depend on `--streaming`; on
+    the streaming route a `csr` request spent a release silently producing
     CSC.
 
     CSC is the layout an ion image reads down -- one m/z across all pixels is
@@ -432,9 +426,9 @@ thyra synapt_run.raw output.zarr --waters-spectrum profile
     it in a new *function*. It will not centroid the last of them, so a
     centroid conversion leaves that chunk out and logs how many pixels
     (16.6% of one Synapt G1 run) and this flag. Reading the trace converts
-    every chunk, because then they all come back the same way -- pass
-    `--streaming true` with it, since the profile store for that run is
-    estimated at 74 GB against 241 MB. See
+    every chunk, because then they all come back the same way -- budget the
+    disk for it, since the profile store for that run is estimated at 74 GB
+    against 241 MB. See
     [Which functions hold the image](supported-formats.md#which-functions-hold-the-image).
 
 ---

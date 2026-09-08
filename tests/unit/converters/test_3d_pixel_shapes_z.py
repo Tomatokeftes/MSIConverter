@@ -45,11 +45,10 @@ import numpy as np
 import pytest
 
 from tests.fixtures.mock_msi_generator import MockMSIConfig, MockMSIReader
+from thyra.converters.spatialdata import SpatialDataConverter
 from thyra.converters.spatialdata.base_spatialdata_converter import (
     SPATIALDATA_AVAILABLE,
 )
-from thyra.converters.spatialdata.spatialdata_2d_converter import SpatialData2DConverter
-from thyra.converters.spatialdata.spatialdata_3d_converter import SpatialData3DConverter
 
 pytestmark = pytest.mark.skipif(
     not SPATIALDATA_AVAILABLE,
@@ -86,9 +85,10 @@ def _config(n_z: int = _N_Z) -> MockMSIConfig:
 
 def _convert_volume(tmp_path, n_z: int = _N_Z, **kwargs: Any):
     output_path = tmp_path / "out.zarr"
-    converter = SpatialData3DConverter(
+    converter = SpatialDataConverter(
         MockMSIReader(_config(n_z)),
         output_path,
+        handle_3d=True,
         dataset_id=_DATASET_ID,
         pixel_size_um=_PIXEL_SIZE_UM,
         z_spacing_um=_Z_SPACING_UM,
@@ -212,8 +212,8 @@ def test_the_footprint_is_still_pixel_sized(volume):
     assert max(ys) - min(ys) == pytest.approx(_PIXEL_SIZE_UM)
 
 
-def test_the_2d_route_is_unchanged(tmp_path):
-    """The per-slice route writes flat elements and must keep doing so.
+def test_the_per_slice_tables_are_unchanged(tmp_path):
+    """The per-slice layout writes flat elements and must keep doing so.
 
     It emits one table and one image per plane, so each element genuinely has
     no third dimension. A z here would be inventing one.
@@ -221,9 +221,10 @@ def test_the_2d_route_is_unchanged(tmp_path):
     import spatialdata
 
     output_path = tmp_path / "flat.zarr"
-    converter = SpatialData2DConverter(
+    converter = SpatialDataConverter(
         MockMSIReader(_config()),
         output_path,
+        handle_3d=False,
         dataset_id=_DATASET_ID,
         pixel_size_um=_PIXEL_SIZE_UM,
     )

@@ -320,8 +320,7 @@ class WatersReader(BaseMSIReader):
                 "other function covers, but MassLynx names them the lockmass "
                 "function and will not centroid them. They stay out rather "
                 "than put profile rows in a table of centroids: pass "
-                "--waters-spectrum profile --streaming true to convert the "
-                "whole image.",
+                "--waters-spectrum profile to convert the whole image.",
                 ", ".join(str(f) for f, _n in uncentroidable),
                 lost,
                 100.0 * lost / max(len(covered) + lost, 1),

@@ -18,7 +18,7 @@ a SpatialData/Zarr directory.
 ```python
 from thyra import convert_msi
 
-# Minimal -- auto-detects format, pixel size, and streaming
+# Minimal -- auto-detects format and pixel size
 success = convert_msi("input.imzML", "output.zarr")
 
 # With explicit parameters
@@ -77,15 +77,12 @@ success = convert_msi(
 Thyra logs the RegionNumber-to-Area-Name mapping at `INFO` when it opens a
 multi-region dataset. See [`--region`](cli.md#conversion) for the detail.
 
-### Force streaming for large datasets
+### Large datasets
 
-```python
-success = convert_msi(
-    "data/large_dataset.d",
-    "output/large.zarr",
-    streaming=True,
-)
-```
+Nothing to switch on: every conversion makes two passes over the source and
+writes each table from memory-mapped arrays, so the matrix is never held in
+RAM. The `streaming` keyword older code passes is accepted and selects
+nothing.
 
 ### Full signature
 

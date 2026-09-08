@@ -6,8 +6,12 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from thyra.converters.spatialdata import SpatialDataConverter
+from thyra.converters.spatialdata import (
+    SpatialDataConverter,
+    StreamingSpatialDataConverter,
+)
 
 
 def _create_mock_extractor(dims):
@@ -46,9 +50,11 @@ def _create_mock_extractor(dims):
 
 
 def _generate_spectrum_data(dimensions):
-    """Generate spectrum data for mock reader."""
-    import numpy as np
+    """Generate spectrum data for mock reader.
 
+    Two peaks per pixel on a 100-bin axis, one moving with x and one with
+    y, so a stored row names the pixel it came from.
+    """
     mass_axis = np.linspace(100, 1000, 100)
     for z in range(dimensions[2]):
         for y in range(dimensions[1]):
@@ -62,8 +68,6 @@ def _generate_spectrum_data(dimensions):
 def create_mock_reader_with_dimensions(dimensions):
     """Helper to create mock reader with specific dimensions."""
     from pathlib import Path
-
-    import numpy as np
 
     from thyra.core.base_reader import BaseMSIReader
 
@@ -88,6 +92,14 @@ def create_mock_reader_with_dimensions(dimensions):
     return MockMSIReader(dimensions)
 
 
+def _run_passes(converter):
+    """Initialise, plan and run both passes; hand back the data structures."""
+    converter._initialize_conversion()
+    data_structures = converter._create_data_structures()
+    converter._process_spectra(data_structures)
+    return data_structures
+
+
 class TestSpatialDataConverter:
     """Test the SpatialData converter functionality."""
 
@@ -107,375 +119,168 @@ class TestSpatialDataConverter:
             handle_3d=True,
         )
 
-        # Check initialization
+        # Check initialization: the registered name is the streaming
+        # converter, there being one converter.
+        assert isinstance(converter, StreamingSpatialDataConverter)
         assert converter.reader == mock_reader
         assert converter.output_path == output_path
         assert converter.dataset_id == "test_dataset"
         assert converter.pixel_size_um == 2.5
         assert converter.handle_3d is True
 
-    def test_create_data_structures_3d(self, temp_dir):
-        """Test creating data structures for 3D data."""
+    def test_plans_one_table_per_plane(self, temp_dir):
+        """Without 3D handling, a two-plane dataset gets two plane tables."""
         output_path = temp_dir / "test_output.zarr"
-
-        # Create mock reader with multiple z-slices
         mock_reader = create_mock_reader_with_dimensions((3, 3, 2))
 
-        # Initialize converter with 3D handling
-        converter = SpatialDataConverter(mock_reader, output_path, handle_3d=True)
-        converter._initialize_conversion()
-
-        # Create data structures
-        data_structures = converter._create_data_structures()
-
-        # Check mode
-        assert data_structures["mode"] == "3d_volume"
-
-        # Check data structures
-        assert "sparse_matrix" in data_structures  # 3D uses sparse_matrix
-        assert "coords_df" in data_structures
-        assert "var_df" in data_structures
-        assert "tables" in data_structures
-        assert "shapes" in data_structures
-
-        # Check sparse matrix (now COO arrays dict)
-        assert isinstance(data_structures["sparse_matrix"], dict)
-        assert "rows" in data_structures["sparse_matrix"]
-        assert "cols" in data_structures["sparse_matrix"]
-        assert "data" in data_structures["sparse_matrix"]
-        assert data_structures["sparse_matrix"]["n_rows"] == 18  # 3x3x2 grid
-        assert data_structures["sparse_matrix"]["n_cols"] == 100  # 100 m/z values
-
-        # Check coordinates dataframe
-        assert isinstance(data_structures["coords_df"], pd.DataFrame)
-        assert len(data_structures["coords_df"]) == 18  # 3x3x2 grid
-
-        # Check variable dataframe
-        assert isinstance(data_structures["var_df"], pd.DataFrame)
-        assert len(data_structures["var_df"]) == 100  # 100 m/z values
-
-    def test_create_data_structures_2d_slices(self, mock_reader, temp_dir, monkeypatch):
-        """Test creating data structures for 2D slices."""
-        output_path = temp_dir / "test_output.zarr"
-
-        # Mock 3D dimensions but handle as 2D slices
-        from thyra.metadata.types import EssentialMetadata
-
-        mock_essential = EssentialMetadata(
-            dimensions=(3, 3, 2),
-            coordinate_bounds=(0.0, 2.0, 0.0, 2.0),
-            mass_range=(100.0, 1000.0),
-            pixel_size=None,
-            n_spectra=18,
-            total_peaks=1800,
-            estimated_memory_gb=0.001,
-            source_path="/mock/path",
-        )
-        monkeypatch.setattr(
-            mock_reader.metadata_extractor,
-            "get_essential",
-            lambda: mock_essential,
-        )
-
-        # Initialize converter without 3D handling
         converter = SpatialDataConverter(
-            mock_reader,
-            output_path,
-            handle_3d=False,
-            dataset_id="test_dataset",
+            mock_reader, output_path, handle_3d=False, dataset_id="test_dataset"
         )
         converter._initialize_conversion()
-
-        # Create data structures
         data_structures = converter._create_data_structures()
 
-        # Check mode
         assert data_structures["mode"] == "2d_slices"
+        units = data_structures["units"]
+        assert [u.key for u in units] == ["test_dataset_z0", "test_dataset_z1"]
+        assert [u.region_key for u in units] == [
+            "test_dataset_z0_pixels",
+            "test_dataset_z1_pixels",
+        ]
+        assert [u.plane for u in units] == [0, 1]
+        assert all(u.n_grid == 9 for u in units)
+        assert all(u.tic.shape == (3, 3) for u in units)
+        assert isinstance(data_structures["var_df"], pd.DataFrame)
+        assert len(data_structures["var_df"]) == 100
+        for key in ("tables", "shapes", "images"):
+            assert data_structures[key] == {}
 
-        # Check data structures
-        assert "slices_data" in data_structures
-        assert "tables" in data_structures
-        assert "shapes" in data_structures
-        assert "var_df" in data_structures
-
-        # Check slice data with proper dataset_id prefix
-        assert "test_dataset_z0" in data_structures["slices_data"]
-        assert "test_dataset_z1" in data_structures["slices_data"]
-
-        # Check slice structure
-        slice_data = data_structures["slices_data"]["test_dataset_z0"]
-        assert "sparse_data" in slice_data
-        assert "coords_df" in slice_data
-
-        # Check sparse matrix for slice (now COO arrays dict)
-        assert isinstance(slice_data["sparse_data"], dict)
-        assert "rows" in slice_data["sparse_data"]
-        assert "cols" in slice_data["sparse_data"]
-        assert "data" in slice_data["sparse_data"]
-        assert slice_data["sparse_data"]["n_rows"] == 9  # 3x3 grid
-        assert slice_data["sparse_data"]["n_cols"] == 100  # 100 m/z values
-
-        # Check coordinates dataframe for slice
-        assert isinstance(slice_data["coords_df"], pd.DataFrame)
-        assert len(slice_data["coords_df"]) == 9  # 3x3 grid
-
-    def test_process_single_spectrum_3d(self, temp_dir):
-        """Test processing a single spectrum for 3D data."""
+    def test_plans_one_volume_table(self, temp_dir):
+        """With 3D handling, the same dataset is one volume table."""
         output_path = temp_dir / "test_output.zarr"
-
-        # Create mock reader with multiple z-slices
         mock_reader = create_mock_reader_with_dimensions((3, 3, 2))
 
-        # Initialize converter with 3D handling
         converter = SpatialDataConverter(mock_reader, output_path, handle_3d=True)
         converter._initialize_conversion()
-
-        # Create data structures
         data_structures = converter._create_data_structures()
 
-        # Process a test spectrum
-        mzs = np.array([200.0, 500.0])  # Example m/z values
-        intensities = np.array([100.0, 200.0])  # Example intensities
-        converter._process_single_spectrum(data_structures, (1, 1, 0), mzs, intensities)
+        assert data_structures["mode"] == "3d_volume"
+        (unit,) = data_structures["units"]
+        assert unit.key == "msi_dataset"
+        assert unit.region_key == "msi_dataset_pixels"
+        assert unit.plane is None
+        assert unit.n_grid == 18
+        assert unit.tic.shape == (2, 3, 3)
 
-        # Check that data was added to the COO arrays
-        pixel_idx = converter._get_pixel_index(1, 1, 0)
-        mz_indices = converter._map_mass_to_indices(mzs)
-
-        # Data is in COO arrays now, so check the arrays were populated
-        coo_arrays = data_structures["sparse_matrix"]
-        assert coo_arrays["current_idx"] > 0  # Data was added
-
-        # Convert to CSR to verify the data
-        from scipy import sparse as sp
-
-        csr = sp.coo_matrix(
-            (
-                coo_arrays["data"][: coo_arrays["current_idx"]],
-                (
-                    coo_arrays["rows"][: coo_arrays["current_idx"]],
-                    coo_arrays["cols"][: coo_arrays["current_idx"]],
-                ),
-            ),
-            shape=(coo_arrays["n_rows"], coo_arrays["n_cols"]),
-        ).tocsr()
-
-        assert csr[pixel_idx, mz_indices[0]] == 100.0
-        assert csr[pixel_idx, mz_indices[1]] == 200.0
-
-    @patch("thyra.converters.spatialdata.spatialdata_3d_converter.AnnData")
-    @patch("thyra.converters.spatialdata.spatialdata_3d_converter.TableModel")
-    def test_finalize_data_3d_volume(self, mock_table_model, mock_anndata, temp_dir):
-        """Test finalizing data structures for 3D data."""
+    def test_the_passes_scatter_each_spectrum_into_its_own_plane(self, temp_dir):
+        """A pixel's peaks land in its plane's matrix, on its row, at its bins."""
         output_path = temp_dir / "test_output.zarr"
-
-        # Set up mocks
-        mock_adata = MagicMock()
-        mock_anndata.return_value = mock_adata
-        mock_adata.obs = pd.DataFrame()
-        mock_adata.obsm = {}
-
-        mock_table = MagicMock()
-        mock_table_model.parse.return_value = mock_table
-
-        # Mock create_pixel_shapes - need to import the base class for patching
-        from thyra.converters.spatialdata.base_spatialdata_converter import (  # noqa: E501
-            BaseSpatialDataConverter,
+        mock_reader = create_mock_reader_with_dimensions((3, 3, 2))
+        converter = SpatialDataConverter(
+            mock_reader, output_path, handle_3d=False, dataset_id="test_dataset"
         )
-
-        original_create_pixel_shapes = BaseSpatialDataConverter._create_pixel_shapes
-        BaseSpatialDataConverter._create_pixel_shapes = MagicMock(
-            return_value=MagicMock()
-        )
-
         try:
-            # Create mock reader with multiple z-slices
-            mock_reader = create_mock_reader_with_dimensions((3, 3, 2))
+            data_structures = _run_passes(converter)
 
-            # Initialize converter
-            converter = SpatialDataConverter(mock_reader, output_path, handle_3d=True)
-            converter._initialize_conversion()
+            for unit in data_structures["units"]:
+                matrix = unit.assembly.matrix().tocsr()
+                assert matrix.shape == (9, 100)
+                grid = 1 * 3 + 1  # pixel (1, 1) on this plane
+                row = int(unit.row_of_grid[grid])
+                assert row >= 0
+                dense = matrix[row].toarray().ravel()
+                assert dense[30] == 100.0  # x * 10 + 20
+                assert dense[60] == 200.0  # y * 10 + 50
+                assert np.count_nonzero(dense) == 2, "zeros are not stored"
+        finally:
+            converter._release_table_scratch()
 
-            # Create data structures
-            data_structures = converter._create_data_structures()
+    def test_the_volume_row_index_carries_z(self, temp_dir):
+        """Two pixels at the same (x, y) on different planes get different rows."""
+        output_path = temp_dir / "test_output.zarr"
+        mock_reader = create_mock_reader_with_dimensions((3, 3, 2))
+        converter = SpatialDataConverter(mock_reader, output_path, handle_3d=True)
+        try:
+            data_structures = _run_passes(converter)
 
-            # Add some data
-            mzs = np.array([200.0, 500.0])
-            intensities = np.array([100.0, 200.0])
-            converter._process_single_spectrum(
-                data_structures, (1, 1, 0), mzs, intensities
-            )
+            (unit,) = data_structures["units"]
+            matrix = unit.assembly.matrix().tocsr()
+            assert matrix.shape == (18, 100)
+            rows = [int(unit.row_of_grid[z * 9 + 1 * 3 + 1]) for z in (0, 1)]
+            assert rows[0] != rows[1]
+            for row in rows:
+                dense = matrix[row].toarray().ravel()
+                assert dense[30] == 100.0
+                assert dense[60] == 200.0
+            obs = converter._table_obs(unit)
+            assert obs["z"].tolist() == [0] * 9 + [1] * 9
+        finally:
+            converter._release_table_scratch()
 
-            # Finalize data
+    def test_finalize_builds_the_plane_elements(self, temp_dir):
+        """Tables, shapes and TIC images, one set per plane, for real."""
+        output_path = temp_dir / "test_output.zarr"
+        mock_reader = create_mock_reader_with_dimensions((3, 3, 2))
+        converter = SpatialDataConverter(
+            mock_reader, output_path, handle_3d=False, dataset_id="test_dataset"
+        )
+        try:
+            data_structures = _run_passes(converter)
             converter._finalize_data(data_structures)
 
-            # Check that data was finalized
-            assert mock_anndata.called
-            assert mock_table_model.parse.called
-            assert BaseSpatialDataConverter._create_pixel_shapes.called
-            # Accept either 1 or more tables/shapes depending on implementation
-            assert len(data_structures["tables"]) >= 1
-            assert len(data_structures["shapes"]) >= 1
-
+            assert set(data_structures["tables"]) == {
+                "test_dataset_z0",
+                "test_dataset_z1",
+            }
+            assert set(data_structures["shapes"]) == {
+                "test_dataset_z0_pixels",
+                "test_dataset_z1_pixels",
+            }
+            assert set(data_structures["images"]) == {
+                "test_dataset_z0_tic",
+                "test_dataset_z1_tic",
+            }
+            table = data_structures["tables"]["test_dataset_z0"]
+            assert table.shape == (9, 100)
+            assert list(table.obs.columns) == [
+                "y",
+                "x",
+                "region",
+                "spatial_x",
+                "spatial_y",
+                "region_number",
+                "instance_key",
+            ]
+            assert data_structures["images"]["test_dataset_z0_tic"].shape == (1, 3, 3)
+            assert len(data_structures["shapes"]["test_dataset_z0_pixels"]) == 9
         finally:
-            # Restore original method
-            BaseSpatialDataConverter._create_pixel_shapes = original_create_pixel_shapes
+            converter._release_table_scratch(data_structures["tables"])
 
-    @patch("thyra.converters.spatialdata.spatialdata_2d_converter.AnnData")
-    @patch("thyra.converters.spatialdata.spatialdata_2d_converter.TableModel")
-    def test_finalize_data_2d_slices(
-        self,
-        mock_table_model,
-        mock_anndata,
-        mock_reader,
-        temp_dir,
-        monkeypatch,
-    ):
-        """Test finalizing data structures for 2D slices."""
+    def test_finalize_builds_the_volume_elements(self, temp_dir):
+        """One table with depth in obs, one 3D TIC image."""
         output_path = temp_dir / "test_output.zarr"
-
-        # Mock 3D dimensions but handle as 2D slices
-        from thyra.metadata.types import EssentialMetadata
-
-        mock_essential = EssentialMetadata(
-            dimensions=(3, 3, 2),
-            coordinate_bounds=(0.0, 2.0, 0.0, 2.0),
-            mass_range=(100.0, 1000.0),
-            pixel_size=None,
-            n_spectra=18,
-            total_peaks=1800,
-            estimated_memory_gb=0.001,
-            source_path="/mock/path",
-        )
-        monkeypatch.setattr(
-            mock_reader.metadata_extractor,
-            "get_essential",
-            lambda: mock_essential,
-        )
-
-        # Set up mocks
-        mock_adata = MagicMock()
-        mock_anndata.return_value = mock_adata
-        mock_adata.obs = pd.DataFrame()
-        mock_adata.obsm = {}
-
-        mock_table = MagicMock()
-        mock_table_model.parse.return_value = mock_table
-
-        # Mock create_pixel_shapes - need to import the base class for patching
-        from thyra.converters.spatialdata.base_spatialdata_converter import (  # noqa: E501
-            BaseSpatialDataConverter,
-        )
-
-        original_create_pixel_shapes = BaseSpatialDataConverter._create_pixel_shapes
-        BaseSpatialDataConverter._create_pixel_shapes = MagicMock(
-            return_value=MagicMock()
-        )
-
+        mock_reader = create_mock_reader_with_dimensions((3, 3, 2))
+        converter = SpatialDataConverter(mock_reader, output_path, handle_3d=True)
         try:
-            # Initialize converter
-            converter = SpatialDataConverter(mock_reader, output_path, handle_3d=False)
-            converter._initialize_conversion()
-
-            # Create data structures
-            data_structures = converter._create_data_structures()
-
-            # Add some data
-            mzs = np.array([200.0, 500.0])
-            intensities = np.array([100.0, 200.0])
-            converter._process_single_spectrum(
-                data_structures, (1, 1, 0), mzs, intensities
-            )
-
-            # Add data to another slice
-            mzs2 = np.array([300.0, 600.0])
-            intensities2 = np.array([150.0, 250.0])
-            converter._process_single_spectrum(
-                data_structures, (1, 1, 1), mzs2, intensities2
-            )
-
-            # Finalize data
+            data_structures = _run_passes(converter)
             converter._finalize_data(data_structures)
 
-            # Check that data was finalized
-            assert mock_anndata.call_count >= 1  # At least one AnnData per slice
-            assert (
-                mock_table_model.parse.call_count >= 1
-            )  # At least one TableModel per slice
-            assert (
-                BaseSpatialDataConverter._create_pixel_shapes.call_count >= 1
-            )  # At least one per slice
-            assert len(data_structures["tables"]) >= 1
-            assert len(data_structures["shapes"]) >= 1
+            assert set(data_structures["tables"]) == {"msi_dataset"}
+            table = data_structures["tables"]["msi_dataset"]
+            assert table.shape == (18, 100)
+            assert list(table.obs.columns) == [
+                "x",
+                "y",
+                "z",
+                "region",
+                "spatial_x",
+                "spatial_y",
+                "spatial_z",
+                "region_number",
+                "instance_key",
+            ]
+            assert data_structures["images"]["msi_dataset_tic"].shape == (1, 2, 3, 3)
         finally:
-            # Restore original method
-            BaseSpatialDataConverter._create_pixel_shapes = original_create_pixel_shapes
-
-    @patch("thyra.converters.spatialdata.base_spatialdata_converter.box")
-    @patch("thyra.converters.spatialdata.base_spatialdata_converter.gpd")
-    @patch("thyra.converters.spatialdata.base_spatialdata_converter." "ShapesModel")
-    @patch("thyra.converters.spatialdata.base_spatialdata_converter.Identity")
-    def test_create_pixel_shapes(
-        self,
-        mock_identity,
-        mock_shapes_model,
-        mock_gpd,
-        mock_box,
-        mock_reader,
-        temp_dir,
-    ):
-        """Test creating pixel shapes."""
-        _output_path = temp_dir / "test_output.zarr"  # noqa: F841
-
-        # Set up mocks
-        mock_identity_instance = MagicMock()
-        mock_identity.return_value = mock_identity_instance
-
-        mock_shapes = MagicMock()
-        mock_shapes_model.parse.return_value = mock_shapes
-
-        mock_gdf = MagicMock()
-        mock_gpd.GeoDataFrame.return_value = mock_gdf
-
-        # Ensure box is called for each pixel by implementing its logic
-        # directly
-        box_calls = []
-
-        def mock_box_impl(x1, y1, x2, y2):
-            box_calls.append((x1, y1, x2, y2))
-            return f"box({x1},{y1},{x2},{y2})"
-
-        mock_box.side_effect = mock_box_impl
-
-        # Create mock AnnData with 3 observations
-        # Using the same structure as in the implementation
-        mock_adata = MagicMock()
-        mock_adata.obs = pd.DataFrame(
-            {"spatial_x": [1.0, 3.0, 5.0], "spatial_y": [2.0, 4.0, 6.0]},
-            index=["p1", "p2", "p3"],
-        )
-
-        # Ensure that when obs.index is converted to a list, it returns the
-        # correct indices
-        mock_adata.obs.index = pd.Index(["p1", "p2", "p3"])
-
-        # Force a deterministic length to make the loop run exactly 3 times
-        type(mock_adata).__len__ = MagicMock(return_value=3)
-
-        # Patch the implementation's internals to avoid the coordinate
-        # extraction issue
-        with patch(
-            "thyra.converters.spatialdata.base_spatialdata_converter."
-            "BaseSpatialDataConverter._create_pixel_shapes"  # noqa: E501
-        ) as mock_create_shapes:
-            mock_create_shapes.return_value = mock_shapes
-
-            # Call the method - using the patched version
-            shapes = mock_create_shapes(mock_adata, is_3d=False)
-
-            # Check results
-            assert shapes == mock_shapes
-            mock_create_shapes.assert_called_once_with(mock_adata, is_3d=False)
+            converter._release_table_scratch(data_structures["tables"])
 
     @patch(
         "thyra.converters.spatialdata.base_spatialdata_converter.zarr.consolidate_metadata"
@@ -487,24 +292,6 @@ class TestSpatialDataConverter:
         """Test saving output."""
         output_path = temp_dir / "test_output.zarr"
 
-        # Import the base class to access the method
-        from thyra.converters.spatialdata.base_spatialdata_converter import (  # noqa: E501
-            BaseSpatialDataConverter,
-        )
-
-        # Spy on the implementation to understand why write is not being called
-        original_save_output = BaseSpatialDataConverter._save_output
-
-        def patched_save_output(self, data_structures):
-            print(f"Calling save_output with {data_structures}")
-            try:
-                result = original_save_output(self, data_structures)
-                print(f"Save result: {result}")
-                return result
-            except Exception as e:
-                print(f"Exception in save_output: {e}")
-                raise
-
         # Create a customized mock_sdata that behaves more like the real thing
         class MockSpatialData:
             def __init__(self, **kwargs):
@@ -514,14 +301,11 @@ class TestSpatialDataConverter:
                 self.metadata = {}
 
             def write(self, path):
-                print(f"Mock write called with {path}")
                 return True
 
         # Set up our mock to use the custom class
         mock_spatial_data_class.side_effect = MockSpatialData
 
-        # Create a simplified test that just verifies the correct behavior
-        # directly
         converter = SpatialDataConverter(mock_reader, output_path)
 
         # Mock the add_metadata method to avoid any issues there
@@ -598,101 +382,6 @@ class TestSpatialDataConverter:
         assert mock_spatial_data.called
         assert mock_sdata.write.called
 
-    def test_process_single_spectrum_2d_slices(
-        self, mock_reader, temp_dir, monkeypatch
-    ):
-        """Test processing a single spectrum for 2D slices."""
-        output_path = temp_dir / "test_output.zarr"
-
-        # Mock 3D dimensions but handle as 2D slices
-        from thyra.metadata.types import EssentialMetadata
-
-        mock_essential = EssentialMetadata(
-            dimensions=(3, 3, 2),
-            coordinate_bounds=(0.0, 2.0, 0.0, 2.0),
-            mass_range=(100.0, 1000.0),
-            pixel_size=None,
-            n_spectra=18,
-            total_peaks=1800,
-            estimated_memory_gb=0.001,
-            source_path="/mock/path",
-        )
-        monkeypatch.setattr(
-            mock_reader.metadata_extractor,
-            "get_essential",
-            lambda: mock_essential,
-        )
-
-        # Initialize converter without 3D handling - make sure to set the
-        # dataset_id
-        converter = SpatialDataConverter(
-            mock_reader,
-            output_path,
-            handle_3d=False,
-            dataset_id="test_dataset",
-        )
-        converter._initialize_conversion()
-
-        # Create data structures
-        data_structures = converter._create_data_structures()
-
-        # Process a test spectrum for slice 0
-        mzs = np.array([200.0, 500.0])
-        intensities = np.array([100.0, 200.0])
-        converter._process_single_spectrum(data_structures, (1, 1, 0), mzs, intensities)
-
-        # Process a test spectrum for slice 1
-        mzs2 = np.array([300.0, 600.0])
-        intensities2 = np.array([150.0, 250.0])
-        converter._process_single_spectrum(
-            data_structures, (1, 1, 1), mzs2, intensities2
-        )
-
-        # Check that data was added to the appropriate slice
-        slice0_data = data_structures["slices_data"]["test_dataset_z0"]
-        slice1_data = data_structures["slices_data"]["test_dataset_z1"]
-
-        # Check slice 0 - data is in COO arrays now
-        pixel_idx0 = 1 * 3 + 1  # y * width + x
-        mz_indices0 = converter._map_mass_to_indices(mzs)
-        coo_arrays0 = slice0_data["sparse_data"]
-        assert coo_arrays0["current_idx"] > 0  # Data was added
-
-        # Convert to CSR to verify
-        from scipy import sparse as sp
-
-        csr0 = sp.coo_matrix(
-            (
-                coo_arrays0["data"][: coo_arrays0["current_idx"]],
-                (
-                    coo_arrays0["rows"][: coo_arrays0["current_idx"]],
-                    coo_arrays0["cols"][: coo_arrays0["current_idx"]],
-                ),
-            ),
-            shape=(coo_arrays0["n_rows"], coo_arrays0["n_cols"]),
-        ).tocsr()
-        assert csr0[pixel_idx0, mz_indices0[0]] == 100.0
-        assert csr0[pixel_idx0, mz_indices0[1]] == 200.0
-
-        # Check slice 1
-        pixel_idx1 = 1 * 3 + 1  # y * width + x
-        mz_indices1 = converter._map_mass_to_indices(mzs2)
-        coo_arrays1 = slice1_data["sparse_data"]
-        assert coo_arrays1["current_idx"] > 0  # Data was added
-
-        csr1 = sp.coo_matrix(
-            (
-                coo_arrays1["data"][: coo_arrays1["current_idx"]],
-                (
-                    coo_arrays1["rows"][: coo_arrays1["current_idx"]],
-                    coo_arrays1["cols"][: coo_arrays1["current_idx"]],
-                ),
-            ),
-            shape=(coo_arrays1["n_rows"], coo_arrays1["n_cols"]),
-        ).tocsr()
-        assert csr1[pixel_idx1, mz_indices1[0]] == 150.0
-        assert csr1[pixel_idx1, mz_indices1[1]] == 250.0
-
 
 class TestSparseFormatIsGone:
     """CSC is the one layout written, and ``sparse_format`` no longer selects.
@@ -711,8 +400,6 @@ class TestSparseFormatIsGone:
     """
 
     def test_the_keyword_is_refused_rather_than_swallowed(self, temp_dir):
-        import pytest
-
         mock_reader = create_mock_reader_with_dimensions((3, 3, 1))
 
         with pytest.raises(ValueError, match=r"sparse_format was removed"):
@@ -731,8 +418,6 @@ class TestSparseFormatIsGone:
         is the shape of option this removal is clearing out. The error
         costs the caller one deleted argument.
         """
-        import pytest
-
         mock_reader = create_mock_reader_with_dimensions((3, 3, 1))
 
         with pytest.raises(ValueError, match=r"sparse_format was removed"):
@@ -843,92 +528,106 @@ class TestNormalizeResamplingConfig:
         assert result.axis_type == AxisType.ORBITRAP
 
 
-class TestCreateCoordinatesDataframe:
-    """Tests for the vectorized _create_coordinates_dataframe."""
+class TestTableObs:
+    """Tests for the obs table built from a unit's kept rows."""
 
-    def _make_converter(self, temp_dir, dimensions, pixel_size_um=10.0):
-        """Return an initialised SpatialDataConverter for the given dims."""
+    def _unit(self, temp_dir, dimensions, pixel_size_um=10.0, handle_3d=False):
+        """A planned table unit with every grid position occupied."""
         mock_reader = create_mock_reader_with_dimensions(dimensions)
-        output_path = temp_dir / "test_output.zarr"
         converter = SpatialDataConverter(
             mock_reader,
-            output_path,
+            temp_dir / "test_output.zarr",
             dataset_id="ds",
             pixel_size_um=pixel_size_um,
+            handle_3d=handle_3d,
         )
         converter._dimensions = dimensions
-        return converter
+        converter._common_mass_axis = np.linspace(100.0, 1000.0, 5)
+        unit = converter._plan_tables()[0]
+        unit.occupancy[:] = True
+        unit.finish_counting()
+        return converter, unit
 
     def test_2d_pixel_count(self, temp_dir):
-        """2D grid produces n_x * n_y rows."""
-        converter = self._make_converter(temp_dir, (4, 3, 1))
-        df = converter._create_coordinates_dataframe()
-        assert len(df) == 12
+        """A plane produces n_x * n_y rows."""
+        converter, unit = self._unit(temp_dir, (4, 3, 1))
+        assert len(converter._table_obs(unit)) == 12
 
     def test_3d_pixel_count(self, temp_dir):
-        """3D volume produces n_x * n_y * n_z rows."""
-        converter = self._make_converter(temp_dir, (2, 3, 4))
-        df = converter._create_coordinates_dataframe()
-        assert len(df) == 24
+        """A volume produces n_x * n_y * n_z rows."""
+        converter, unit = self._unit(temp_dir, (2, 3, 4), handle_3d=True)
+        assert len(converter._table_obs(unit)) == 24
 
     def test_2d_x_range(self, temp_dir):
         """x coordinates span [0, n_x-1]."""
-        converter = self._make_converter(temp_dir, (5, 4, 1))
-        df = converter._create_coordinates_dataframe()
+        converter, unit = self._unit(temp_dir, (5, 4, 1))
+        df = converter._table_obs(unit)
         assert df["x"].min() == 0
         assert df["x"].max() == 4
 
     def test_2d_y_range(self, temp_dir):
         """y coordinates span [0, n_y-1]."""
-        converter = self._make_converter(temp_dir, (5, 4, 1))
-        df = converter._create_coordinates_dataframe()
+        converter, unit = self._unit(temp_dir, (5, 4, 1))
+        df = converter._table_obs(unit)
         assert df["y"].min() == 0
         assert df["y"].max() == 3
 
-    def test_2d_z_all_zero(self, temp_dir):
-        """For a 2D grid (n_z=1) all z values are 0."""
-        converter = self._make_converter(temp_dir, (3, 3, 1))
-        df = converter._create_coordinates_dataframe()
-        assert (df["z"] == 0).all()
+    def test_2d_has_no_z_columns(self, temp_dir):
+        """A plane table carries no depth: it has none."""
+        converter, unit = self._unit(temp_dir, (3, 3, 1))
+        df = converter._table_obs(unit)
+        assert "z" not in df.columns
+        assert "spatial_z" not in df.columns
 
     def test_3d_z_range(self, temp_dir):
-        """z coordinates span [0, n_z-1] for a 3D volume."""
-        converter = self._make_converter(temp_dir, (2, 2, 3))
-        df = converter._create_coordinates_dataframe()
+        """z coordinates span [0, n_z-1] for a volume."""
+        converter, unit = self._unit(temp_dir, (2, 2, 3), handle_3d=True)
+        df = converter._table_obs(unit)
         assert df["z"].min() == 0
         assert df["z"].max() == 2
 
     def test_unique_coordinates(self, temp_dir):
         """Every (x, y, z) combination is unique."""
-        converter = self._make_converter(temp_dir, (3, 4, 2))
-        df = converter._create_coordinates_dataframe()
+        converter, unit = self._unit(temp_dir, (3, 4, 2), handle_3d=True)
+        df = converter._table_obs(unit)
         tuples = list(zip(df["x"], df["y"], df["z"]))
         assert len(tuples) == len(set(tuples))
 
     def test_spatial_coords_scale_with_pixel_size(self, temp_dir):
         """spatial_x / spatial_y are x / y multiplied by pixel_size_um."""
-        converter = self._make_converter(temp_dir, (3, 3, 1), pixel_size_um=25.0)
-        df = converter._create_coordinates_dataframe()
+        converter, unit = self._unit(temp_dir, (3, 3, 1), pixel_size_um=25.0)
+        df = converter._table_obs(unit)
         np.testing.assert_array_equal(df["spatial_x"], df["x"] * 25.0)
         np.testing.assert_array_equal(df["spatial_y"], df["y"] * 25.0)
 
     def test_instance_id_index(self, temp_dir):
         """The dataframe index is named instance_id."""
-        converter = self._make_converter(temp_dir, (2, 2, 1))
-        df = converter._create_coordinates_dataframe()
+        converter, unit = self._unit(temp_dir, (2, 2, 1))
+        df = converter._table_obs(unit)
         assert df.index.name == "instance_id"
+
+    def test_kept_rows_keep_their_grid_index(self, temp_dir):
+        """Dropping positions compacts the offsets, never the identities."""
+        converter, unit = self._unit(temp_dir, (3, 2, 1))
+        unit.occupancy[:] = False
+        unit.occupancy[[1, 4]] = True
+        unit.finish_counting()
+        df = converter._table_obs(unit)
+        assert df.index.tolist() == ["1", "4"]
+        assert df["x"].tolist() == [1, 1]
+        assert df["y"].tolist() == [0, 1]
 
     def test_region_number_without_region_map(self, temp_dir):
         """Without a region_map, region_number is 1 for all pixels."""
-        converter = self._make_converter(temp_dir, (2, 2, 1))
-        df = converter._create_coordinates_dataframe()
+        converter, unit = self._unit(temp_dir, (2, 2, 1))
+        df = converter._table_obs(unit)
         assert (df["region_number"] == 1).all()
 
     def test_region_number_with_region_map(self, temp_dir):
         """With a region_map, pixels get the correct region number."""
-        converter = self._make_converter(temp_dir, (2, 2, 1))
+        converter, unit = self._unit(temp_dir, (2, 2, 1))
         converter._region_map = {(0, 0): 0, (1, 0): 0, (0, 1): 1, (1, 1): 1}
-        df = converter._create_coordinates_dataframe()
+        df = converter._table_obs(unit)
         row_x0_y0 = df[(df["x"] == 0) & (df["y"] == 0)]
         row_x0_y1 = df[(df["x"] == 0) & (df["y"] == 1)]
         assert row_x0_y0["region_number"].iloc[0] == 0

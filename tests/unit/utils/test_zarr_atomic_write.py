@@ -311,15 +311,13 @@ class TestWiring:
     ):
         import zarr.storage._local as zarr_local
 
-        from thyra.converters.spatialdata.spatialdata_2d_converter import (
-            SpatialData2DConverter,
-        )
+        from thyra.converters.spatialdata import SpatialDataConverter
         from thyra.readers.imzml import ImzMLReader
 
         imzml_path, _, _, _ = create_minimal_imzml
         reader = ImzMLReader(imzml_path)
         try:
-            SpatialData2DConverter(
+            SpatialDataConverter(
                 reader, temp_dir / "out.zarr", dataset_id="ds", pixel_size_um=2.5
             )
         finally:

@@ -72,10 +72,7 @@ def _reader(schedule: Optional[FragmentationSchedule]) -> _FragmentingReader:
     return reader
 
 
-def _convert(output_path, schedule, streaming: bool):
-    from thyra.converters.spatialdata.spatialdata_2d_converter import (
-        SpatialData2DConverter,
-    )
+def _convert(output_path, schedule):
     from thyra.converters.spatialdata.streaming_converter import (
         StreamingSpatialDataConverter,
     )
@@ -86,11 +83,7 @@ def _convert(output_path, schedule, streaming: bool):
         "dataset_id": _DATASET_ID,
         "pixel_size_um": 10.0,
     }
-    converter = (
-        StreamingSpatialDataConverter(**common, use_csc=True)
-        if streaming
-        else SpatialData2DConverter(**common)
-    )
+    converter = StreamingSpatialDataConverter(**common, use_csc=True)
     assert converter.convert() is True
     return output_path
 
@@ -103,10 +96,9 @@ def _read_uns(output_path) -> Dict[str, Any]:
     return ad.io.read_elem(group["tables"][_TABLE_NAME]["uns"])
 
 
-@pytest.mark.parametrize("streaming", [False, True], ids=["in-memory", "streaming"])
 class TestStoredBlock:
-    def test_the_schedule_reaches_the_store(self, tmp_path, streaming):
-        out = _convert(tmp_path / "msms.zarr", _schedule(3), streaming)
+    def test_the_schedule_reaches_the_store(self, tmp_path):
+        out = _convert(tmp_path / "msms.zarr", _schedule(3))
 
         block = _read_uns(out)["msms_schedule"]
 
@@ -121,20 +113,18 @@ class TestStoredBlock:
         )
         assert not any(":" in key for key in block)
 
-    def test_an_ms1_source_gets_no_block(self, tmp_path, streaming):
+    def test_an_ms1_source_gets_no_block(self, tmp_path):
         """Absence is the signal: an MS1 store must not carry an empty one."""
-        out = _convert(
-            tmp_path / "ms1.zarr", FragmentationSchedule(ms_level=1), streaming
-        )
+        out = _convert(tmp_path / "ms1.zarr", FragmentationSchedule(ms_level=1))
 
         assert "msms_schedule" not in _read_uns(out)
 
-    def test_a_reader_that_says_nothing_gets_no_block(self, tmp_path, streaming):
-        out = _convert(tmp_path / "silent.zarr", None, streaming)
+    def test_a_reader_that_says_nothing_gets_no_block(self, tmp_path):
+        out = _convert(tmp_path / "silent.zarr", None)
 
         assert "msms_schedule" not in _read_uns(out)
 
-    def test_the_versioned_block_agrees_with_it(self, tmp_path, streaming):
+    def test_the_versioned_block_agrees_with_it(self, tmp_path):
         """``msi_metadata`` and ``msms_schedule`` describe the same acquisition.
 
         Two blocks from one source: the versioned schema document and the
@@ -144,7 +134,7 @@ class TestStoredBlock:
         """
         import json
 
-        out = _convert(tmp_path / "both.zarr", _schedule(3), streaming)
+        out = _convert(tmp_path / "both.zarr", _schedule(3))
         uns = _read_uns(out)
 
         fragmentation = uns["msi_metadata"]["ms_analysis"]["fragmentation"]
@@ -157,7 +147,7 @@ class TestStoredBlock:
             np.asarray(uns["msms_schedule"]["isolation_window_target"]),
         )
 
-    def test_uns_holds_no_string_arrays(self, tmp_path, streaming):
+    def test_uns_holds_no_string_arrays(self, tmp_path):
         """A string array anywhere in ``uns`` segfaults a numpy 2.1-2.2 copy.
 
         The precursor list is a list of objects, which is exactly the
@@ -171,7 +161,7 @@ class TestStoredBlock:
             elif isinstance(value, np.ndarray) and value.dtype.kind in "TUSO":
                 yield path
 
-        out = _convert(tmp_path / "strings.zarr", _schedule(3), streaming)
+        out = _convert(tmp_path / "strings.zarr", _schedule(3))
 
         assert not list(_string_arrays(_read_uns(out), "uns"))
 
@@ -185,7 +175,7 @@ class TestChimeraWarning:
         than leaving it for a reader of the peaks to work out.
         """
         with caplog.at_level(logging.WARNING):
-            _convert(tmp_path / "chimera.zarr", _schedule(3), streaming=False)
+            _convert(tmp_path / "chimera.zarr", _schedule(3))
 
         merged = [r for r in caplog.records if "isolates 3 precursors" in r.message]
         assert merged and merged[0].levelno == logging.WARNING
@@ -193,14 +183,14 @@ class TestChimeraWarning:
 
     def test_a_single_precursor_is_not_warned_about(self, tmp_path, caplog):
         with caplog.at_level(logging.WARNING):
-            _convert(tmp_path / "single.zarr", _schedule(1), streaming=False)
+            _convert(tmp_path / "single.zarr", _schedule(1))
 
         assert not [r for r in caplog.records if "precursors per pixel" in r.message]
 
     def test_it_is_said_once_per_conversion(self, tmp_path, caplog):
         """The schedule is read once; the warning must not repeat per pixel."""
         with caplog.at_level(logging.WARNING):
-            _convert(tmp_path / "once.zarr", _schedule(3), streaming=False)
+            _convert(tmp_path / "once.zarr", _schedule(3))
 
         assert (
             len([r for r in caplog.records if "isolates 3 precursors" in r.message])

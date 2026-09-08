@@ -1,13 +1,13 @@
 """The sibling tables fed from the summed table's own passes (design decision D5).
 
-The streaming route builds the summed table in two passes over the
-source: count, then scatter. The mass-mobility heatmap, the mobility
-grid and the demultiplexed MS/MS table are each built the same way, and
-each used to take its own passes -- on a whole slide the heatmap's pass
-alone was 40 to 60 percent of a conversion. When the reader hands its
-frames over as records (:mod:`thyra.core.frames`), one raw read per frame
-per pass serves everything: the summed spectrum is derived from it, and
-so are the mobility point cloud and the precursor spectra the sinks want.
+The converter builds the summed table in two passes over the source:
+count, then scatter. The mass-mobility heatmap, the mobility grid and
+the demultiplexed MS/MS table are each built the same way, and each used
+to take its own passes -- on a whole slide the heatmap's pass alone was
+40 to 60 percent of a conversion. When the reader hands its frames over
+as records (:mod:`thyra.core.frames`), one raw read per frame per pass
+serves everything: the summed spectrum is derived from it, and so are
+the mobility point cloud and the precursor spectra the sinks want.
 
 :class:`SiblingPasses` holds those sinks. The converter's pass loops call
 :meth:`SiblingPasses.count` and :meth:`SiblingPasses.scatter` once per

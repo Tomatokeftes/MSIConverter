@@ -709,7 +709,13 @@ class TestMobilityGridStore:
         )
         block = grid.uns["mobility_marginal"]
         assert float(block["current_ratio"]) == pytest.approx(1.0, abs=1e-12)
-        assert float(block["max_absolute_deviation"]) == pytest.approx(0.0, abs=1e-9)
+        assert float(block["current_ratio_pixel_min"]) == pytest.approx(1.0, abs=1e-12)
+        assert float(block["current_ratio_pixel_max"]) == pytest.approx(1.0, abs=1e-12)
+        # The per-cell deviation the in-memory converter recorded went with
+        # it (D11): it needed the marginal materialised in RAM, which the
+        # one converter never does. The assert_allclose above is that
+        # check, computed here from the two stored matrices.
+        assert "max_absolute_deviation" not in block
 
     def test_the_grid_indexes_the_heatmap_by_integer_channel(self, tmp_path):
         from thyra.convert import convert_msi

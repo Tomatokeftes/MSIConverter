@@ -394,8 +394,14 @@ bin reproduces that bin's column of the summed table, per pixel. That is what
 | `summed_table` | element key of the table the marginal is compared against |
 | `current_ratio` | total ion current of the grid table over the summed table's; exactly `1.0` under `scan_sum` |
 | `current_ratio_pixel_min` / `_max` | the same ratio across pixels |
-| `max_absolute_deviation` | largest disagreement between a marginal and the column it mirrors, over all (pixel, m/z bin) |
-| `max_relative_deviation` | that, relative to the largest value in the summed table |
+
+The comparison is per pixel, one bounded pass over each table's memmaps. A
+per-cell deviation (`max_absolute_deviation` / `max_relative_deviation`)
+was recorded up to v3.21 by the in-memory converter only; it needed the
+marginal and its difference from the summed table materialised, each as
+large as the summed table, and went with that converter (see
+[Design Decisions](design-decisions.md#d11-one-converter)). The snippet
+below computes it from the two stored matrices when it is wanted.
 
 ```python
 grid = sdata.tables["msi_dataset_z0_mobility"]
@@ -416,8 +422,7 @@ A grid is refused, at `INFO` or `WARNING` and never as an exception, when:
 | the `var` frame of the occupied `(m/z bin, channel)` pairs is projected to take more than half of the machine's free memory (330 bytes per pair, measured), or the pairs pass an absolute cap of 100,000,000 | the count, the projection and the free memory are printed; resample to fewer mass bins or ask for fewer channels. A projection past a quarter of free memory is attempted with a `WARNING`. See [Design Decisions](design-decisions.md#d4-the-grids-feature-ceiling-is-a-memory-guard-not-a-format-limit) |
 
 **How it is built, and why its size does not matter.** The table is built
-the way the summed table is built on the streaming route, in two passes over
-the raw scans. The first pass counts, per `(m/z bin, channel)` cell of the
+the way the summed table is built, in two passes over the raw scans. The first pass counts, per `(m/z bin, channel)` cell of the
 grid, how many pixels occupy it -- a dense count over the grid's span, 142 MB
 on a default-resampled timsTOF axis, sized before the first pixel is read and
 independent of how many pixels there are. The second pass scatters each
@@ -425,7 +430,7 @@ pixel's cells straight into memmapped CSC arrays in a scratch directory next
 to the output (`.thyra_mobility_*`, removed once the table is written), 12
 bytes of disk per stored non-zero. Nothing is ever held for the whole image:
 memory is the count array plus one frame. On a Bruker TDF both passes are
-the summed table's own: the streaming route reads each frame once per pass
+the summed table's own: the converter reads each frame once per pass
 and derives the summed spectrum, the heatmap's points, the grid's cells and
 the MS/MS split from that one read, so none of the siblings adds a read of
 the source (see [Design Decisions](design-decisions.md#d5-one-raw-read-per-frame-per-pass-serves-every-table)).
@@ -619,9 +624,8 @@ vendor peak picker drops the index bins it assigns to no peak while the
 split reads raw scans,
 which on a real acquisition is about 1.5% overall and up to 1.14x on a
 single pixel. The two tables genuinely do not add up in that mode, and this
-block is where the store says so. It is written on every route, including
-the streaming one, which compares against the per-pixel ion current it
-already holds for the TIC image.
+block is where the store says so. It compares the two tables' per-pixel
+ion current, one bounded pass over each.
 
 !!! note "Deliberate limits"
     - **The feature axis depends on the data.** Only `(precursor, bin)`
@@ -641,9 +645,8 @@ already holds for the TIC image.
       then scatter into memmapped CSC arrays in a scratch directory next to
       the output (`.thyra_msms_*`) -- so memory is the count array
       (`4 bytes x precursors x mass bins`) plus one frame, whatever the
-      pixel count. On the streaming route those are the summed table's own
-      two passes, fed from the same frame read, so the split adds no read
-      of the source. The largest acquisition this has run on is still 713
+      pixel count. Those are the summed table's own two passes, fed from
+      the same frame read, so the split adds no read of the source. The largest acquisition this has run on is still 713
       pixels with 15 precursors; `var` grows with the occupied pairs.
     - **Two acquired schedules have been tested, from one instrument.** 15
       precursors in positive mode and 13 in negative sharing none of them,

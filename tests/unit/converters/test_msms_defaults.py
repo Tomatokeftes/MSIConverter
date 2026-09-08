@@ -5,7 +5,7 @@ written by default when the schedule allows an exact split, opted out of
 with ``msms_table=False``, and exact on a resampled axis and on the raw
 one alike, because the fragment axis is the summed table's axis and both
 are built from the same points. A stand-in PASEF reader with two
-precursors on disjoint ramp slices goes down both write routes.
+precursors on disjoint ramp slices is converted for real.
 """
 
 from pathlib import Path
@@ -122,18 +122,13 @@ RESAMPLED = {
 }
 
 
-def _convert(out: Path, streaming: bool, **kwargs):
+def _convert(out: Path, **kwargs):
+    from thyra.converters.spatialdata.streaming_converter import (
+        StreamingSpatialDataConverter as Converter,
+    )
     from thyra.utils.windows_paths import prepare_zarr_output_path
 
     out = prepare_zarr_output_path(out, "stub")
-    if streaming:
-        from thyra.converters.spatialdata.streaming_converter import (
-            StreamingSpatialDataConverter as Converter,
-        )
-    else:
-        from thyra.converters.spatialdata.spatialdata_2d_converter import (
-            SpatialData2DConverter as Converter,
-        )
 
     converter = Converter(
         MsmsStubReader(), out, dataset_id="stub", pixel_size_um=10.0, **kwargs
@@ -148,14 +143,9 @@ def _read(out: Path):
     return spatialdata.read_zarr(prepare_zarr_read_path(out))
 
 
-@pytest.mark.parametrize("streaming", [False, True], ids=["in_memory", "streaming"])
 class TestTheDefault:
-    def test_a_qualifying_source_gets_the_split_without_asking(
-        self, tmp_path, streaming
-    ):
-        sdata = _read(
-            _convert(tmp_path / "s.zarr", streaming, resampling_config=RESAMPLED)
-        )
+    def test_a_qualifying_source_gets_the_split_without_asking(self, tmp_path):
+        sdata = _read(_convert(tmp_path / "s.zarr", resampling_config=RESAMPLED))
         assert set(sdata.tables) == {"stub_z0", "stub_z0_msms"}
         split = sdata.tables["stub_z0_msms"]
         assert split.n_obs == 4
@@ -163,22 +153,21 @@ class TestTheDefault:
         ratio = split.uns["demultiplexed_current"]["current_ratio"]
         assert float(ratio) == pytest.approx(1.0)
 
-    def test_opting_out_writes_only_the_summed_table(self, tmp_path, streaming):
+    def test_opting_out_writes_only_the_summed_table(self, tmp_path):
         sdata = _read(
             _convert(
                 tmp_path / "s.zarr",
-                streaming,
                 resampling_config=RESAMPLED,
                 msms_table=False,
             )
         )
         assert set(sdata.tables) == {"stub_z0"}
 
-    def test_a_raw_axis_gets_the_split_exactly(self, tmp_path, streaming):
+    def test_a_raw_axis_gets_the_split_exactly(self, tmp_path):
         # D6: the fragment axis is the summed table's axis. Unresampled,
         # that axis is the union of the fragment m/z values the split
         # re-reads, so the mapping is exact and the blocks add back up.
-        sdata = _read(_convert(tmp_path / "s.zarr", streaming))
+        sdata = _read(_convert(tmp_path / "s.zarr"))
         assert set(sdata.tables) == {"stub_z0", "stub_z0_msms"}
         split = sdata.tables["stub_z0_msms"]
         ratio = split.uns["demultiplexed_current"]["current_ratio"]

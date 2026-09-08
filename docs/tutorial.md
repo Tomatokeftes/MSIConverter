@@ -335,11 +335,10 @@ Same command as Part 1 -- only the input path changes. Thyra detects the Bruker
 format, reads the 5 um pixel size from the acquisition metadata, and finds the
 optical images next to the `.d` folder.
 
-Because this dataset is far over the 10 GB threshold, Thyra switches to
-**streaming mode** automatically: spectra are processed in chunks and written
-incrementally, so peak memory stays roughly flat instead of scaling with the
-dataset. The output is identical either way. Expect a long run; add logging so
-you can watch progress and keep a record:
+Size is not a concern: every conversion makes two passes over the source and
+writes from memory-mapped arrays, so peak memory stays roughly flat instead of
+scaling with the dataset. Expect a long run; add logging so you can watch
+progress and keep a record:
 
 ```bash
 thyra "MALDI-MSI Sagittal Mouse Brain/20240826_Xenium_0041899.d" mouse_brain.zarr \

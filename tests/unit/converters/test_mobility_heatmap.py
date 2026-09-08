@@ -1,9 +1,9 @@
 """The mass-mobility heatmap: binning rules, the accumulator, the stored block.
 
 The accumulator is driven with hand-picked points first, then a stub
-reader with a known (m/z, 1/K0, intensity) cloud per pixel goes down the
-in-memory and streaming write routes so the block round-trips through
-zarr -- on Windows too, which is where a colon in a key would fail.
+reader with a known (m/z, 1/K0, intensity) cloud per pixel is converted
+so the block round-trips through zarr -- on Windows too, which is where
+a colon in a key would fail.
 """
 
 from pathlib import Path
@@ -435,32 +435,22 @@ class TestBuildFromReader:
 
 
 # ----------------------------------------------------------------------
-# End to end: the block on the summed table, down both write routes.
+# End to end: the block on the summed table, on a real store.
 # ----------------------------------------------------------------------
 
 spatialdata = pytest.importorskip("spatialdata")
 
 
-def _convert(reader: BaseMSIReader, out: Path, streaming: bool, **kwargs):
+def _convert(reader: BaseMSIReader, out: Path, **kwargs):
+    from thyra.converters.spatialdata.streaming_converter import (
+        StreamingSpatialDataConverter,
+    )
     from thyra.utils.windows_paths import prepare_zarr_output_path
 
     out = prepare_zarr_output_path(out, "stub")
-    if streaming:
-        from thyra.converters.spatialdata.streaming_converter import (
-            StreamingSpatialDataConverter,
-        )
-
-        converter = StreamingSpatialDataConverter(
-            reader, out, dataset_id="stub", pixel_size_um=10.0, **kwargs
-        )
-    else:
-        from thyra.converters.spatialdata.spatialdata_2d_converter import (
-            SpatialData2DConverter,
-        )
-
-        converter = SpatialData2DConverter(
-            reader, out, dataset_id="stub", pixel_size_um=10.0, **kwargs
-        )
+    converter = StreamingSpatialDataConverter(
+        reader, out, dataset_id="stub", pixel_size_um=10.0, **kwargs
+    )
     assert converter.convert(), "conversion reported failure"
     return out
 
@@ -471,11 +461,10 @@ def _read(out: Path):
     return spatialdata.read_zarr(prepare_zarr_read_path(out))
 
 
-@pytest.mark.parametrize("streaming", [False, True], ids=["in-memory", "streaming"])
 class TestStoredBlock:
-    def test_round_trips_through_zarr(self, tmp_path, streaming):
+    def test_round_trips_through_zarr(self, tmp_path):
         reader = MobilityStubReader()
-        out = _convert(reader, tmp_path / "stub.zarr", streaming)
+        out = _convert(reader, tmp_path / "stub.zarr")
         table = _read(out).tables["stub_z0"]
 
         block = table.uns["mobility_heatmap"]
@@ -494,8 +483,8 @@ class TestStoredBlock:
         # Built exactly once, however many uns blocks asked for it.
         assert reader.mobility_passes == 1
 
-    def test_axis_block_carries_the_contract_keys(self, tmp_path, streaming):
-        out = _convert(MobilityStubReader(), tmp_path / "stub.zarr", streaming)
+    def test_axis_block_carries_the_contract_keys(self, tmp_path):
+        out = _convert(MobilityStubReader(), tmp_path / "stub.zarr")
         axis = _read(out).tables["stub_z0"].uns["mobility_axis"]
         assert axis["type_accession"] == "MS:1002815"
         assert axis["n_scans"] == 3
@@ -503,11 +492,11 @@ class TestStoredBlock:
         np.testing.assert_array_equal(np.asarray(axis["acq_range"]), [1.0, 1.6])
         assert axis["source"] == "stub"
 
-    def test_read_lazy_reaches_the_block(self, tmp_path, streaming):
+    def test_read_lazy_reaches_the_block(self, tmp_path):
         anndata = pytest.importorskip("anndata")
         from thyra.utils.windows_paths import prepare_zarr_read_path
 
-        out = _convert(MobilityStubReader(), tmp_path / "stub.zarr", streaming)
+        out = _convert(MobilityStubReader(), tmp_path / "stub.zarr")
         lazy = anndata.experimental.read_lazy(
             str(prepare_zarr_read_path(out) / "tables" / "stub_z0")
         )
@@ -515,17 +504,15 @@ class TestStoredBlock:
         assert set(block) == {"mz_edges", "mobility_edges", "counts"}
         assert np.asarray(block["counts"]).shape == (4, 256)
 
-    def test_opt_out_leaves_the_axis_and_drops_the_heatmap(self, tmp_path, streaming):
+    def test_opt_out_leaves_the_axis_and_drops_the_heatmap(self, tmp_path):
         reader = MobilityStubReader()
-        out = _convert(
-            reader, tmp_path / "stub.zarr", streaming, mobility_heatmap=False
-        )
+        out = _convert(reader, tmp_path / "stub.zarr", mobility_heatmap=False)
         uns = _read(out).tables["stub_z0"].uns
         assert "mobility_heatmap" not in uns
         assert uns["mobility_axis"]["type_accession"] == "MS:1002815"
         assert reader.mobility_passes == 0
 
-    def test_a_source_without_mobility_writes_neither_block(self, tmp_path, streaming):
-        out = _convert(_NoMobilityReader(), tmp_path / "stub.zarr", streaming)
+    def test_a_source_without_mobility_writes_neither_block(self, tmp_path):
+        out = _convert(_NoMobilityReader(), tmp_path / "stub.zarr")
         uns = _read(out).tables["stub_z0"].uns
         assert "mobility_heatmap" not in uns and "mobility_axis" not in uns
