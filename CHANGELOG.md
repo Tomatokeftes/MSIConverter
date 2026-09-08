@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v3.23.1 (2026-09-08)
+
+### Bug Fixes
+
+- **waters**: Fit the raster to a lattice, and to the converted functions
+  ([`1ff46ec`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/1ff46ecabe2f23840623e08f4f19627f68c4fd6e))
+
+
 ## v3.23.0 (2026-09-08)
 
 ### Features
