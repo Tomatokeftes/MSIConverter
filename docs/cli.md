@@ -269,7 +269,6 @@ thyra input.imzML output.zarr \
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--streaming [auto\|true\|false]` | `auto` | Streaming mode for large datasets |
-| `--sparse-format [csc\|csr]` | `csc` | Sparse matrix storage format. Streaming writes CSC only |
 
 !!! info "Streaming mode"
     - **`auto`** (default) -- Thyra estimates dataset size and enables streaming
@@ -279,23 +278,29 @@ thyra input.imzML output.zarr \
 
     Streaming makes two passes over the source and scatters straight into
     memory-mapped CSC arrays, so the matrix is never held in RAM. The output
-    is identical to standard mode, except that streaming always stores CSC.
+    is identical to standard mode.
 
 ### Examples
 
 ```bash
 # Force streaming for a large dataset
 thyra large.d output.zarr --streaming true
-
-# Use CSR format (faster row access, slower column access). Only the
-# in-memory converter writes CSR, so streaming has to be off.
-thyra input.imzML output.zarr --sparse-format csr --streaming false
 ```
 
-!!! tip "CSC vs CSR"
-    **CSC** (default) is optimised for extracting ion images (one m/z across all
-    pixels). **CSR** is optimised for extracting spectra (one pixel across all
-    m/z values). Choose based on your downstream access pattern.
+!!! warning "`--sparse-format` was removed in v3.22"
+    Every route now writes CSC, so there is nothing left to choose and the
+    option is gone rather than kept as a no-op. It was only ever honoured by
+    the in-memory converters, which made its meaning depend on `--streaming`;
+    on the streaming route a `csr` request spent a release silently producing
+    CSC.
+
+    CSC is the layout an ion image reads down -- one m/z across all pixels is
+    one contiguous column. If you want the row-wise layout instead, take it
+    after reading rather than at write time:
+
+    ```python
+    X = sdata.tables["dataset_z0"].X.tocsr()
+    ```
 
 !!! warning "`--optimize-chunks` is deprecated"
     The flag is still accepted, so existing scripts keep running, but it does

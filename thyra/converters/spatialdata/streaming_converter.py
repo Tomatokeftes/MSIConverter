@@ -102,11 +102,10 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             **kwargs: Keyword arguments passed to BaseSpatialDataConverter
 
         Raises:
-            ValueError: On ``use_csc=False``, and on ``sparse_format="csr"``.
-                This route scatters straight into CSC arrays and has no CSR
-                layout to write; it used to accept ``csr`` and silently
-                store CSC. The in-memory converter (``streaming=False``)
-                writes CSR.
+            ValueError: On ``use_csc=False``. There is one route left for it
+                to select, and falling through to it as if it had been
+                chosen is how a caller ends up with the opposite of what
+                they asked for.
 
         Note:
             Intensity thresholding (filtering noise below a minimum value) is
@@ -121,13 +120,6 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 "use_csc=False selected the streaming COO route, which has been "
                 "removed: the PCS route was faster and lighter at every size "
                 "measured. Pass use_csc=True or leave it out."
-            )
-        if self._sparse_format != "csc":
-            raise ValueError(
-                "The streaming converter writes CSC only, but "
-                f"sparse_format='{self._sparse_format}' was requested. Pass "
-                "streaming=False to write CSR through the in-memory converter, "
-                "or sparse_format='csc'."
             )
 
         # Resolved once here rather than per spectrum: _process_spectrum is

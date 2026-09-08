@@ -818,10 +818,68 @@ the hand-written layout with no oracle.
 **One thing this settled by accident.** `sparse_format="csr"` was only
 honoured by COO; PCS ignored it and stored CSC. Since COO was unreachable
 from `convert()`, a streaming CSR request had been silently producing CSC
-for a release. The streaming converter now refuses `csr` and names the
-in-memory converter as the one that writes it.
+for a release. This release made the streaming converter refuse `csr` and
+name the in-memory converter as the one that wrote it; D10 then removed the
+keyword from every route, so the refusal now comes from the base converter
+and applies to `csc` as well.
 
 **Not decided here.** Whether PCS should grow a z term and route its table
 through spatialdata's writer, at which point the in-memory converters and
-the parity tests both become removable, and whether `--sparse-format`
-earns its place as a flag at all. Both are filed as issues.
+the parity tests both become removable. Filed as issue #218. The second
+question left open, whether `--sparse-format` earns its place as a flag at
+all, is D10.
+
+---
+
+## D10. CSC is the only layout, and `sparse_format` is gone
+
+**Status:** Implemented (2026-09-08).
+
+**Decision.** Every converter writes CSC. `--sparse-format` and the
+`sparse_format` keyword on `convert_msi` and the converters are removed,
+and passing the keyword raises rather than being ignored. A caller who
+wants row-major access calls `.tocsr()` on the matrix they read back.
+
+**Why.** After D9 the flag was honoured by the in-memory converters only.
+That made it a flag whose effect depended on a second flag: `csr` did
+something with `--streaming false` and was refused with it on. One option
+per concept, and no option whose meaning changes with another, is the rule
+the flag review of 2026-09-07 set; this was the clearest violation of it
+left in the CLI. The layout it selected is also not one anybody here asked
+for. Every consumer of a Thyra store reads columns -- an ion image is one
+m/z across all pixels, which is one contiguous CSC column -- and Ousia,
+the only shipped consumer, never passed the keyword at all.
+
+**The alternative, and why it lost.** The honest version of keeping the
+flag is to teach the streaming route a row-wise scatter, mirroring the
+column one, so `csr` means the same thing on both routes. That is a second
+two-pass write path, with its own count-then-scatter arithmetic and its own
+half of every parity test, carried for a layout with no requester. The
+conversion it replaces costs one `.tocsr()` in memory on data the caller
+has already read.
+
+**Why the keyword raises instead of being accepted as a no-op.** Unknown
+keyword arguments fall through `**kwargs` into `BaseMSIConverter.options`
+without a word. Dropping `sparse_format` from the signature and stopping
+there would mean `sparse_format="csr"` silently producing CSC -- which is
+exactly the failure D9 found and this decision is meant to end. So the
+base converter names it: the message says the keyword is gone, that CSC is
+what is written, and what to call for rows. `"csc"` is refused on the same
+terms, because a keyword that is accepted and does nothing is the shape of
+option being cleared out here.
+
+**The CLI differs, and deliberately.** `--sparse-format` is deleted
+outright rather than kept as a hidden no-op the way `--optimize-chunks`
+was. The precedents point in the same direction once the difference is
+named: `--optimize-chunks` never had an effect, so accepting it could not
+mislead anyone, while `--tof-a`/`--tof-b`/`--bins-per-fwhm` did have
+effects and were removed outright. `--sparse-format csr` had an effect, and
+the docs told people to pass it together with `--streaming false`; those
+command lines have to fail loudly rather than quietly write the opposite
+layout. Click's unknown-option error is that failure, and it arrives
+before any data is read.
+
+**Known limit.** A script passing `--sparse-format csc`, which asked for
+what it would have got anyway, also stops working and needs the argument
+deleted. That is the cost of not having a value that is accepted and
+ignored.
