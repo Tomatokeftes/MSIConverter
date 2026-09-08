@@ -17,6 +17,39 @@
 # exemption guards the staging side of the same hazard; this guards the
 # worktree side.
 repos:
+  # Lab-share paths must not reach a public repo.
+  #
+  # Every identifying string this repo has ever leaked -- four colleagues'
+  # names, a specimen filename, the share layout -- arrived as a component of
+  # a path, because a path is how a note points at a dataset. So the guard is
+  # on the path shape, not on a list of names: a denylist of real names would
+  # have to be committed here, which republishes the very thing it removes.
+  #
+  # Datasets are referred to by the names in ~/.msi-datasets.toml instead.
+  # That file is in the home directory, outside every repo, so it cannot be
+  # committed by accident.
+  #
+  # A path written in prose uses single separators; a path inside source is
+  # escaped and doubles them. Requiring a single separator is what tells the
+  # two apart, so the fixtures in tests/unit/utils/test_windows_paths.py do
+  # not trip it. The drive letter must be uppercase, which is the convention
+  # in a real path and keeps the hook off Python slices such as "if a:"
+  # followed by an escape.
+  #
+  # A UNC branch was tried and dropped: it matched every escaped newline in
+  # the notebooks and caught nothing real, and no leak here arrived by UNC.
+  #
+  # docs/getting-started.md is exempt because documenting Windows path
+  # handling is that page's subject; its paths are generic placeholders.
+  - repo: local
+    hooks:
+      - id: no-lab-share-paths
+        name: no lab-share paths in tracked files
+        language: pygrep
+        entry: '\b[A-Z]:\\(?!\\)[A-Za-z0-9_]'
+        types: [text]
+        exclude: ^docs/getting-started\.md$
+
   # Basic file formatting and checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0

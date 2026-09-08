@@ -43,10 +43,10 @@ have, and the pin situation is looser than "loose".
 
 ### What is actually installed
 
-Measured in `C:\Users\P70078823\Desktop\Ousia\backend\.venv`:
+Measured in `<ousia-checkout>/backend/.venv`:
 
 ```
-thyra code path : C:\Users\P70078823\Desktop\Thyra\thyra\__init__.py
+thyra code path : <thyra-checkout>/thyra/__init__.py
 thyra version   : 2.2.3
 spatialdata     : 0.7.0a1.dev62+gbfd2b5fac   thyra 2.x needs >=0.8.0, <0.9   VIOLATED
 anndata         : 0.13.0.dev62+g3c90d3cc2    thyra 2.x needs >=0.13.2, <0.14 VIOLATED
@@ -369,7 +369,7 @@ walking up from the working directory, and a worktree has its own
 uv run pytest -q
 ```
 
-**Reproducing item 1's violation**, from `C:\Users\P70078823\Desktop\Ousia\backend`:
+**Reproducing item 1's violation**, from `<ousia-checkout>/backend`:
 
 ```bash
 ./.venv/Scripts/python.exe -c "
@@ -379,7 +379,7 @@ print(spatialdata.__version__, anndata.__version__, zarr.__version__)"
 ```
 
 **Real data** lives outside every worktree, at
-`C:\Users\P70078823\Desktop\Thyra\test_data`: `bellini.imzML` (IONTOF TOF-SIMS,
+`<thyra-checkout>/test_data`: `bellini.imzML` (IONTOF TOF-SIMS,
 profile, 16,384 spectra), `pea.imzML` (SCiLS/Bruker flex, centroid),
 `20240826_xenium_0041899.imzML`, and two timsTOF `.d` folders. All five route
 to `nearest_neighbor`.

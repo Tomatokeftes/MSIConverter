@@ -92,3 +92,9 @@ benchmarks/test_*.py
 
 # Virtual environment (uv creates it in-project by default)
 .venv/
+
+# Dataset registry, if a copy is ever placed in the repo. The real one lives
+# at ~/.msi-datasets.toml, outside every checkout, so it cannot be committed;
+# this is insurance against a copy landing here.
+.msi-datasets.toml
+datasets.toml

@@ -316,7 +316,7 @@ uv run python <script.py>
 ```
 
 **Real data lives outside the worktree**, at
-`C:\Users\P70078823\Desktop\Thyra\test_data`. A previous investigation missed
+`<thyra-checkout>/test_data`. A previous investigation missed
 it entirely by searching only the worktree, and reached the wrong conclusion
 as a result. Inventory, with what Thyra's real decision tree selects:
 

@@ -394,7 +394,7 @@ class BrukerReaderTester:
 def main():
     """Main test function."""
     # Test data path - update this to your actual test data
-    test_data_path = r"C:\Users\tvisv\Downloads\MSIConverter\20231109_PEA_NEDC_bruker.d"
+    test_data_path = "test_data/bruker.d"
 
     if not Path(test_data_path).exists():
         print(f"❌ Test data not found at: {test_data_path}")
