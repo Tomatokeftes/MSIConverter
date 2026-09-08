@@ -136,8 +136,9 @@ class WatersMetadataExtractor(MetadataExtractor):
         first and last stored samples happened to be.
 
         Falls back to the stored span when no MS function reports an
-        acquisition range, or when a stored value lies outside it, since a
-        range that drops measured data is worse than one that varies.
+        acquisition range, and widens the declared one to cover the stored
+        span when a value lies outside it, since a range that drops
+        measured data is worse than one that varies.
         """
         acquired = [
             r
@@ -169,14 +170,32 @@ class WatersMetadataExtractor(MetadataExtractor):
             )
             return (lo, hi)
 
+        # Widen rather than abandon. The old fallback returned the observed
+        # span and said "so nothing is dropped", which the axis builder
+        # then contradicted in the same run: it drops the peaks sitting
+        # exactly on the span's bounds, so the store lost 15 peaks of
+        # 19.7 M on every Xevo DESI conversion measured while the log said
+        # nothing was lost. The overshoot is real and small -- the vendor
+        # centroid and the profile trace both exceed a declared 100-1200
+        # range by 0.01 to 0.25 Da on those runs, which is why the shared
+        # axis PR #207 added was never once used on them (issue #230).
+        #
+        # A widened range is run-specific where a purely declared one is
+        # not, so two runs of one method share an axis only when they
+        # overshoot alike. That is the honest trade: an axis that drops
+        # measured data is worse than one that varies.
+        widened = (min(lo, observed[0]), max(hi, observed[1]))
         logger.warning(
             "Stored m/z values %.4f-%.4f fall outside the acquisition range "
-            "%.4f-%.4f; using the stored span so nothing is dropped",
+            "%.4f-%.4f; the resampled axis is widened to %.4f-%.4f to cover "
+            "them. Runs of this method share one axis only if they overshoot "
+            "the acquisition range by the same amount.",
             *observed,
             lo,
             hi,
+            *widened,
         )
-        return observed
+        return widened
 
     def _detect_spectrum_type(self) -> Optional[str]:
         """The representation the reader delivers: profile trace or centroid.
@@ -235,7 +254,6 @@ class WatersMetadataExtractor(MetadataExtractor):
         stats["min_mass"] = min(stats["min_mass"], float(mzs[0]))
         stats["max_mass"] = max(stats["max_mass"], float(mzs[-1]))
         stats["total_peaks"] += n_peaks
-        stats["n_spectra"] += 1
 
         coords = self._imaging_grid.get_coordinates(
             self._imaging_grid.scan_map[(func, scan)]
@@ -244,7 +262,17 @@ class WatersMetadataExtractor(MetadataExtractor):
         n_x, n_y = stats["n_x"], stats["n_y"]
         pixel_idx = z * (n_x * n_y) + y * n_x + x
         if 0 <= pixel_idx < stats["n_pixels"]:
-            stats["peak_counts"][pixel_idx] = n_peaks
+            # Accumulate, and count pixels rather than scans. Two scans can
+            # report the same stage position -- the registry's 100 um MALDI
+            # set has 1275 positioned scans on 1274 pixels, the stage having
+            # stopped between two acquisitions 40 ms apart -- and the
+            # converter sums them into the one pixel. This used to overwrite
+            # with the last scan's count while ``n_spectra`` counted both, so
+            # the per-pixel counts and the totals that size the memory
+            # estimate described two different datasets (issue #233).
+            if stats["peak_counts"][pixel_idx] == 0:
+                stats["n_spectra"] += 1
+            stats["peak_counts"][pixel_idx] += n_peaks
 
     def _scan_all_ms_spectra(
         self,

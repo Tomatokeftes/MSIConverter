@@ -209,6 +209,17 @@ Two things to know up front:
 A folder of `*.dat` files with `*_poslog.txt` and `*_info.txt` alongside. The
 position log supplies the pixel grid. No SDK required.
 
+The raster step comes from the `Raster:` line in `*_info.txt` or the
+`<Raster>` element of the `.mis`. Without either, Thyra refuses and asks for
+`--pixel-size`, the same way the solariX reader does -- it used to fall back
+to 20 um and record that guess in the store as an automatically detected
+measurement.
+
+The `.dat` header's raster origin reaches the store as
+`coordinate_offsets_px`, with `stage_offset_um` beside it, so a Rapiflex
+store can be placed against its optical image the way a solariX or timsTOF
+one can. The stored pixel coordinates themselves stay 0-based.
+
 ## Waters MassLynx
 
 A `.raw` **directory** of `_FUNC*.DAT` files, read through the MassLynxRaw and
@@ -216,6 +227,21 @@ MLReader native libraries (bundled for Windows and Linux). The pixel grid is
 reconstructed from the laser X/Y position recorded on each scan; MRM and
 ion-mobility functions are classified and skipped, and which of the rest hold
 the image is decided from those same positions (below).
+
+The grid is a *lattice* fitted to those positions -- an origin, a pitch and a
+count per axis -- not a ranking of the distinct ones. The pitch is the
+neighbour interval, so a raster missing an interior row keeps its true pitch
+and leaves that row empty, rather than inflating the pitch and shifting every
+row past the gap up by one. Positions that do not lie on the fitted raster
+are refused, naming the axis and how far off the worst reading sits, instead
+of becoming a grid with a pixel per stage wobble. A scan reporting a
+non-finite position is unpositioned; two scans reporting the same position
+are summed into one pixel and the log names it.
+
+A `.raw` directory is refused when the library declares more functions than
+it has `_FUNC*.DAT` files. MassLynx keeps reporting a function whose data
+file is gone, with 0 scans and no error, so a chunk lost from a split raster
+would otherwise drop its rows of the image in silence.
 
 ### Which representation is read
 
@@ -299,7 +325,14 @@ pixel grid is built from:
 
 - A function landing on pixels no earlier function covers **extends the
   raster** and is converted, whatever level MassLynx reports and whether or
-  not MassLynx calls it the lockmass function.
+  not MassLynx calls it the lockmass function -- provided its positions lie
+  on the raster. The tail of a split raster continues it, so it shares the
+  fitted lattice; a reference or calibration spot parked off the sample also
+  covers pixels nothing else covers but does not, and is excluded and named
+  rather than converted as an image pixel.
+- The lattice itself is fitted to the MS functions, then re-fitted to
+  whatever is finally converted, so a function that contributes no pixel
+  never leaves its pitch behind in the grid.
 - Functions **competing for the same pixels** were acquired in parallel:
   MSe low and high energy, a data-dependent run, a co-acquired lockmass
   reference. Only one of them can be the pixel's spectrum, and summing an

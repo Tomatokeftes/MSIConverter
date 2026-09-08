@@ -472,3 +472,109 @@ class TestWatersResamplingDetection:
         axis, method, _, _ = self._chain_answer(False, use_centroid=False)
         assert axis is AxisType.REFLECTOR_TOF
         assert method is ResamplingMethod.NEAREST_NEIGHBOR
+
+
+class TestScansSharingAPixel:
+    """Two scans on one stage position (issue #233).
+
+    ``n_spectra`` and ``total_peaks`` counted scans while
+    ``peak_counts_per_pixel`` kept only the last one, so the totals that
+    size the memory estimate and the per-pixel counts described two
+    different datasets. Real instance: the registry's 100 um MALDI set has
+    1275 positioned scans on 1274 distinct pixels, the stage having stopped
+    between two acquisitions 40 ms apart.
+    """
+
+    def _extractor_with_a_repeated_position(self, n_peaks=5):
+        mock_ml, handle, grid, ft, ms = _make_grid_and_ml(n_x=2, n_y=2, n_peaks=n_peaks)
+        # One more scan on the pixel scan 0 already covers.
+        grid.scan_map[(0, 4)] = _make_scan_info(0.1, 0.1)
+        mock_ml.get_number_of_scans_in_function.return_value = 5
+        return WatersMetadataExtractor(
+            mock_ml, handle, Path("/test/data.raw"), grid, ft, ms
+        )
+
+    def test_n_spectra_counts_pixels_not_scans(self):
+        essential = self._extractor_with_a_repeated_position().get_essential()
+
+        # Five scans land on four pixels; four spectra are written.
+        assert essential.n_spectra == 4
+
+    def test_the_per_pixel_counts_sum_to_the_total(self):
+        extractor = self._extractor_with_a_repeated_position(n_peaks=5)
+        essential = extractor.get_essential()
+        counts = extractor.get_essential().peak_counts_per_pixel
+
+        assert counts is not None
+        assert int(counts.sum()) == essential.total_peaks
+
+    def test_the_shared_pixel_carries_both_scans(self):
+        extractor = self._extractor_with_a_repeated_position(n_peaks=5)
+        counts = extractor.get_essential().peak_counts_per_pixel
+
+        # Pixel (0, 0) holds two scans of five peaks each; the rest hold one.
+        assert counts[0] == 10
+        assert list(counts[1:]) == [5, 5, 5]
+
+    def test_a_clean_raster_is_unaffected(self):
+        mock_ml, handle, grid, ft, ms = _make_grid_and_ml(n_x=2, n_y=2, n_peaks=5)
+        extractor = WatersMetadataExtractor(
+            mock_ml, handle, Path("/test/data.raw"), grid, ft, ms
+        )
+        essential = extractor.get_essential()
+
+        assert essential.n_spectra == 4
+        assert essential.total_peaks == 20
+
+
+class TestTheResampledAxisRange:
+    """The acquisition range, widened rather than abandoned (issue #230).
+
+    The Xevo DESI runs overshoot their declared 100-1200 range by 0.01 to
+    0.25 Da on every conversion measured, so the shared axis PR #207 added
+    was never once used on them -- and the fallback logged "using the
+    stored span so nothing is dropped" in the same run in which the axis
+    builder then dropped the edge peaks.
+    """
+
+    def _range_for(self, acquisition, observed):
+        mock_ml, handle, grid, ft, ms = _make_grid_and_ml(n_x=2, n_y=2)
+        mock_ml.get_acquisition_range.return_value = acquisition
+        extractor = WatersMetadataExtractor(
+            mock_ml, handle, Path("/test/data.raw"), grid, ft, ms
+        )
+        return extractor._axis_mass_range(observed)
+
+    def test_a_contained_span_still_takes_the_declared_range(self):
+        assert self._range_for((100.0, 1200.0), (100.5, 1199.5)) == (100.0, 1200.0)
+
+    def test_an_overshoot_widens_the_range_instead_of_abandoning_it(self):
+        # The measured Xevo DESI case: 99.9878-1200.2158 against 100-1200.
+        assert self._range_for((100.0, 1200.0), (99.9878, 1200.2158)) == (
+            99.9878,
+            1200.2158,
+        )
+
+    def test_an_overshoot_on_one_side_keeps_the_declared_bound_on_the_other(self):
+        assert self._range_for((100.0, 1200.0), (100.5, 1200.2158)) == (
+            100.0,
+            1200.2158,
+        )
+
+    def test_the_widened_range_covers_every_stored_value(self):
+        observed = (99.9878, 1200.2158)
+        lo, hi = self._range_for((100.0, 1200.0), observed)
+
+        assert lo <= observed[0] and hi >= observed[1]
+
+    def test_no_acquisition_range_falls_back_to_the_stored_span(self):
+        assert self._range_for(None, (110.0, 900.0)) == (110.0, 900.0)
+
+    def test_the_log_no_longer_claims_nothing_is_dropped(self, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            self._range_for((100.0, 1200.0), (99.9878, 1200.2158))
+
+        assert "so nothing is dropped" not in caplog.text
+        assert "widened" in caplog.text

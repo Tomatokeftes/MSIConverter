@@ -25,6 +25,7 @@ from ctypes import (
 )
 from dataclasses import dataclass
 from enum import Enum, auto
+from math import isfinite
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -95,8 +96,21 @@ class ScanInfoData:
 
     @property
     def has_position(self) -> bool:
-        """True if this scan has valid laser position (not sentinel -1.0)."""
-        return not (self.laser_x_pos == NO_POSITION and self.laser_y_pos == NO_POSITION)
+        """True if this scan has a usable laser position.
+
+        Two ways to fail. The documented one is the -1.0 mm sentinel on
+        both axes. The other is a non-finite reading: NaN is not equal to
+        anything including itself, so it passed the sentinel test, and
+        every NaN then became its own column in the grid -- one of them
+        made the reported pixel size NaN, two of them changed the pitch of
+        the real axis, and the converter's ``pixel_size_um <= 0`` guards
+        are False for NaN and infinity, so such a pitch reached the store
+        (issue #231).
+        """
+        x, y = self.laser_x_pos, self.laser_y_pos
+        if not (isfinite(x) and isfinite(y)):
+            return False
+        return not (x == NO_POSITION and y == NO_POSITION)
 
 
 class WatersLibError(Exception):

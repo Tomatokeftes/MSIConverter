@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from thyra.readers.waters.imaging_grid import ImagingGrid
+from thyra.readers.waters.imaging_grid import ImagingGrid, _grid_from_scan_map
 from thyra.readers.waters.masslynx_lib import FunctionType, ScanInfoData
 from thyra.readers.waters.waters_reader import WatersReader
 
@@ -524,6 +524,15 @@ def _chunked_grid(levels, scans_per_function=3, profile_functions=()):
     )
 
 
+def _declare_function_files(raw_dir, n_funcs):
+    """Give a mock .raw directory one _FUNC*.DAT per function.
+
+    MassLynx numbers them from one, so function 0 is _FUNC001.DAT.
+    """
+    for f in range(n_funcs):
+        (raw_dir / f"_FUNC{f + 1:03d}.DAT").write_bytes(b"\x00" * 64)
+
+
 def _open_reader(
     mock_ml_cls,
     mock_build_grid,
@@ -534,6 +543,13 @@ def _open_reader(
     scans_per_function=3,
     use_centroid=True,
 ):
+    # A real .raw directory has one _FUNC*.DAT per declared function, and
+    # the reader now refuses one that does not (issue #229). The fixture
+    # writes only _FUNC001.DAT, so a test mocking more functions than that
+    # has to put their files there too, or it is asserting against a
+    # directory MassLynx could not have produced.
+    _declare_function_files(mock_waters_data, n_funcs)
+
     mock_ml = MagicMock()
     mock_ml_cls.get_instance.return_value = mock_ml
     mock_ml.is_imaging_file.return_value = True
@@ -794,4 +810,146 @@ class TestWatersReaderChunkedRaster:
         assert len(list(reader.iter_spectra())) == 9
         assert reader._ms_functions == [0, 1, 2]
         assert reader._excluded_functions == {}
+        reader.close()
+
+
+class TestWatersReaderMissingFunctionFiles:
+    """A function whose _FUNC*.DAT is gone still reports, with 0 scans.
+
+    The DLL never complains, so the only symptom of a lost chunk file is a
+    smaller scan total than the acquisition had -- and on a raster MassLynx
+    split across functions, entire rows of the image simply do not appear
+    (issue #229).
+    """
+
+    @patch("thyra.readers.waters.waters_reader.MassLynxLib")
+    @patch("thyra.readers.waters.waters_reader.build_imaging_grid")
+    def test_a_missing_function_file_is_refused(
+        self, mock_build_grid, mock_ml_cls, mock_waters_data
+    ):
+        grid = _chunked_grid({0: 1, 1: 2, 2: 0})
+        reader, _ = _open_reader(
+            mock_ml_cls,
+            mock_build_grid,
+            mock_waters_data,
+            grid,
+            3,
+            types={0: FunctionType.MS, 1: FunctionType.MS, 2: FunctionType.LOCKMASS},
+        )
+        (mock_waters_data / "_FUNC002.DAT").unlink()
+
+        with pytest.raises(ValueError, match="_FUNC002.DAT"):
+            list(reader.iter_spectra())
+
+    @patch("thyra.readers.waters.waters_reader.MassLynxLib")
+    @patch("thyra.readers.waters.waters_reader.build_imaging_grid")
+    def test_the_refusal_names_every_missing_file(
+        self, mock_build_grid, mock_ml_cls, mock_waters_data
+    ):
+        grid = _chunked_grid({0: 1, 1: 2, 2: 0})
+        reader, _ = _open_reader(
+            mock_ml_cls,
+            mock_build_grid,
+            mock_waters_data,
+            grid,
+            3,
+            types={0: FunctionType.MS, 1: FunctionType.MS, 2: FunctionType.LOCKMASS},
+        )
+        (mock_waters_data / "_FUNC002.DAT").unlink()
+        (mock_waters_data / "_FUNC003.DAT").unlink()
+
+        with pytest.raises(ValueError) as excinfo:
+            list(reader.iter_spectra())
+
+        assert "_FUNC002.DAT" in str(excinfo.value)
+        assert "_FUNC003.DAT" in str(excinfo.value)
+
+    @patch("thyra.readers.waters.waters_reader.MassLynxLib")
+    @patch("thyra.readers.waters.waters_reader.build_imaging_grid")
+    def test_a_complete_directory_opens(
+        self, mock_build_grid, mock_ml_cls, mock_waters_data
+    ):
+        grid = _chunked_grid({0: 1, 1: 2, 2: 0})
+        reader, _ = _open_reader(
+            mock_ml_cls,
+            mock_build_grid,
+            mock_waters_data,
+            grid,
+            3,
+            types={0: FunctionType.MS, 1: FunctionType.MS, 2: FunctionType.LOCKMASS},
+        )
+
+        assert len(list(reader.iter_spectra())) == 9
+        reader.close()
+
+
+class TestWatersReaderOffRasterFunctions:
+    """The #210 rescue rule assumed what it did not check.
+
+    "Covers pixels no MS function covers" is true of the tail of a split
+    raster and equally true of a reference spot parked off the sample. The
+    tail continues the raster, so it lands on the same lattice; the spot
+    does not (issue #232).
+    """
+
+    def _grid(self, spot_mm=None):
+        scan_map = {}
+        scan = 0
+        for col in range(6):
+            scan_map[(0, scan)] = _make_scan_info((col * 100) / 1000.0, 0.05)
+            scan += 1
+        if spot_mm is not None:
+            scan_map[(1, 0)] = _make_scan_info(*spot_mm)
+        else:
+            # The tail of the same raster, as its own function.
+            for col in range(6, 9):
+                scan_map[(1, scan)] = _make_scan_info((col * 100) / 1000.0, 0.05)
+                scan += 1
+        return _grid_from_scan_map(scan_map, functions=[0])
+
+    @patch("thyra.readers.waters.waters_reader.MassLynxLib")
+    @patch("thyra.readers.waters.waters_reader.build_imaging_grid")
+    def test_a_lockmass_spot_off_the_raster_is_excluded(
+        self, mock_build_grid, mock_ml_cls, mock_waters_data
+    ):
+        grid = self._grid(spot_mm=(11.0, 4.4))
+        reader, _ = _open_reader(
+            mock_ml_cls,
+            mock_build_grid,
+            mock_waters_data,
+            grid,
+            2,
+            types={0: FunctionType.MS, 1: FunctionType.LOCKMASS},
+        )
+        reader._ensure_initialized()
+
+        assert reader._ms_functions == [0]
+        assert (
+            reader._excluded_functions[1]["reason"]
+            == "stage positions do not lie on the imaging raster"
+        )
+        reader.close()
+
+    @patch("thyra.readers.waters.waters_reader.MassLynxLib")
+    @patch("thyra.readers.waters.waters_reader.build_imaging_grid")
+    def test_the_tail_of_a_split_raster_is_still_rescued(
+        self, mock_build_grid, mock_ml_cls, mock_waters_data
+    ):
+        grid = self._grid()
+        reader, _ = _open_reader(
+            mock_ml_cls,
+            mock_build_grid,
+            mock_waters_data,
+            grid,
+            2,
+            types={0: FunctionType.MS, 1: FunctionType.LOCKMASS},
+            use_centroid=False,
+        )
+        reader._ensure_initialized()
+
+        assert reader._ms_functions == [0, 1]
+        assert reader._excluded_functions == {}
+        # The grid grew to hold the rescued tail.
+        assert reader._imaging_grid.pixel_count_x == 9
+        assert reader._imaging_grid.pixel_size_x == pytest.approx(100.0)
         reader.close()

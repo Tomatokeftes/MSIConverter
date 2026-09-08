@@ -5,6 +5,7 @@ import logging  # noqa: E402
 import os  # noqa: E402
 import sqlite3  # noqa: E402
 import warnings  # noqa: E402
+from math import isfinite  # noqa: E402
 from pathlib import Path  # noqa: E402
 from typing import Literal, Optional, Tuple  # noqa: E402
 
@@ -78,10 +79,24 @@ def _get_calibration_states(bruker_path: Path) -> list[dict]:
         return []
 
 
+def _is_usable_number(value: float) -> bool:
+    """Whether a numeric option carries a real, positive quantity.
+
+    ``value <= 0`` is False for NaN and for +infinity, so every guard
+    written that way admitted both. ``--pixel-size nan`` reached the store
+    as the dataset's pixel size, and ``--tof-law nan 1`` was refused only
+    by the axis generator, as a traceback, after a 47 s metadata scan
+    (issue #231).
+    """
+    return isfinite(value) and value > 0
+
+
 def _validate_basic_params(pixel_size: Optional[float], dataset_id: str) -> None:
     """Validate basic conversion parameters."""
-    if pixel_size is not None and pixel_size <= 0:
-        raise click.BadParameter("Pixel size must be positive", param_hint="pixel_size")
+    if pixel_size is not None and not _is_usable_number(pixel_size):
+        raise click.BadParameter(
+            "Pixel size must be a finite positive number", param_hint="pixel_size"
+        )
     if not dataset_id.strip():
         raise click.BadParameter("Dataset ID cannot be empty", param_hint="dataset_id")
 
@@ -96,8 +111,10 @@ def _validate_positive_float(
     value: Optional[float], param_name: str, label: str
 ) -> None:
     """Validate that an optional float parameter is positive if provided."""
-    if value is not None and value <= 0:
-        raise click.BadParameter(f"{label} must be positive", param_hint=param_name)
+    if value is not None and not _is_usable_number(value):
+        raise click.BadParameter(
+            f"{label} must be a finite positive number", param_hint=param_name
+        )
 
 
 def _validate_mz_range(min_mz: Optional[float], max_mz: Optional[float]) -> None:
@@ -126,9 +143,10 @@ def _validate_resampling_params(
 
     _validate_positive_float(resample_width_at_mz, "resample_width_at_mz", "Mass width")
 
-    if resample_reference_mz <= 0:
+    if not _is_usable_number(resample_reference_mz):
         raise click.BadParameter(
-            "Reference m/z must be positive", param_hint="resample_reference_mz"
+            "Reference m/z must be a finite positive number",
+            param_hint="resample_reference_mz",
         )
 
 
@@ -143,6 +161,10 @@ def _validate_tof_law(tof_law: Optional[Tuple[float, float]]) -> None:
     if tof_law is None:
         return
     a, b = tof_law
+    if not (isfinite(a) and isfinite(b)):
+        raise click.BadParameter(
+            "The TOF width law needs two finite numbers", param_hint="tof_law"
+        )
     if a < 0 or b < 0 or (a == 0 and b == 0):
         raise click.BadParameter(
             "The TOF width law needs A >= 0 and B >= 0 with at least one of "

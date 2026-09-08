@@ -466,3 +466,113 @@ class TestRapiflexFormatDetection:
 
         with pytest.raises(ValueError):
             detect_format(folder)
+
+
+class TestMissingRasterDeclaration:
+    """A pitch nobody declared must not be invented (issue #236).
+
+    The reader used to fall back to 20 um, which convert.py then recorded
+    as ``pixel_size_source: automatic`` with ``detection_successful: True``
+    while ``format_specific.raster_step_um`` sat empty -- a guess the store
+    called a measurement. Every other reader returns None here and the CLI
+    refuses with the actionable "use --pixel-size" hint.
+    """
+
+    @staticmethod
+    def _strip_raster(folder):
+        """Remove every declaration of the raster step from the acquisition."""
+        info_path = folder / "sample_info.txt"
+        kept = [
+            line
+            for line in info_path.read_text().splitlines(keepends=True)
+            if not line.startswith("Raster:")
+        ]
+        info_path.write_text("".join(kept))
+        (folder / "sample.mis").unlink()
+
+    def test_no_raster_declaration_means_no_pixel_size(self, create_mock_rapiflex_data):
+        folder, _, _, _, _, _ = create_mock_rapiflex_data
+        self._strip_raster(folder)
+
+        reader = RapiflexReader(folder)
+        essential = reader._create_metadata_extractor().get_essential()
+
+        assert essential.pixel_size is None
+        reader.close()
+
+    def test_a_declared_raster_is_still_read(self, create_mock_rapiflex_data):
+        folder, _, _, _, _, _ = create_mock_rapiflex_data
+
+        reader = RapiflexReader(folder)
+        essential = reader._create_metadata_extractor().get_essential()
+
+        assert essential.pixel_size == (20.0, 20.0)
+        reader.close()
+
+    def test_the_missing_declaration_is_reported(
+        self, create_mock_rapiflex_data, caplog
+    ):
+        import logging
+
+        folder, _, _, _, _, _ = create_mock_rapiflex_data
+        self._strip_raster(folder)
+
+        reader = RapiflexReader(folder)
+        with caplog.at_level(logging.WARNING):
+            reader._create_metadata_extractor().get_essential()
+
+        assert "declares no raster step" in caplog.text
+        assert "--pixel-size" in caplog.text
+        reader.close()
+
+
+class TestRasterOrigin:
+    """Where on the slide the raster starts (issue #237).
+
+    The .dat header carries it and it was discarded for a hard-coded
+    (0, 0, 0), so no Rapiflex store could be placed against its optical
+    image the way a solariX one can -- that reader records
+    ``coordinate_offsets_px [516, 520, 0]`` for a section whose raster
+    starts at stage (516, 520).
+    """
+
+    @staticmethod
+    def _set_first_raster(folder, first_x, first_y):
+        """Rewrite the header's first_raster_x/y, at byte offsets 8 and 12."""
+        dat_path = folder / "sample.dat"
+        raw = bytearray(dat_path.read_bytes())
+        raw[8:16] = struct.pack("<2I", first_x, first_y)
+        dat_path.write_bytes(bytes(raw))
+
+    def test_the_raster_origin_reaches_the_metadata(self, create_mock_rapiflex_data):
+        folder, _, _, _, _, _ = create_mock_rapiflex_data
+        self._set_first_raster(folder, 100, 50)
+
+        reader = RapiflexReader(folder)
+        essential = reader._create_metadata_extractor().get_essential()
+
+        assert essential.coordinate_offsets == (100, 50, 0)
+        reader.close()
+
+    def test_a_raster_starting_at_the_origin_still_reads_zero(
+        self, create_mock_rapiflex_data
+    ):
+        folder, _, _, _, _, _ = create_mock_rapiflex_data
+
+        reader = RapiflexReader(folder)
+        essential = reader._create_metadata_extractor().get_essential()
+
+        assert essential.coordinate_offsets == (0, 0, 0)
+        reader.close()
+
+    def test_the_pixel_coordinates_stay_zero_based(self, create_mock_rapiflex_data):
+        """The offset is metadata; the stored coordinates are normalised."""
+        folder, _, _, _, _, _ = create_mock_rapiflex_data
+        self._set_first_raster(folder, 100, 50)
+
+        reader = RapiflexReader(folder)
+        coords = [c for c, _, _ in reader.iter_spectra()]
+
+        assert min(x for x, _, _ in coords) == 0
+        assert min(y for _, y, _ in coords) == 0
+        reader.close()

@@ -72,12 +72,39 @@ class RapiflexMetadataExtractor(MetadataExtractor):
 
         # Coordinate bounds are 0-based (normalized)
         coord_bounds = (0.0, float(width - 1), 0.0, float(height - 1))
-        coord_offsets = (0, 0, 0)
 
-        # Get pixel size from raster info
-        pixel_x = info.get("raster_x", 20.0)
-        pixel_y = info.get("raster_y", 20.0)
-        pixel_size = (float(pixel_x), float(pixel_y))
+        # Where on the slide this raster starts, in raster units. The .dat
+        # header carries it and it used to be discarded for a hard-coded
+        # (0, 0, 0), so no Rapiflex store could be placed against its
+        # optical image the way a solariX or timsTOF one can. The converter
+        # turns these into stage_offset_um by multiplying by the pixel
+        # size, so this is the only thing the reader owes it (issue #237).
+        coord_offsets = (
+            int(header.get("first_raster_x", 0)),
+            int(header.get("first_raster_y", 0)),
+            0,
+        )
+
+        # The raster step, or nothing. A missing declaration used to become
+        # 20 um, which convert.py then recorded as
+        # `pixel_size_source: automatic` with `detection_successful: True`
+        # -- a fabricated pitch the store called a measurement, while
+        # `format_specific.raster_step_um` sat empty. Every other reader
+        # returns None here and the CLI refuses with the actionable
+        # "use --pixel-size" hint; a refusal beats an invented number
+        # (issue #236).
+        pixel_x = info.get("raster_x")
+        pixel_y = info.get("raster_y")
+        if pixel_x is None or pixel_y is None:
+            logger.warning(
+                "%s declares no raster step (looked for 'Raster' in "
+                "sample_info.txt and the .mis), so the pixel size is "
+                "unknown. Pass --pixel-size to supply it.",
+                self._reader.data_path.name,
+            )
+            pixel_size = None
+        else:
+            pixel_size = (float(pixel_x), float(pixel_y))
 
         # Mass range
         mass_start = info.get("Mass Start", 0.0)
