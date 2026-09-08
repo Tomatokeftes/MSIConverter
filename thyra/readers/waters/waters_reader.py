@@ -227,15 +227,10 @@ class WatersReader(BaseMSIReader):
             candidates, self._imaging_grid
         )
 
-        # Verify the grid has more than one position (otherwise not really imaging)
-        if (
-            self._imaging_grid.pixel_count_x <= 1
-            and self._imaging_grid.pixel_count_y <= 1
-        ):
-            logger.warning(
-                "Imaging grid has only 1 pixel -- this may not be true imaging data. "
-                "Proceeding anyway."
-            )
+        # A single-pixel grid is refused by build_imaging_grid() above rather
+        # than warned about here: "this may not be true imaging data,
+        # proceeding anyway" produced a 1x1 store with a 0.0 um pitch and
+        # reported success, which is the defect in issue #213.
 
         logger.info(
             f"Initialized Waters reader: {self.data_path.name}, "

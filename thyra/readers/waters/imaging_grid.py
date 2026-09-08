@@ -96,6 +96,11 @@ def build_imaging_grid(
 
     Returns:
         ImagingGrid with coordinate maps and pixel metadata.
+
+    Raises:
+        ValueError: If no scan carries a laser position, or if every
+            positioned scan carries the *same* one -- a single-pixel
+            "raster" is a spot acquisition, not an image.
     """
     x_positions: set = set()
     y_positions: set = set()
@@ -130,6 +135,27 @@ def build_imaging_grid(
 
     pixel_count_x = len(sorted_x)
     pixel_count_y = len(sorted_y)
+
+    # A stage that never moved is not a raster. The check above only catches
+    # the total absence of positions; a *constant* position passes it, and
+    # everything downstream then agrees the run is a legitimate 1x1 image
+    # with a 0.0 um pitch (lateral extent is 0, so both pixel sizes below
+    # come out 0.0) and converts the whole acquisition onto one pixel
+    # without a word. Measured on the Xevo DESI share, 76 of 105 .raw dirs
+    # land here -- every one of them a calibration, a tuning run, a lysis
+    # test or a single-spot DDA acquisition, and not one of them an image.
+    # Real DESI images on that same share do carry stage coordinates in
+    # these fields and grid normally (401x401, 247x140, ...), so this
+    # refuses the non-images without costing anything real. See issue #213.
+    if pixel_count_x == 1 and pixel_count_y == 1:
+        raise ValueError(
+            f"Every positioned scan reports the same stage position "
+            f"(x={sorted_x[0]:.1f} um, y={sorted_y[0]:.1f} um), so this "
+            f"acquisition has a single pixel: {total_scans} positioned scans "
+            f"in {len(scan_map)} total. A one-pixel raster with a 0.0 um "
+            f"pitch is a spot, calibration or tuning acquisition, not an "
+            f"image -- Thyra has no raster to build from it."
+        )
 
     # Calculate pixel sizes (from ImagingMetadata.java lines 146-148)
     lateral_width = sorted_x[-1] - sorted_x[0] if pixel_count_x > 1 else 0.0

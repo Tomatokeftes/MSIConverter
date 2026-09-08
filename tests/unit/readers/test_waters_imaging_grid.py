@@ -216,20 +216,40 @@ class TestBuildImagingGrid:
         assert grid.pixel_count_y == 1
         assert len(grid.scan_map) == 3  # all scans in map (including no-pos)
 
-    def test_single_pixel_grid(self):
-        """Test grid with only one position."""
-        positions = [(0, 0, 0.5, 0.5)]
+    def test_single_pixel_grid_is_refused(self):
+        """A stage that never moved is a spot acquisition, not an image.
+
+        This used to return a 1x1 grid with a 0.0 um pitch and let the
+        conversion report success with the whole acquisition on one pixel
+        (issue #213). On the Xevo DESI share that is what 76 of 105 .raw
+        dirs look like -- calibrations, tuning runs, single-spot DDA.
+        """
+        positions = [(0, 0, 0.5, 0.5), (0, 1, 0.5, 0.5), (0, 2, 0.5, 0.5)]
+        mock_ml = self._setup_mock_ml(positions)
+        func_types = {0: FunctionType.MS}
+
+        with pytest.raises(ValueError, match="same stage position"):
+            build_imaging_grid(mock_ml, "handle", func_types)
+
+    def test_single_row_grid_is_kept(self):
+        """One line of a raster is real data, and must survive the refusal.
+
+        The share holds aborted line scans (138x1, 48x1) alongside the
+        completed rasters they were retried into. Only a grid that
+        collapses on *both* axes is a spot.
+        """
+        positions = [
+            (0, 0, 0.1, 0.05),
+            (0, 1, 0.2, 0.05),
+            (0, 2, 0.3, 0.05),
+        ]
         mock_ml = self._setup_mock_ml(positions)
         func_types = {0: FunctionType.MS}
 
         grid = build_imaging_grid(mock_ml, "handle", func_types)
 
-        assert grid.pixel_count_x == 1
+        assert grid.pixel_count_x == 3
         assert grid.pixel_count_y == 1
-        assert grid.lateral_width == 0.0
-        assert grid.lateral_height == 0.0
-        assert grid.pixel_size_x == 0.0
-        assert grid.pixel_size_y == 0.0
 
     def test_no_valid_positions_raises(self):
         """Test error when no scans have valid positions."""
