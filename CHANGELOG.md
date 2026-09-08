@@ -2,6 +2,34 @@
 
 <!-- version list -->
 
+## v3.21.1 (2026-09-08)
+
+### Bug Fixes
+
+- **convert**: Size --streaming auto from the source and the axis it writes
+  ([`c0f54c7`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/c0f54c7abbffc8814818abcdc927e26c5cfb8b8b))
+
+- **waters**: Refuse an acquisition whose stage never moved
+  ([`8a79d4c`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/8a79d4c73fbd5aaa26f93a3a5356595f4f3e973b))
+
+- **waters**: Take the raster pitch over the intervals, not the positions
+  ([`6b87d00`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/6b87d00cae2f63acad0d3a5b40ec6d52f4f1fdd5))
+
+### Documentation
+
+- Refer to datasets by registry name, not by lab-share path
+  ([#221](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/pull/221),
+  [`175f189`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/175f18935550d41dc1cd89c019de8876fa4512af))
+
+- **decisions**: The DESI grid premise, and what the size estimate counts
+  ([`cf70c6d`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/cf70c6d570fc01a4cdb7195e0bb3d77570f43797))
+
+### Testing
+
+- **convert**: Say why an untyped source takes the centroid branch
+  ([`b02c43c`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/b02c43c082526dc683a7694559cc309cd454e010))
+
+
 ## v3.21.0 (2026-09-08)
 
 ### Features

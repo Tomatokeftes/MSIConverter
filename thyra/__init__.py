@@ -36,7 +36,7 @@ warnings.filterwarnings(
     category=FutureWarning,
 )
 
-__version__ = "3.21.0"
+__version__ = "3.21.1"
 
 # Import key components - avoid wildcard imports
 try:
