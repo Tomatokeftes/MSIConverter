@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v3.21.0 (2026-09-08)
+
+### Features
+
+- **converters**: Drop the streaming COO route, refuse csr on the one that remains
+  ([`ca16090`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/ca16090f73339a226e04bfd3b58db5906e5873af))
+
+
 ## v3.20.0 (2026-09-07)
 
 ### Documentation
