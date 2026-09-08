@@ -626,7 +626,7 @@ parallel acquisition repeats them.
 
 (That file grids to 1x1, because the reader builds the grid from laser
 coordinates and a DESI stage records none. That is a separate gap, tracked
-outside this entry; it is not what D7 is about.)
+in #213; it is not what D7 is about.)
 
 ### Decision
 
@@ -691,7 +691,7 @@ per spectrum whatever the source, which is 0.57 GB for this run, while the
 streaming converter's own estimate once running is **74.1 GB** (7,682
 pixels x 2,590,447 bins). Left on `auto` the conversion stays in memory and
 dies at 72 percent asking for a 24.5 GiB array on a 128 GB machine. That
-estimate is a general defect, tracked separately.
+estimate is a general defect, tracked in #214.
 
 The alternative -- forcing the whole run to the profile trace whenever a
 chunk cannot be centroided -- would keep the image whole automatically, but
