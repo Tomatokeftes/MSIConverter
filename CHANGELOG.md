@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v3.22.0 (2026-09-08)
+
+### Features
+
+- **cli**: Drop --sparse-format, CSC is the only layout written
+  ([`3410a58`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/3410a585c6f02d700205e03373ad47c03bdb5519))
+
+
 ## v3.21.1 (2026-09-08)
 
 ### Bug Fixes
