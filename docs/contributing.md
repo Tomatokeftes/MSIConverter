@@ -247,6 +247,55 @@ Thyra follows [Semantic Versioning](https://semver.org/) (SemVer):
    `CHANGELOG.md`. Never edit it by hand; the [Changelog](changelog.md) page
    includes that file verbatim.
 
+### Releases are batched, not per-merge
+
+**Merging a pull request does not publish a release.** Releases are cut on a
+schedule or on demand, and each one covers every commit merged since the
+previous tag.
+
+`semantic-release version` reads all commits since the last tag and applies the
+highest bump among them, so a batch of eight `fix:` merges becomes one patch
+version whose changelog section lists all eight. Releasing per merge would have
+turned the same eight into eight versions and eight PyPI uploads.
+
+`.github/workflows/release.yml` therefore has no `push` trigger. It runs:
+
+- **on a cron**, Mondays at 06:00 UTC, releasing whatever has accumulated;
+- **on demand**, whenever you want a release sooner:
+
+  ```bash
+  gh workflow run release.yml
+  ```
+
+- **publish-only**, to re-upload the current version to PyPI without cutting a
+  new one, via the `publish_only` input on the Run workflow button.
+
+A run with nothing releasable since the last tag - only `chore:`, `ci:`,
+`docs:`, `refactor:`, `style:`, `test:` or `build:` commits - reports
+`No release` and exits green. Only `feat:` (minor) and `fix:`/`perf:` (patch)
+move the version.
+
+Nothing is lost by waiting: unreleased commits sit on `main` and the next run
+picks them up. What you should *not* do is merge a fix and then expect
+`pip install thyra` to have it minutes later - check the tags, or trigger a
+release yourself.
+
+### Grouping issues into release batches
+
+Open issues are grouped into **milestones**, one per planned batch. A milestone
+is the unit of release: work through its issues on one branch, open one pull
+request that closes all of them, merge, then cut a release.
+
+Milestones rather than draft pull requests, because a draft PR needs a branch
+with commits on it - six placeholder branches would each run CI, go stale
+against a moving `main`, and say nothing a milestone does not. Open the pull
+request when you start writing the code, not when you plan the batch.
+
+Group by the code the issues touch, not by how they were found. Issues that
+edit the same reader or the same function belong in one batch: fixing them in
+separate pull requests means solving the same merge conflict once per pull
+request.
+
 ### Development Versions
 
 - **Alpha/Beta** releases may be created for testing: `1.2.0-alpha.1`
