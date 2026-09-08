@@ -48,7 +48,7 @@ MRT_HEADER = (
     "$$ Cal Function 1: 0.000000000000000E+00,1.000000000000000E+00,T1\n"
 )
 SYNAPT_EXTERN = (
-    "Parameters for E:\\Britt.PRO\\Acqudb\\synapt on MALDI MS.exp\n"
+    "Parameters for E:\\MassLynx.PRO\\Acqudb\\synapt on MALDI MS.exp\n"
     "Created by 4.1 SCN957\n"
     " \n"
     "Instrument Configuration:\n"

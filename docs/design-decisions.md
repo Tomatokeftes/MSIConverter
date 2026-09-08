@@ -239,10 +239,10 @@ ion current: `current_ratio` 0.9717425865942857 against
 
 ### The share census
 
-Every `analysis.tdf` under `V:\Instruments` and `V:\Users` was opened
-read-only and asked what it is: **1,021** of them, plus the nine in the
-local corpus. `V:\Instruments\TimsTOF` holds 25 -- most `.d` folders there
-are TSF, TIMS off -- and the other twenty instrument directories hold none.
+Every `analysis.tdf` on the lab share was opened read-only and asked what it
+is: **1,021** of them, plus the nine in the local corpus. The share's timsTOF
+instrument directory holds 25 -- most `.d` folders there are TSF, TIMS off --
+and the other twenty instrument directories hold none.
 Of the 1,021, 230 are imaging acquisitions (they have `MaldiFrameInfo`) and
 95 carry `PasefFrameMsMsInfo`, but only **six are both**, and those six are
 the four positive-mode files above (two of them duplicate copies) plus the
@@ -253,9 +253,9 @@ tables -- a clean conversion failure, not a crash.
 Their *schedules* are still worth reading, and reading them exercised two
 refusals no real file had reached before.
 
-- **Data-dependent PASEF.** `V:\Users\Cillero-Pastor_Berta\Pereira_Betzabeth\TIMS TOF 2 PRO\20260313`
-  holds fourteen DDA runs on a timsTOF Pro 2. One
-  (`260313_BP_26_DDA_S2-G10_1_741.d`) has 1,840 survey and 9,912 fragment
+- **Data-dependent PASEF.** The datasets registered as `tims_dda_pro2_2026`
+  are fourteen DDA runs on a timsTOF Pro 2. One
+  (`tims_dda_pro2_2026_741`) has 1,840 survey and 9,912 fragment
   frames and **14,952 distinct isolation windows, each in 1 to 8 frames**;
   across the share the count reaches 90,915. The precursors are chosen per
   frame, so there is no global feature axis, and the windows overlap on the
@@ -567,8 +567,8 @@ written to read. It cannot say what the field **means**.
 
 ### What the real files say
 
-7,486 Waters `.raw` directories were found on the lab share (the six Waters
-instrument folders under `V:\Instruments`, plus `V:\Users\Cuypers_Eva`);
+7,486 Waters `.raw` directories were found on the lab share (its six Waters
+instrument folders, plus one user directory);
 1,396 hold more than one `_FUNC*.DAT`, and the multi-function ones were
 opened. **Every multi-function MALDI imaging run is a single-function raster
 that MassLynx split across functions**, because it caps a `_FUNC*.DAT` file
@@ -615,7 +615,8 @@ is why.
 
 **One real multi-function acquisition was found**, and it is what makes the
 rule below decidable rather than a guess:
-`Xevo DESI\Pierre\DESI_PIMAX.PRO\Data\20191107_fastDDA_neg_002.raw`. Its
+the dataset registered as `waters_dda_neg_16func`, a fast-DDA run on a Xevo
+DESI. Its
 `_extern.inf` declares **16** functions -- one "TOF FAST DDA FUNCTION" and
 15 "TOF SURVEY FUNCTION"s -- against the one function the chunked files
 declare. Function 0 is MS1 with no precursor; functions 1 to 15 are level 2
@@ -712,7 +713,7 @@ artefact above, and reads as MS1.
 | `180814_EVO_Fresh_image.raw` converted, default centroid | 6,408 pixels against v3.19.0's 3,200, no duplicate coordinates, no empty pixel, `ms_functions [0, 1]`, `excluded_functions["2"]` carrying `n_unique_pixels 1274` and its reason, `fragmentation` MS1. The TIC image is continuous across the chunk boundary at row 19 |
 | the same run with `--waters-spectrum profile --streaming true --resample-bins 60000` | all three chunks, **7,682 pixels** -- the whole 167 x 46 raster, no duplicate coordinate, no empty pixel -- and the TIC image is continuous across both chunk boundaries, so the band above was the representation and nothing else. 109M non-zeros, 870 MB. The axis was coarsened only to keep the store off a full disk; the default axis is the 74.1 GB estimate above |
 | `20170818_08.raw`, a real single-precursor MS/MS run | `fragmentation` MS level 2, one window at m/z 377.4, collision energy 35.0, CID; the converter declines a demultiplexed table because one precursor needs none |
-| `20191107_fastDDA_neg_002.raw`, the real DDA run | functions 1 to 15 recorded under `excluded_functions` with their per-scan precursors, function 0 converted, `fragmentation` MS1 |
+| `waters_dda_neg_16func`, the real DDA run | functions 1 to 15 recorded under `excluded_functions` with their per-scan precursors, function 0 converted, `fragmentation` MS1 |
 | every file in the table above | no two converted functions share a pixel, and converted plus recorded pixels equal the file's distinct laser positions |
 
 ### Objections considered
