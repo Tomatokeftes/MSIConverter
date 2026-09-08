@@ -81,7 +81,7 @@ def test_pcs_path_writes_optical_image(tmp_path):
     import tifffile
 
     # Large enough to exercise the multi-scale pyramid + chunked write that the
-    # PCS path now shares with the COO converter.
+    # PCS path shares with the in-memory converters.
     optical = tmp_path / "optical.tif"
     rng = np.random.default_rng(0)
     tifffile.imwrite(str(optical), rng.integers(0, 255, (1024, 1024), dtype="uint8"))
@@ -109,28 +109,6 @@ def test_pcs_path_writes_optical_image(tmp_path):
     # Both the TIC and the optical image must carry ome.version.
     assert "version" in _image_ome_attrs(out, "mock_z0_tic")
     assert "version" in _image_ome_attrs(out, optical_keys[0])
-
-
-def test_coo_path_roundtrips(tmp_path):
-    """The COO (use_csc=False) path must also round-trip via read_zarr."""
-    reader = MockMSIReader(_small_config())
-    out = tmp_path / "coo.zarr"
-
-    converter = StreamingSpatialDataConverter(
-        reader=reader,
-        output_path=out,
-        dataset_id="mock",
-        pixel_size_um=10.0,
-        use_csc=False,  # force the COO path
-    )
-
-    assert converter.convert() is True
-
-    import spatialdata
-
-    sdata = spatialdata.read_zarr(str(out))
-    assert len(sdata.tables) == 1
-    assert "version" in _image_ome_attrs(out, "mock_z0_tic")
 
 
 def test_image_write_failure_is_not_silent(tmp_path, monkeypatch):

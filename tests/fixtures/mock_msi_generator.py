@@ -232,8 +232,8 @@ class MockMSIReader(BaseMSIReader):
     ) -> Tuple[NDArray[np.int32], NDArray[np.float64]]:
         """Generate a single synthetic spectrum for a pixel.
 
-        Deterministic in ``pixel_idx``: the streaming PCS/COO paths iterate
-        the reader twice (count then write) and require the second pass to
+        Deterministic in ``pixel_idx``: the streaming PCS path iterates
+        the reader twice (count then scatter) and requires the second pass to
         reproduce the first exactly, so the spectrum must not depend on RNG
         history or iteration order.
         """
@@ -299,8 +299,6 @@ def run_streaming_demo(config: MockMSIConfig, output_dir: Path) -> Path:
         output_path=output_path,
         dataset_id="mock",
         pixel_size_um=config.pixel_size_um,
-        chunk_size=5000,
-        use_csc=True,  # force the memory-bounded PCS path
     )
     success = converter.convert()
 

@@ -294,12 +294,9 @@ def test_converter_initialization():
             output_path=output_path,
             dataset_id="test_dataset",
             pixel_size_um=20.0,
-            chunk_size=50,
             use_csc=True,
         )
 
-        assert converter._chunk_size == 50
-        assert converter._use_csc is True
         assert converter.dataset_id == "test_dataset"
 
 
@@ -327,7 +324,6 @@ class TestStreamingSpatialDataConverter:
                 output_path=output_path,
                 dataset_id="test_dataset",
                 pixel_size_um=20.0,
-                chunk_size=10,  # Small chunks for testing
                 use_csc=True,  # Use CSC format
             )
 
@@ -368,7 +364,6 @@ class TestStreamingSpatialDataConverter:
                 reader=reader,
                 output_path=output_path,
                 dataset_id="chunked_test",
-                chunk_size=25,  # Process in 4 chunks
                 use_csc=True,
             )
 
@@ -398,7 +393,6 @@ class TestStreamingSpatialDataConverter:
                 reader=reader,
                 output_path=output_path,
                 dataset_id="csc_test",
-                chunk_size=5,
                 use_csc=True,
             )
 
@@ -475,7 +469,6 @@ class TestStreamingSpatialDataConverter:
                 output_path=output_path,
                 dataset_id="tic_shapes_test",
                 pixel_size_um=25.0,
-                chunk_size=5,
                 use_csc=True,  # Force PCS streaming path
             )
 
@@ -552,7 +545,6 @@ def test_streaming_converter_memory_efficiency():
         converter = StreamingSpatialDataConverter(
             reader=reader,
             output_path=output_path,
-            chunk_size=50,  # Small chunks
             use_csc=True,
             resampling_config=resampling_config,
         )
@@ -604,37 +596,6 @@ def test_single_pixel_dataset():
     not SPATIALDATA_AVAILABLE,
     reason="SpatialData dependencies not available",
 )
-def test_coo_path_small_dataset():
-    """Test that small datasets use COO path when use_csc=False."""
-    reader = MockMSIReader(
-        dimensions=(3, 3, 1),  # 9 pixels - small dataset
-        peaks_per_spectrum=50,
-    )
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        output_path = Path(tmpdir) / "test_coo.zarr"
-
-        converter = StreamingSpatialDataConverter(
-            reader=reader,
-            output_path=output_path,
-            dataset_id="coo_test",
-            use_csc=False,  # Force COO path
-        )
-
-        success = converter.convert()
-        assert success, "COO path conversion should succeed"
-
-        from spatialdata import SpatialData
-
-        sdata = SpatialData.read(str(output_path))
-        assert len(sdata.tables) > 0, "Should have tables"
-
-
-@pytest.mark.integration
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 def test_rectangular_grid():
     """Test conversion with non-square (rectangular) grid."""
     reader = MockMSIReader(
@@ -678,34 +639,6 @@ def test_rectangular_grid():
     not SPATIALDATA_AVAILABLE,
     reason="SpatialData dependencies not available",
 )
-def test_auto_use_csc_mode_large_dataset():
-    """Auto mode selects the PCS (CSC) route, whatever the estimated size."""
-    reader = MockMSIReader(
-        dimensions=(100, 100, 1),  # 10000 pixels
-        peaks_per_spectrum=500,
-        mass_range=(100.0, 1000.0),
-    )
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        output_path = Path(tmpdir) / "test_auto_large.zarr"
-
-        converter = StreamingSpatialDataConverter(
-            reader=reader,
-            output_path=output_path,
-            dataset_id="auto_test_large",
-            use_csc="auto",  # Auto mode
-        )
-
-        # ~0.37 GB estimated (10,000 pixels x 10,000 bins x 4 bytes), which
-        # under the old 30 GB gate sent this to COO. "auto" is PCS now.
-        assert converter._should_use_pcs() is True
-
-
-@pytest.mark.integration
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 def test_auto_use_csc_mode_with_resampling():
     """Test auto mode estimation with resampling config."""
     reader = MockMSIReader(
@@ -733,68 +666,6 @@ def test_auto_use_csc_mode_with_resampling():
         size_gb = converter._estimate_output_size_gb()
         # 2500 * 5000 * 4 bytes = 50 MB = 0.047 GB
         assert size_gb < 1.0, "Should be less than 1 GB"
-
-
-@pytest.mark.integration
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
-def test_custom_temp_directory():
-    """Test conversion with custom temporary directory."""
-    reader = MockMSIReader(
-        dimensions=(3, 3, 1),
-        peaks_per_spectrum=50,
-    )
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        output_path = Path(tmpdir) / "test_custom_temp.zarr"
-        custom_temp = Path(tmpdir) / "custom_temp"
-        custom_temp.mkdir()
-
-        converter = StreamingSpatialDataConverter(
-            reader=reader,
-            output_path=output_path,
-            dataset_id="custom_temp_test",
-            use_csc=False,  # Use COO path which uses temp storage
-            temp_dir=custom_temp,
-        )
-
-        success = converter.convert()
-        assert success, "Conversion with custom temp dir should succeed"
-
-
-def test_temp_storage_cleaned_on_conversion_failure(tmp_path, monkeypatch):
-    """Temp storage must be cleaned even when conversion errors mid-way.
-
-    Regression for a leak that accumulated 79.5 GiB of ``streaming_coo_*``
-    directories in the system temp on a user's box: cleanup was only
-    called on the COO success path, so any failure (OOM, downstream
-    Zarr write error) left the mkdtemp behind.  Cleanup now lives in
-    the ``convert()`` finally block.
-    """
-    reader = MockMSIReader(dimensions=(3, 3, 1), peaks_per_spectrum=50)
-    output_path = tmp_path / "test_cleanup.zarr"
-
-    converter = StreamingSpatialDataConverter(
-        reader=reader,
-        output_path=output_path,
-        dataset_id="cleanup_test",
-        use_csc=False,  # Force COO path so _setup_temp_storage runs.
-    )
-
-    # Force a failure AFTER _setup_temp_storage has created the dir.
-    def _boom(self):
-        raise RuntimeError("simulated COO build failure")
-
-    monkeypatch.setattr(StreamingSpatialDataConverter, "_stream_build_coo", _boom)
-
-    success = converter.convert()
-    assert not success, "Conversion should report failure"
-    assert converter._temp_path is None, (
-        "Temp storage path should be cleared after cleanup -- "
-        "otherwise the mkdtemp directory was leaked on the failure path."
-    )
 
 
 class MockMSIReaderWithOptical(MockMSIReader):
@@ -963,7 +834,6 @@ def test_larger_chunk_write():
             reader=reader,
             output_path=output_path,
             dataset_id="large_chunk_test",
-            chunk_size=50,  # Will trigger 5 chunk writes (225/50)
             use_csc=True,
         )
 

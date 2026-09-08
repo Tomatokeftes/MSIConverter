@@ -1134,10 +1134,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         - ``regions`` -- the acquisition region summary, as JSON.
 
         This exists because the converters have two write paths and they
-        drifted. The in-memory and streaming-COO paths hand the table to
-        ``anndata``'s writer, which serialises whatever is in
-        ``adata.uns``; the streaming-PCS path hand-writes the Zarr layout
-        and used to compose its own, much smaller block -- with
+        drifted. The in-memory converters hand the table to ``anndata``'s
+        writer, which serialises whatever is in ``adata.uns``; the
+        streaming (PCS) path hand-writes the Zarr layout and used to
+        compose its own, much smaller block -- with
         ``spectrum_type`` hardcoded to ``"processed"``, which is not even
         a value the extractors produce. Routing was on a size threshold at
         the time, so a dataset large enough to reach the PCS path came out
@@ -2983,10 +2983,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         ``uns["regions"]`` reports for that case. Only the Bruker timsTOF
         reader produces a map today; a position missing from it gets -1.
 
-        Shared because there are four places that build an obs table --
-        the in-memory 2D and 3D converters, the streaming-COO slice
-        builder and the hand-written PCS layout -- and each had its own
-        copy of this rule. The PCS one had no copy at all and simply
+        Shared because there are three places that build an obs table --
+        the in-memory 2D and 3D converters and the hand-written PCS layout
+        (a fourth, the streaming COO route, is gone) -- and each had its
+        own copy of this rule. The PCS one had no copy at all and simply
         omitted the column.
 
         Args:
@@ -3829,8 +3829,8 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         ``coordinate_systems`` is the one that matters most in practice: it
         is the structured contract saying what unit ``"global"`` is in, and
         Ousia and the registration tooling read it rather than guessing.
-        A PCS store simply did not have it, and the route is chosen by size,
-        so the datasets that lost it are the largest ones.
+        A PCS store simply did not have it, and at the time the route was
+        chosen by size, so the datasets that lost it were the largest ones.
 
         Sections the reader has nothing for are omitted rather than written
         empty, matching :meth:`build_uns_metadata`.
