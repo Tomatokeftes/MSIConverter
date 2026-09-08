@@ -2,6 +2,7 @@
 import logging
 import traceback
 import warnings
+from math import isfinite
 from pathlib import Path
 from typing import Any, Dict, Literal, Optional, Tuple, Union
 
@@ -51,16 +52,24 @@ def _validate_numeric_parameters(
     pixel_size_um: Optional[float], z_spacing_um: Optional[float] = None
 ) -> bool:
     """Validate numeric parameters."""
+    # `<= 0` is False for NaN and for +infinity, so both used to pass every
+    # one of these guards and reach the store as the dataset's pixel size or
+    # z spacing. The API is validated as well as the CLI because a caller
+    # can hand these in directly (issue #231).
     if pixel_size_um is not None and (
-        not isinstance(pixel_size_um, (int, float)) or pixel_size_um <= 0
+        not isinstance(pixel_size_um, (int, float))
+        or not isfinite(pixel_size_um)
+        or pixel_size_um <= 0
     ):
-        logger.error("Pixel size must be a positive number")
+        logger.error("Pixel size must be a finite positive number")
         return False
 
     if z_spacing_um is not None and (
-        not isinstance(z_spacing_um, (int, float)) or z_spacing_um <= 0
+        not isinstance(z_spacing_um, (int, float))
+        or not isfinite(z_spacing_um)
+        or z_spacing_um <= 0
     ):
-        logger.error("Z spacing must be a positive number")
+        logger.error("Z spacing must be a finite positive number")
         return False
 
     return True

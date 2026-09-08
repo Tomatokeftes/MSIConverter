@@ -24,7 +24,7 @@ from ...core.msms import (
 )
 from ...core.registry import register_reader
 from ...metadata.extractors.waters_extractor import WatersMetadataExtractor
-from .imaging_grid import ImagingGrid, build_imaging_grid
+from .imaging_grid import ImagingGrid, build_imaging_grid, regrid_for_functions
 from .instrument import WatersInstrument, identify_waters_instrument
 from .masslynx_lib import FunctionType, MassLynxLib, ScanInfoData
 
@@ -133,6 +133,9 @@ class WatersReader(BaseMSIReader):
         self._excluded_functions: Dict[int, Dict[str, Any]] = {}
         #: Raster chunks MassLynx refuses to centroid: index -> pixels lost.
         self._uncentroidable_functions: Dict[int, int] = {}
+        #: Functions covering their own pixels off the raster the MS
+        #: functions describe: index -> pixels they held.
+        self._off_raster_functions: Dict[int, int] = {}
         self._common_mass_axis_cache: Optional[NDArray[np.float64]] = None
         self._use_centroid = use_centroid
         self._closed = False
@@ -159,6 +162,48 @@ class WatersReader(BaseMSIReader):
                 f"No _FUNC*.DAT files found in {self.data_path}. "
                 "Is this a valid Waters .raw directory?"
             )
+
+    def _function_dat_files(self) -> Dict[int, Path]:
+        """The ``_FUNC*.DAT`` files present, keyed by 0-based function index.
+
+        MassLynx numbers the files from one, so ``_FUNC001.DAT`` holds
+        function 0.
+        """
+        found: Dict[int, Path] = {}
+        for path in self.data_path.iterdir():
+            name = path.name.upper()
+            if not (name.startswith("_FUNC") and name.endswith(".DAT")):
+                continue
+            stem = name[len("_FUNC") : -len(".DAT")]
+            if stem.isdigit():
+                found[int(stem) - 1] = path
+        return found
+
+    def _validate_function_files(self, n_functions: int) -> None:
+        """Refuse a .raw directory that has lost one of its function files.
+
+        The DLL keeps reporting a function whose ``_FUNC*.DAT`` is gone --
+        with 0 scans, no error and no warning -- so the only symptom is a
+        smaller scan total than the acquisition had. Measured on a 16
+        function file with ``_FUNC001.DAT`` deleted: still 16 functions,
+        scans [0, 50, 55, ...], 820 positioned scans instead of 848, and
+        the reader opened it without a word. On a raster MassLynx split
+        across functions (functions 0/1/2 holding rows 0-19 / 19-38 /
+        38-45) the same damage drops 20 rows of the image (issue #229).
+        """
+        present = self._function_dat_files()
+        missing = [f for f in range(n_functions) if f not in present]
+        if not missing:
+            return
+        raise ValueError(
+            f"{self.data_path.name} declares {n_functions} function(s) but "
+            f"{len(missing)} of them have no data file: "
+            f"{', '.join(f'_FUNC{f + 1:03d}.DAT' for f in missing)}. "
+            f"MassLynx still reports those functions, with 0 scans, so "
+            f"converting this directory would silently drop whatever they "
+            f"held -- on a raster split across functions, entire rows of "
+            f"the image. Restore the missing file(s) from the acquisition."
+        )
 
     def _ensure_initialized(self) -> None:
         """Lazy initialization: load DLL, open file, build imaging grid.
@@ -211,9 +256,24 @@ class WatersReader(BaseMSIReader):
                 f"Function types: {self._function_types}"
             )
 
-        # Build the imaging grid (scans all functions/scans for laser coordinates)
+        # Refuse a file whose functions have lost their data. The DLL
+        # reports a function whose _FUNC*.DAT is gone, with 0 scans, so
+        # nothing downstream notices: on a raster MassLynx split across
+        # functions, one missing chunk file silently drops its rows of the
+        # image (issue #229).
+        self._validate_function_files(n_funcs)
+
+        # Build the imaging grid from the MS functions alone. They are what
+        # defines the raster; everything else is measured against it. The
+        # pitch used to come from every function including the ones
+        # selection then excluded, so one reference spot parked off the
+        # raster turned a 10x5 image at 30 um into an 11x6 one at
+        # 1097 x 440 um (issue #232).
         self._imaging_grid = build_imaging_grid(
-            self._ml, self._handle, self._function_types
+            self._ml,
+            self._handle,
+            self._function_types,
+            include_functions=ms_functions,
         )
 
         # Which functions hold the image: the raster chunks MassLynx named
@@ -225,6 +285,14 @@ class WatersReader(BaseMSIReader):
         )
         self._ms_functions = self._select_converted_functions(
             candidates, self._imaging_grid
+        )
+
+        # Re-fit the raster to what is actually converted. A rescued chunk
+        # extends the image past the extent of the MS functions, so the
+        # grid has to grow to hold it; an excluded function's readings must
+        # not leave their pitch behind in a grid it contributes no pixel to.
+        self._imaging_grid = regrid_for_functions(
+            self._imaging_grid, self._ms_functions
         )
 
         # A single-pixel grid is refused by build_imaging_grid() above rather
@@ -244,12 +312,16 @@ class WatersReader(BaseMSIReader):
 
     @staticmethod
     def _positioned_scans(func: int, grid: "ImagingGrid") -> List["ScanInfoData"]:
-        """The scan records of one function that carry a laser position."""
-        return [
-            info
-            for (f, _scan), info in sorted(grid.scan_map.items())
-            if f == func and info.has_position
-        ]
+        """The scan records of one function that carry a laser position.
+
+        Reads the per-function index the grid builds once. This used to
+        sort and filter the whole scan map on every call, and function
+        selection asks five different questions of each function's scans:
+        O(F x N log N) over the file, measured at 87 s of selection against
+        a 29 s grid build on a single-function 25 M scan raster, and a
+        25-function Synapt G1 run pays it 25 times over (issue #235).
+        """
+        return grid.scans_by_function.get(func, [])
 
     @classmethod
     def _function_pixels(
@@ -301,9 +373,24 @@ class WatersReader(BaseMSIReader):
         for f in ms_functions:
             covered |= self._function_pixels(f, grid)
 
-        extra, uncentroidable = [], []
+        extra, uncentroidable, off_raster = [], [], []
         for f, ft in sorted(function_types.items()):
             if ft is not FunctionType.LOCKMASS:
+                continue
+            # The rescue rule reads "covers pixels no MS function covers"
+            # as "is the tail of a split raster". A reference spot parked
+            # away from the sample covers a pixel no MS function covers
+            # too, and used to be converted as an image pixel on that
+            # basis. The tail of a split raster continues the raster, so
+            # it lands on the same lattice; a spot does not (issue #232).
+            #
+            # Tested before the pixel count, not after: an off-raster
+            # reading has no pixel in this grid at all, so it would
+            # otherwise fall out as "covers nothing new" and never be
+            # named.
+            scans = self._positioned_scans(f, grid)
+            if scans and not all(grid.lies_on_raster(s) for s in scans):
+                off_raster.append(f)
                 continue
             new_pixels = self._function_pixels(f, grid) - covered
             if not new_pixels:
@@ -312,6 +399,19 @@ class WatersReader(BaseMSIReader):
                 uncentroidable.append((f, len(new_pixels)))
             else:
                 extra.append(f)
+
+        for f in off_raster:
+            self._off_raster_functions[f] = len(self._positioned_scans(f, grid))
+        if off_raster:
+            logger.warning(
+                "Function(s) %s cover pixels no MS function covers, but "
+                "their stage positions do not lie on the raster the MS "
+                "functions describe, so they are not the tail of a split "
+                "raster. They are excluded: a reference or calibration "
+                "spot converted as an image pixel would stretch the grid "
+                "around it.",
+                ", ".join(str(f) for f in off_raster),
+            )
 
         if uncentroidable:
             lost = sum(n for _f, n in uncentroidable)
@@ -389,6 +489,18 @@ class WatersReader(BaseMSIReader):
             }
             for f, n_pixels in self._uncentroidable_functions.items()
         }
+        # No n_unique_pixels: an off-raster reading has no pixel in this
+        # grid, which is the point. _function_summary's n_scans says how
+        # much was left out.
+        self._excluded_functions.update(
+            {
+                f: {
+                    **self._function_summary(f, grid),
+                    "reason": "stage positions do not lie on the imaging raster",
+                }
+                for f in self._off_raster_functions
+            }
+        )
         kept: List[int] = []
         for group in self._pixel_groups(ms_functions, grid):
             kept.extend(self._select_within_group(group, grid))
