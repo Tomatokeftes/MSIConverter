@@ -6,10 +6,10 @@ it was interpreted: ``uns["essential_metadata"]`` carries ``source_path``,
 that wrote it, and the sections beside it carry the vendor metadata.  Ousia
 reads those back out of the store; nothing else records them.
 
-There are four write paths and they had drifted:
+There are three write paths and they had drifted:
 
-* the in-memory converters and the streaming-COO path hand the table to
-  anndata's writer, which serialises ``adata.uns`` as-is, and
+* the in-memory converters hand the table to anndata's writer, which
+  serialises ``adata.uns`` as-is, and
 * the streaming-PCS path hand-writes the Zarr layout, and used to compose
   its own, much smaller block -- ``spectrum_type`` hardcoded to
   ``"processed"``, ``mass_range`` taken from the *resampled target axis*
@@ -17,15 +17,16 @@ There are four write paths and they had drifted:
   ``format_specific`` / ``instrument_info`` / ``raw_metadata`` / ``regions``
   dropped entirely.
 
-Which path a dataset took was decided by size at the time, in
-``StreamingSpatialDataConverter._should_use_pcs`` -- so two acquisitions
+Which path a dataset took was decided by size at the time, between the
+streaming converter's two routes -- so two acquisitions
 off the same instrument landed on opposite sides of the split and came out
 described differently.  On ``test_data/``: ``pea.imzML`` estimated 29.9 GB
 (COO, complete provenance) and ``bellini.imzML`` 43.3 GB (PCS, wrong
 ``spectrum_type``, everything else missing).  Ousia's import wizard forces
 ``use_csc=True``, so *every* wizard conversion took the PCS path.
 
-That size split is gone -- ``"auto"`` is PCS now, unconditionally -- which
+That size split is gone -- the streaming COO route was removed once PCS
+became the unconditional default -- which
 removes the *mechanism* that made two sibling datasets disagree but not the
 hazard: the paths still compose provenance separately, so a section added
 to one and not the other diverges just as silently. Hence this module keeps
@@ -53,10 +54,11 @@ all of it, so this file compares everything a store says about itself:
   came out with all-zero phantom rows (real ``pea``: 17,423 against
   12,737, and ``shapes/`` tracked the phantoms).
 
-There is a fourth path, ``SpatialData3DConverter``, which the original
-version of this file did not cover.
+There is a third path, ``SpatialData3DConverter``, which the original
+version of this file did not cover. A fourth, the streaming COO route,
+was compared here until it was removed.
 
-These tests convert the same mock dataset down all four paths and compare
+These tests convert the same mock dataset down all three paths and compare
 what each one stored.  The mock is deliberately **sparse** (``sparsity``
 below): on a fully populated grid "one row per grid position" and "one row
 per spectrum" are the same number, which is exactly why the phantom rows
@@ -132,14 +134,9 @@ def _in_memory(output_path):
     return SpatialData2DConverter(**_common(output_path))
 
 
-def _streaming_coo(output_path):
-    """``streaming=True, use_csc=False`` -- writes via ``SpatialData.write()``."""
-    return StreamingSpatialDataConverter(**_common(output_path), use_csc=False)
-
-
 def _streaming_pcs(output_path):
-    """``streaming=True, use_csc=True`` -- the hand-written Zarr layout."""
-    return StreamingSpatialDataConverter(**_common(output_path), use_csc=True)
+    """``streaming=True`` -- the hand-written Zarr layout."""
+    return StreamingSpatialDataConverter(**_common(output_path))
 
 
 def _volume_3d(output_path):
@@ -152,14 +149,13 @@ def _volume_3d(output_path):
 # z-slice and there is only ever a z0 here.
 WRITE_PATHS: Dict[str, Tuple[Callable, str]] = {
     "in_memory": (_in_memory, _TABLE_NAME),
-    "streaming_coo": (_streaming_coo, _TABLE_NAME),
     "streaming_pcs": (_streaming_pcs, _TABLE_NAME),
     "volume_3d": (_volume_3d, _DATASET_ID),
 }
 
-# The three paths that write a 2D slice table. Their obs schemas must match
+# The two paths that write a 2D slice table. Their obs schemas must match
 # each other exactly; the volume table legitimately carries z as well.
-_SLICE_PATHS = ("in_memory", "streaming_coo", "streaming_pcs")
+_SLICE_PATHS = ("in_memory", "streaming_pcs")
 
 
 def _convert(tmp_path_factory, path_name: str):
@@ -408,7 +404,7 @@ def _read_x(table_path):
 
 
 def test_slice_paths_write_the_same_obs_columns(stores):
-    """``obs`` schema parity across the three paths that write a slice table.
+    """``obs`` schema parity across the two paths that write a slice table.
 
     PCS hand-writes its ``obs`` group and simply had no ``region_number``
     column, so a consumer that branches on it saw a different schema
@@ -443,7 +439,7 @@ def test_volume_obs_adds_only_the_z_columns(stores):
 def test_every_path_writes_one_row_per_spectrum(stores, path_name):
     """Row count parity: one row per acquired spectrum, on every path.
 
-    Three of the four dropped the grid positions that carry no spectrum
+    The in-memory paths dropped the grid positions that carry no spectrum
     (#88); the PCS path emitted the whole bounding box, so a quarter of
     this fixture's rows were all-zero phantoms. On real ``pea.imzML``
     that was 17,423 rows against 12,737 spectra.
@@ -517,7 +513,7 @@ def test_average_spectrum_is_a_mean_on_every_path(stores, path_name):
     paths divide by ``pixel_count`` two lines from the same place.
 
     So a volume came out with a spectrum ``_N_SPECTRA`` times the one
-    the other three paths wrote from identical data -- and, on a
+    the other two paths wrote from identical data -- and, on a
     multi-region volume, a factor apart from the
     ``average_spectrum_per_region`` block beside it in the same ``uns``,
     which divides by the region's pixel count and always did. Nothing

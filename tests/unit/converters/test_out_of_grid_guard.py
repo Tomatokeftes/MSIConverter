@@ -1,26 +1,12 @@
-"""The streaming COO path skips spectra outside the declared grid.
+"""The streaming converter skips spectra outside the declared grid.
 
-The PCS pre-scan grew this guard in 87f287c; the COO path never got it.
-Both passes index a row by ``z * (n_x * n_y) + y * n_x + x`` and neither
+Both passes index a row by ``y * n_x + x`` and, before 87f287c, neither
 checked the result, so a negative coordinate was a legal negative numpy
-index and wrapped silently onto an unrelated pixel.
-
-The two passes fail differently, which is why both are guarded here:
-
-* **Pass 1** assigns ``nnz_per_row[pixel_idx] = nnz`` *unconditionally*,
-  so even an empty wrapped spectrum overwrites a real row's count with
-  zero -- the reason this guard sits outside the ``nnz > 0`` test that
-  its PCS counterpart lives inside.
-* **Pass 2** writes at ``write_pos[pixel_idx]`` and advances it, so the
-  wrapped-onto row's own entries get pushed past the end of the space
-  pass 1 reserved for it and are dropped by the slice assignment.
-
-The result was neither the intruder's value nor the victim's but a
-mixture of the two, which is the shape of failure that makes this worth
-a test: every number stayed plausible and nothing warned. On the 4x4
-fixture below, pixel (3, 3) stored 39,508.05 against a truth of
-47,363.47, while ``use_csc=True`` on the same input warned and stored
-47,363.47.
+index and wrapped silently onto an unrelated pixel. The result was neither
+the intruder's value nor the victim's but a mixture of the two, which is
+the shape of failure that makes this worth a test: every number stayed
+plausible and nothing warned. On the 4x4 fixture below, a route without
+the guard stored 39,508.05 for pixel (3, 3) against a truth of 47,363.47.
 
 **Reachability.** ``imzml_reader`` subtracts 1 from the 1-based positions
 an imzML declares, so a file that is already 0-based yields ``x = -1``
@@ -29,17 +15,20 @@ route is inferred from the reader source rather than measured against a
 vendor file, so the fixture reproduces the coordinate directly.
 
 Only x and y are exercised. ``_refuse_multiple_z_planes`` runs before
-either route is chosen, so ``n_z == 1`` and a z term cannot reach here.
+either pass, so ``n_z == 1`` and a z term cannot reach here.
 
-**The PCS guard this was ported from was itself incomplete**, which the
-per-pixel assertions here could not see. Its pre-scan counted
-``col_counts`` and ``total_nnz`` before the bounds check it already had,
-so it sized the CSC arrays for spectra its own scatter pass then skipped.
-The totals stayed right -- an unwritten slot is a zero and adds nothing
-to a row sum -- while the matrix itself was non-canonical. That is why
-the structural assertions at the bottom of this file exist alongside the
-value ones, and why they assert on both routes rather than only the one
-that was wrong.
+**The guard was itself incomplete at first**, which the per-pixel
+assertions here could not see. The pre-scan counted ``col_counts`` and
+``total_nnz`` before the bounds check it already had, so it sized the CSC
+arrays for spectra its own scatter pass then skipped. The totals stayed
+right -- an unwritten slot is a zero and adds nothing to a row sum -- while
+the matrix itself was non-canonical. That is why the structural assertions
+at the bottom of this file exist alongside the value ones.
+
+This file used to run every assertion on both streaming routes and compare
+them against each other. The COO route is gone, and the comparisons went
+with it; the in-memory converters are the reference now, in
+``test_stored_pixel_spectrum_oracle``.
 """
 
 import logging
@@ -99,13 +88,12 @@ def _config() -> MockMSIConfig:
     )
 
 
-def _convert(output_path: Path, reader, use_csc: bool) -> bool:
+def _convert(output_path: Path, reader) -> bool:
     return StreamingSpatialDataConverter(
         reader=reader,
         output_path=output_path,
         dataset_id="mock",
         pixel_size_um=10.0,
-        use_csc=use_csc,
     ).convert()
 
 
@@ -176,9 +164,8 @@ def test_the_fixture_actually_wraps_onto_a_populated_pixel():
     assert truth[_WRAP_TARGET] > 0.0
 
 
-@pytest.mark.parametrize("use_csc", [True, False])
-def test_out_of_grid_spectrum_leaves_the_wrapped_pixel_alone(tmp_path, use_csc):
-    """Every in-grid pixel keeps its own intensity, on both routes.
+def test_out_of_grid_spectrum_leaves_the_wrapped_pixel_alone(tmp_path):
+    """Every in-grid pixel keeps its own intensity.
 
     Asserted over the whole grid rather than just the victim: a guard
     that skipped too much would show up as some *other* pixel going
@@ -191,8 +178,8 @@ def test_out_of_grid_spectrum_leaves_the_wrapped_pixel_alone(tmp_path, use_csc):
         if 0 <= x < _N_X and 0 <= y < _N_Y
     }
 
-    out = tmp_path / f"oog_{use_csc}.zarr"
-    assert _convert(out, _OutOfGridReader(_config()), use_csc) is True
+    out = tmp_path / "oog.zarr"
+    assert _convert(out, _OutOfGridReader(_config())) is True
 
     stored = _stored_totals(out)
 
@@ -202,42 +189,18 @@ def test_out_of_grid_spectrum_leaves_the_wrapped_pixel_alone(tmp_path, use_csc):
         assert stored[position] == pytest.approx(expected, rel=1e-9), position
 
 
-def test_both_routes_agree_on_out_of_grid_input(tmp_path):
-    """The two routes must produce the same store from the same input.
-
-    This is the assertion the bug would have failed: PCS already skipped
-    the spectrum and COO wrapped it, so the same file converted two
-    different ways gave two different answers for pixel (3, 3) and only
-    one of them warned.
-    """
-    pcs = tmp_path / "pcs.zarr"
-    coo = tmp_path / "coo.zarr"
-
-    assert _convert(pcs, _OutOfGridReader(_config()), use_csc=True) is True
-    assert _convert(coo, _OutOfGridReader(_config()), use_csc=False) is True
-
-    pcs_totals = _stored_totals(pcs)
-    coo_totals = _stored_totals(coo)
-
-    assert set(pcs_totals) == set(coo_totals)
-    for position, pcs_value in pcs_totals.items():
-        assert coo_totals[position] == pytest.approx(pcs_value, rel=1e-9), position
-
-
-@pytest.mark.parametrize("use_csc", [True, False])
-def test_the_skipped_spectrum_is_reported(tmp_path, use_csc):
+def test_the_skipped_spectrum_is_reported(tmp_path):
     """Dropping data silently is what made this expensive to find."""
     with _CaptureWarnings() as captured:
-        out = tmp_path / f"warn_{use_csc}.zarr"
-        assert _convert(out, _OutOfGridReader(_config()), use_csc) is True
+        out = tmp_path / "warn.zarr"
+        assert _convert(out, _OutOfGridReader(_config())) is True
 
     assert len(captured.out_of_grid) == 1, captured.messages
     assert "1 spectra" in captured.out_of_grid[0]
     assert f"{_N_X}x{_N_Y}" in captured.out_of_grid[0]
 
 
-@pytest.mark.parametrize("use_csc", [True, False])
-def test_a_clean_grid_is_untouched_and_silent(tmp_path, use_csc):
+def test_a_clean_grid_is_untouched_and_silent(tmp_path):
     """No false positives: the ordinary case keeps every spectrum.
 
     The stored values for an in-grid dataset are unchanged by this fix,
@@ -246,8 +209,8 @@ def test_a_clean_grid_is_untouched_and_silent(tmp_path, use_csc):
     truth = _reader_totals(MockMSIReader(_config()))
 
     with _CaptureWarnings() as captured:
-        out = tmp_path / f"clean_{use_csc}.zarr"
-        assert _convert(out, MockMSIReader(_config()), use_csc) is True
+        out = tmp_path / "clean.zarr"
+        assert _convert(out, MockMSIReader(_config())) is True
 
     assert captured.out_of_grid == []
 
@@ -257,21 +220,21 @@ def test_a_clean_grid_is_untouched_and_silent(tmp_path, use_csc):
         assert stored[position] == pytest.approx(expected, rel=1e-9), position
 
 
-def test_the_coo_store_still_opens_lazily(tmp_path):
+def test_the_store_still_opens_lazily(tmp_path):
     """Ousia opens these stores through ``anndata.experimental.read_lazy``.
 
-    Pass 1 now sizes the Zarr arrays from a smaller ``total_nnz`` than it
-    used to, and ``indptr`` is built from the same skipped counts. Those
-    two have to stay consistent or the CSR is malformed -- a mismatch
-    that an eager read can absorb but the lazy path need not. Values are
-    materialised rather than trusting the handle: encoding corruption is
-    invisible until the blocks are computed (see
+    The pre-scan sizes the CSC arrays from a ``total_nnz`` that excludes
+    the skipped spectrum, and ``indptr`` is built from the same counts.
+    Those two have to stay consistent or the CSC is malformed -- a
+    mismatch that an eager read can absorb but the lazy path need not.
+    Values are materialised rather than trusting the handle: encoding
+    corruption is invisible until the blocks are computed (see
     ``tests/unit/test_read_lazy_contract.py``).
     """
     truth = _reader_totals(_OutOfGridReader(_config()))
 
     out = tmp_path / "lazy.zarr"
-    assert _convert(out, _OutOfGridReader(_config()), use_csc=False) is True
+    assert _convert(out, _OutOfGridReader(_config())) is True
 
     adata = anndata.experimental.read_lazy(str(out / "tables" / _TABLE_KEY))
     materialised = adata.X.compute()
@@ -300,33 +263,31 @@ def _reader_nnz_in_grid(reader) -> int:
     )
 
 
-@pytest.mark.parametrize("use_csc", [True, False])
-def test_the_stored_matrix_is_structurally_clean(tmp_path, use_csc):
+def test_the_stored_matrix_is_structurally_clean(tmp_path):
     """Skipping a spectrum must not leave slots reserved for it.
 
-    The PCS pre-scan counted ``col_counts`` and ``total_nnz`` for every
+    The pre-scan counted ``col_counts`` and ``total_nnz`` for every
     spectrum with peaks, *including* the ones its own bounds check then
     rejected, while the scatter pass skipped exactly those. The memmap is
     zero-filled, so the reserved slots reached disk as explicit zeros at
     row 0, out of order inside their column.
 
-    Measured on this fixture before the fix: PCS stored 174 entries with
-    7 explicit zeros and ``has_canonical_format`` False, against COO's
-    167 and 0. ``X.sum()`` raised from scipy, but ``todense()``,
+    Measured on this fixture before the fix: 174 entries with 7 explicit
+    zeros and ``has_canonical_format`` False, against the 167 and 0 the
+    reader accounts for. ``X.sum()`` raised from scipy, but ``todense()``,
     ``read_zarr()`` and ``read_lazy()`` all succeeded silently.
 
     No per-pixel value assertion can see this. Explicit zeros contribute
-    nothing to a row sum, which is why
-    ``test_both_routes_agree_on_out_of_grid_input`` passed throughout --
-    it compared totals, and the totals were right.
+    nothing to a row sum, which is why the totals-based tests above passed
+    throughout -- they compared totals, and the totals were right.
     """
     expected_nnz = _reader_nnz_in_grid(_OutOfGridReader(_config()))
 
-    out = tmp_path / f"clean_{use_csc}.zarr"
-    assert _convert(out, _OutOfGridReader(_config()), use_csc) is True
+    out = tmp_path / "structure.zarr"
+    assert _convert(out, _OutOfGridReader(_config())) is True
 
-    matrix = anndata.read_zarr(out / "tables" / _TABLE_KEY).X
-    csc = matrix.tocsc() if matrix.format != "csc" else matrix
+    csc = anndata.read_zarr(out / "tables" / _TABLE_KEY).X
+    assert csc.format == "csc"
 
     assert csc.nnz == expected_nnz, "slots reserved for a skipped spectrum"
     assert (csc.data == 0).sum() == 0, "explicit zeros from unwritten slots"
@@ -335,22 +296,3 @@ def test_the_stored_matrix_is_structurally_clean(tmp_path, use_csc):
     # indptr has to agree with the array it indexes, or the CSC is
     # malformed in a way an eager read can absorb and a lazy one need not.
     assert int(csc.indptr[-1]) == csc.nnz
-
-
-def test_both_routes_store_the_same_number_of_entries(tmp_path):
-    """The structural half of the two-route agreement.
-
-    Row sums agreed even while the two routes held different numbers of
-    entries, so the count is asserted separately rather than folded into
-    the totals comparison.
-    """
-    pcs = tmp_path / "pcs_nnz.zarr"
-    coo = tmp_path / "coo_nnz.zarr"
-
-    assert _convert(pcs, _OutOfGridReader(_config()), use_csc=True) is True
-    assert _convert(coo, _OutOfGridReader(_config()), use_csc=False) is True
-
-    def _nnz(store: Path) -> int:
-        return int(anndata.read_zarr(store / "tables" / _TABLE_KEY).X.nnz)
-
-    assert _nnz(pcs) == _nnz(coo)

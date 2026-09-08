@@ -769,3 +769,58 @@ isolation window has no offsets from this API and only a target.
 With both sibling tables out of core, memory is proportional to the number
 of features, not to the number of non-zeros. That is the intended shape;
 D4 is the guard on it.
+
+---
+
+## D9. One streaming route
+
+**Status:** Accepted (2026-09-08).
+
+The streaming converter had two write routes. PCS (pre-calculated scatter)
+counts entries per column in one pass and scatters straight into
+memory-mapped CSC arrays in the second, so the matrix is never a scipy
+object in RAM. COO counted non-zeros per row, wrote CSR components to a
+temporary Zarr, read them back whole into a `scipy.sparse.csr_matrix` and
+called `.tocsc()` on it. A size threshold sent anything estimated under
+30 GB to COO on the assumption that PCS bought memory safety at a cost in
+speed.
+
+Measured on the mock reader, peak process RSS sampled at 20 ms, one
+subprocess per route, that trade did not exist:
+
+| nnz | PCS | COO |
+|---|---|---|
+| 16M | 7.4 s / 540 MB | 10.4 s / 655 MB |
+| 64M | 35.6 s / 1.1 GB | 58.5 s / 1.9 GB |
+
+Both routes read the source twice, so the whole gap was the
+materialise-then-convert step, and it widened with the dataset. v3.19
+made PCS the unconditional default and left COO as an opt-in escape hatch.
+Nothing reachable from `convert()` or the CLI could select it, Ousia's
+wizard pinned `use_csc=True`, and its own bug class (the 79.5 GiB temp
+directory leak, the missing out-of-grid guard, the pandas 3 string
+failure) was the only thing it still produced. It is gone: about 750 lines
+of `streaming_converter.py`, the `chunk_size` and `temp_dir` constructor
+arguments that served only it, and its half of nine test modules.
+
+**What stays.** `use_csc` stays as a keyword because Ousia passes it;
+`True` and `"auto"` mean the one route, `False` raises and says why. The
+in-memory 2D and 3D converters stay too, and for reasons rather than
+inertia: only they write depth (the PCS scatter has no z term and refuses
+`n_z > 1`), they make one pass where PCS resamples every spectrum twice,
+and they go through spatialdata's own writer, which is what caught the
+five layout drifts the hand-written PCS store has had so far (phantom
+rows, missing root attrs, missing obs column, invented provenance, missing
+encoding attrs). Deleting the route that uses the real writer would leave
+the hand-written layout with no oracle.
+
+**One thing this settled by accident.** `sparse_format="csr"` was only
+honoured by COO; PCS ignored it and stored CSC. Since COO was unreachable
+from `convert()`, a streaming CSR request had been silently producing CSC
+for a release. The streaming converter now refuses `csr` and names the
+in-memory converter as the one that writes it.
+
+**Not decided here.** Whether PCS should grow a z term and route its table
+through spatialdata's writer, at which point the in-memory converters and
+the parity tests both become removable, and whether `--sparse-format`
+earns its place as a flag at all. Both are filed as issues.

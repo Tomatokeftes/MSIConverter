@@ -269,7 +269,7 @@ thyra input.imzML output.zarr \
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--streaming [auto\|true\|false]` | `auto` | Streaming mode for large datasets |
-| `--sparse-format [csc\|csr]` | `csc` | Sparse matrix storage format |
+| `--sparse-format [csc\|csr]` | `csc` | Sparse matrix storage format. Streaming writes CSC only |
 
 !!! info "Streaming mode"
     - **`auto`** (default) -- Thyra estimates dataset size and enables streaming
@@ -277,8 +277,9 @@ thyra input.imzML output.zarr \
     - **`true`** -- Force streaming. Useful if auto-detection underestimates.
     - **`false`** -- Force standard (in-memory) conversion.
 
-    Streaming processes spectra in chunks and writes incrementally to disk. The
-    output is identical to standard mode.
+    Streaming makes two passes over the source and scatters straight into
+    memory-mapped CSC arrays, so the matrix is never held in RAM. The output
+    is identical to standard mode, except that streaming always stores CSC.
 
 ### Examples
 
@@ -286,8 +287,9 @@ thyra input.imzML output.zarr \
 # Force streaming for a large dataset
 thyra large.d output.zarr --streaming true
 
-# Use CSR format (faster row access, slower column access)
-thyra input.imzML output.zarr --sparse-format csr
+# Use CSR format (faster row access, slower column access). Only the
+# in-memory converter writes CSR, so streaming has to be off.
+thyra input.imzML output.zarr --sparse-format csr --streaming false
 ```
 
 !!! tip "CSC vs CSR"

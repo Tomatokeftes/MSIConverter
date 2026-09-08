@@ -3,16 +3,15 @@
 """Streaming SpatialData converter with direct Zarr write.
 
 This converter processes MSI data in a memory-efficient streaming manner:
-- Two-pass approach: count non-zeros, then write directly to Zarr
-- Writes directly to final output without scipy matrix in memory
-- Memory stays bounded regardless of dataset size (~200MB for any size)
-- Supports both CSR (row-wise) and CSC (column-wise) sparse formats
+- Two-pass approach: count entries per column, then scatter straight into
+  memory-mapped CSC arrays
+- Writes directly to the final output without a scipy matrix in memory
+- Writes CSC only; ask the in-memory converter for CSR
 """
 
 import gc
 import logging
 import shutil
-import tempfile
 import warnings
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Literal, Optional, Tuple, Union
@@ -21,7 +20,6 @@ import numpy as np
 import pandas as pd
 import zarr
 from numpy.typing import NDArray
-from scipy import sparse
 from tqdm import tqdm
 
 from ...resampling import ResamplingMethod
@@ -36,9 +34,8 @@ from .csc_assembly import sort_csc_columns
 if SPATIALDATA_AVAILABLE:
     import geopandas as gpd
     import xarray as xr
-    from anndata import AnnData
     from spatialdata import SpatialData
-    from spatialdata.models import Image2DModel, ShapesModel, TableModel
+    from spatialdata.models import Image2DModel, ShapesModel
     from spatialdata.transformations import Affine, Identity, Scale
 
 logger = logging.getLogger(__name__)
@@ -53,20 +50,18 @@ _INDEX_BUILD_CHUNK = 1_000_000
 class StreamingSpatialDataConverter(BaseSpatialDataConverter):
     """Memory-efficient streaming converter for MSI data to SpatialData format.
 
-    Two routes, both two-pass over the reader:
+    One route, two passes over the reader -- **PCS** (Pre-calculated
+    Scatter). Pass 1 counts entries per column, pass 2 scatters straight
+    into memory-mapped CSC arrays and streams those to Zarr. The matrix is
+    never a scipy object in RAM, and the table's Zarr layout is written by
+    hand rather than through anndata (see :meth:`_write_csc_arrays_to_zarr`).
 
-    - **PCS** (Pre-calculated Scatter, ``use_csc=True``, and what ``"auto"``
-      now picks). Pass 1 counts entries per column, pass 2 scatters straight
-      into memory-mapped CSC arrays and streams those to Zarr. The matrix is
-      never a scipy object in RAM.
-    - **COO** (``use_csc=False``). Pass 1 counts non-zeros per row, pass 2
-      writes CSR components to a temporary Zarr, which is then read back
-      whole into a ``scipy.sparse.csr_matrix`` and converted with
-      ``.tocsc()``. That materialise-then-convert step is the peak.
-
-    PCS is the default because it is faster *and* lighter, and the gap widens
-    with the dataset. Measured on ``MockMSIReader``, peak process RSS sampled
-    at 20 ms, one subprocess per route:
+    There used to be a second route, COO (``use_csc=False``): count
+    non-zeros per row, write CSR components to a temporary Zarr, read them
+    back whole into a ``scipy.sparse.csr_matrix`` and ``.tocsc()`` it. It was
+    the default until v3.19 on the assumption that PCS bought memory safety
+    at a cost in speed. Measured on ``MockMSIReader``, peak process RSS
+    sampled at 20 ms, one subprocess per route, that trade did not exist:
 
     ===========  ==============  ==============
     nnz          PCS             COO
@@ -75,23 +70,23 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
     64M          35.6 s / 1.1 GB 58.5 s / 1.9 GB
     ===========  ==============  ==============
 
-    Both routes iterate the reader twice, so the usual "PCS re-reads the
-    file" objection does not apply -- that cost is symmetric, which is why
-    PCS wins on time at all.
+    Both routes iterated the reader twice, so the gap was the
+    materialise-then-convert step, and it widened with the dataset. The
+    route was removed once it had been the escape hatch for one release and
+    nothing reachable from ``convert()`` or the CLI could select it. The
+    table stays here because it is the reason there is one route and not
+    two.
 
-    Note what the numbers do *not* say: PCS is not the "~200 MB regardless of
-    dataset size" this docstring used to claim. Its RSS grew 540 MB -> 1.1 GB
-    across those two points. Much of that is memmap pages, which count toward
-    working set while remaining evictable, so the private-memory gap is wider
-    than the table suggests -- but "bounded" was never true and is not
-    claimed here.
+    Note what the numbers do *not* say: PCS is not "~200 MB regardless of
+    dataset size". Its RSS grew 540 MB -> 1.1 GB across those two points.
+    Much of that is memmap pages, which count toward working set while
+    remaining evictable -- but "bounded" was never true and is not claimed
+    here.
     """
 
     def __init__(
         self,
         *args,
-        chunk_size: int = 5000,
-        temp_dir: Optional[Path] = None,
         use_csc: Union[bool, Literal["auto"]] = "auto",
         **kwargs,
     ):
@@ -99,19 +94,19 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
 
         Args:
             *args: Arguments passed to BaseSpatialDataConverter
-            chunk_size: Number of spectra to process before writing to disk.
-                Larger values use more memory but reduce I/O overhead.
-                Default: 5000 spectra per chunk.
-            temp_dir: Directory for temporary Zarr files. If None, uses
-                system temp directory. Cleaned up after conversion.
-            use_csc: Which of the two write routes to take:
-                - "auto" (default): PCS. Kept as a distinct value from
-                  ``True`` so a caller can say "whatever the converter
-                  thinks best" and follow the default if it moves again.
-                - True: PCS, pinned.
-                - False: COO. The escape hatch -- it materialises the
-                  matrix in RAM, so reach for it only with a reason.
+            use_csc: Kept for the callers that pinned the PCS route while a
+                second one existed (Ousia's import wizard passes ``True``).
+                ``True`` and ``"auto"`` both mean this route, which is the
+                only one; ``False`` used to select the COO route and now
+                raises, since there is nothing left for it to select.
             **kwargs: Keyword arguments passed to BaseSpatialDataConverter
+
+        Raises:
+            ValueError: On ``use_csc=False``, and on ``sparse_format="csr"``.
+                This route scatters straight into CSC arrays and has no CSR
+                layout to write; it used to accept ``csr`` and silently
+                store CSC. The in-memory converter (``streaming=False``)
+                writes CSR.
 
         Note:
             Intensity thresholding (filtering noise below a minimum value) is
@@ -121,12 +116,19 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         kwargs["handle_3d"] = False  # Force 2D mode for now
         super().__init__(*args, **kwargs)
 
-        self._chunk_size = chunk_size
-        self._temp_dir = temp_dir
-        self._cleanup_temp = temp_dir is None
-        self._use_csc = use_csc
-        self._zarr_store: Optional[zarr.Group] = None
-        self._temp_path: Optional[Path] = None
+        if use_csc is False:
+            raise ValueError(
+                "use_csc=False selected the streaming COO route, which has been "
+                "removed: the PCS route was faster and lighter at every size "
+                "measured. Pass use_csc=True or leave it out."
+            )
+        if self._sparse_format != "csc":
+            raise ValueError(
+                "The streaming converter writes CSC only, but "
+                f"sparse_format='{self._sparse_format}' was requested. Pass "
+                "streaming=False to write CSR through the in-memory converter, "
+                "or sparse_format='csc'."
+            )
 
         # Resolved once here rather than per spectrum: _process_spectrum is
         # the hottest call in both passes, and re-importing ResamplingMethod
@@ -146,13 +148,12 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
 
         Dense size, ``n_pixels * n_mz_bins * 4`` bytes (float32).
 
-        **Diagnostic only since PCS became the default.** Nothing routes on
-        this any more. It is kept because the number is genuinely useful in a
-        support log and because getting it right was not free: the fallback
-        below is wrong in both directions (see the comment in the body), and
-        deleting the function would delete that finding along with the tests
-        that pin it. If you are looking for the routing decision it is in
-        :meth:`_should_use_pcs`, which no longer calls this.
+        **Diagnostic only.** Nothing routes on this: there is one route. It
+        is kept because the number is genuinely useful in a support log and
+        because getting it right was not free: the fallback below is wrong
+        in both directions (see the comment in the body), and deleting the
+        function would delete that finding along with the tests that pin
+        it.
 
         Returns:
             Estimated size in gigabytes
@@ -197,42 +198,12 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
 
         return size_gb
 
-    def _should_use_pcs(self) -> bool:
-        """Which write route to take. ``"auto"`` means PCS.
-
-        This used to compare an estimated dense size against a 30 GB
-        threshold and send anything smaller to COO -- which, since nothing
-        in the repo passes ``use_csc`` at all, made COO the *default* route
-        for essentially every conversion. The threshold assumed PCS bought
-        memory safety at a cost in speed, so it was worth paying only on
-        datasets big enough to need it.
-
-        Measured, that trade does not exist: PCS is faster and lighter at
-        every size tried, and its margin grows with the dataset (the table
-        in the class docstring). Both routes iterate the reader twice, so
-        there is no second read to pay for. A threshold whose cheap side is
-        never actually cheaper is not a threshold, so it is gone rather
-        than retuned -- a retuned one would just be a number nobody could
-        justify either.
-
-        ``use_csc=False`` still selects COO, so the route remains reachable
-        and tested; it is an escape hatch now rather than the default.
-
-        Returns:
-            True if the PCS route should be used, False for COO.
-        """
-        if self._use_csc is True:
-            return True
-        if self._use_csc is False:
-            return False
-        return True  # "auto"
-
     def convert(self) -> bool:
         """Stream-convert MSI data to SpatialData format.
 
-        Overrides the base convert() method. Both routes stream to Zarr; see
-        the class docstring for what separates them and why PCS is the
-        default. ``use_csc=False`` selects COO.
+        Overrides the base convert() method: the table is scattered into
+        memmapped CSC arrays and streamed to Zarr, never held as a scipy
+        matrix (see the class docstring).
 
         Returns:
             True if conversion was successful, False otherwise
@@ -242,29 +213,15 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             self._initialize_conversion()
             self._refuse_multiple_z_planes()
 
-            # Diagnostic only -- the route below does not depend on it. Called
-            # here rather than inside _should_use_pcs() so the predicate stays
-            # a predicate, and after _initialize_conversion() so it reports the
-            # built axis instead of guessing at it.
+            # Diagnostic only -- nothing below depends on it. Called after
+            # _initialize_conversion() so it reports the built axis instead
+            # of guessing at it.
             self._estimate_output_size_gb()
 
-            if self._should_use_pcs():
-                # Scatter straight into memmapped CSC arrays: the matrix is
-                # never a scipy object in RAM.
-                result = self._convert_to_csc_no_cache()
-                logger.info(
-                    f"Zero-copy CSC conversion complete: {result['total_nnz']:,} non-zeros"
-                )
-            else:
-                # Opt-in COO route: materialises the matrix to convert it.
-                self._setup_temp_storage()
-                coo_result = self._stream_build_coo()
-                data_structures = self._create_data_structures_from_coo(coo_result)
-                self._finalize_data(data_structures)
-                if not self._save_output(data_structures):
-                    raise RuntimeError("Failed to write SpatialData output (COO path)")
-                logger.info("Zero-copy COO conversion complete")
-
+            result = self._convert_to_csc_no_cache()
+            logger.info(
+                f"Zero-copy CSC conversion complete: {result['total_nnz']:,} non-zeros"
+            )
             return True
 
         except Exception as e:
@@ -275,43 +232,36 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             return False
 
         finally:
-            # Temp cleanup must run on EVERY exit path: success, exception,
-            # and KeyboardInterrupt.  Previously it only fired on the COO
-            # success path, so any failure mid-COO (most commonly OOM or a
-            # downstream Zarr write error) leaked a ``streaming_coo_*``
-            # directory in the system temp -- 79.5 GiB accumulated on one
-            # user's box before manual sweep.  ``_cleanup_temp_storage``
-            # is idempotent (gated on ``_cleanup_temp`` + ``_temp_path``
-            # being set), so calling it from the PCS path where temp
-            # storage was never created is a no-op.
-            self._cleanup_temp_storage()
+            # Scratch cleanup must run on EVERY exit path: success,
+            # exception, and KeyboardInterrupt. The route that preceded
+            # this one released its temp directory on the success path
+            # only, and a failure mid-conversion (most commonly OOM or a
+            # downstream Zarr write error) leaked it -- 79.5 GiB
+            # accumulated in one user's system temp before a manual sweep.
             self._release_sibling_scratch()
             self.reader.close()
 
     def _refuse_multiple_z_planes(self) -> None:
         """Refuse a multi-plane acquisition, which this route cannot write.
 
-        ``__init__`` forces ``handle_3d = False`` and both write paths
-        below are single-slice throughout: the table is named ``_z0``, the
-        TIC image is ``(n_y, n_x)``, the shapes are one polygon per (x, y),
-        and the COO path builds its obs from
-        ``_create_coordinates_dataframe_for_slice(0)``. Only the matrix was
-        ever sized ``n_x * n_y * n_z``, so ``n_z > 1`` has always ended in
-        an obs-length mismatch -- "obs must have as many rows as X has rows
-        (18), but has 9 rows" on the COO path, "Length of values (9) does
-        not match length of index (18)" on PCS. Nothing has ever converted.
+        ``__init__`` forces ``handle_3d = False`` and the write path is
+        single-slice throughout: the table is named ``_z0``, the TIC image
+        is ``(n_y, n_x)``, the shapes are one polygon per (x, y), and obs
+        is built from the kept grid positions of one plane. Only the matrix
+        was ever sized ``n_x * n_y * n_z``, so ``n_z > 1`` has always ended
+        in an obs-length mismatch ("Length of values (9) does not match
+        length of index (18)"). Nothing has ever converted.
 
         Raising here is not a new restriction, then; it names the
         restriction instead of letting it surface as an arithmetic
-        complaint from anndata three passes later.
+        complaint from anndata two passes later.
 
-        It is also load-bearing rather than cosmetic. The PCS scatter
-        indexes rows by ``y * n_x + x`` with no ``z`` term, where the COO
-        path uses ``z * (n_x * n_y) + y * n_x + x``. The obs-length
-        mismatch is the *only* thing that stops that: now that the empty
-        rows are dropped the lengths would line up, and a two-plane file
-        would convert cleanly with both planes summed onto one. A loud
-        failure would have become a silent wrong answer. Use the 2D or 3D
+        It is also load-bearing rather than cosmetic. The scatter indexes
+        rows by ``y * n_x + x`` with no ``z`` term. The obs-length mismatch
+        is the *only* thing that stops that: now that the empty rows are
+        dropped the lengths would line up, and a two-plane file would
+        convert cleanly with both planes summed onto one. A loud failure
+        would have become a silent wrong answer. Use the 2D or 3D
         converter, both of which handle depth properly.
 
         Raises:
@@ -327,98 +277,6 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 f"dataset declares {n_z}. Use SpatialData2DConverter (one "
                 f"table per plane) or SpatialData3DConverter (one volume)."
             )
-
-    def _setup_temp_storage(self) -> None:
-        """Set up temporary Zarr storage for COO components."""
-        if self._temp_dir is None:
-            self._temp_path = Path(tempfile.mkdtemp(prefix="streaming_coo_"))
-            self._cleanup_temp = True
-        else:
-            self._temp_path = self._temp_dir
-            self._cleanup_temp = False
-
-        logger.info(f"Temp storage: {self._temp_path}")
-
-        # Create Zarr store for COO chunks
-        zarr_path = self._temp_path / "coo_chunks.zarr"
-        self._zarr_store = zarr.open_group(str(zarr_path), mode="w")
-
-    def _cleanup_temp_storage(self) -> None:
-        """Clean up temporary storage.
-
-        Idempotent: safe to call from the convert() finally block even
-        when the conversion never reached _setup_temp_storage (e.g. PCS
-        path, or an early failure).  Clears _temp_path after rmtree so
-        a second call is a no-op rather than re-walking a stale path.
-        """
-        if self._cleanup_temp and self._temp_path is not None:
-            try:
-                shutil.rmtree(self._temp_path, ignore_errors=True)
-                logger.debug(f"Cleaned up temp storage: {self._temp_path}")
-            except Exception as e:
-                logger.warning(f"Failed to cleanup temp storage: {e}")
-            self._temp_path = None
-
-    def _stream_build_coo(self) -> Dict[str, Any]:
-        """Stream-build CSR matrix using two-pass direct Zarr write.
-
-        This approach uses bounded memory by:
-        1. Pass 1: Count nnz per row to size arrays and build indptr
-        2. Pass 2: Write indices and data directly to Zarr
-
-        Returns:
-            Dictionary with matrix info and metadata
-        """
-        if self._dimensions is None:
-            raise ValueError("Dimensions not initialized")
-        if self._common_mass_axis is None:
-            raise ValueError("Common mass axis not initialized")
-        if self._zarr_store is None:
-            raise ValueError("Zarr store not initialized")
-
-        n_x, n_y, n_z = self._dimensions
-        n_rows = n_x * n_y * n_z
-        n_cols = len(self._common_mass_axis)
-
-        logger.info(
-            f"Streaming CSR build (two-pass): {n_rows:,} pixels x {n_cols:,} cols"
-        )
-
-        self._suppress_reader_progress()
-        total_spectra = self._get_total_spectra_count()
-
-        # Pass 1: Count non-zeros and compute TIC/average spectrum
-        pass1_result = self._coo_pass1_count_nonzeros(
-            n_x, n_y, n_z, n_rows, n_cols, total_spectra
-        )
-
-        # Setup Zarr arrays
-        indices_arr, data_arr = self._coo_setup_zarr_arrays(
-            n_rows, n_cols, pass1_result["total_nnz"], pass1_result["indptr"]
-        )
-
-        # Pass 2: Write data to Zarr (position-aware using indptr)
-        self._coo_pass2_write_data(
-            indices_arr, data_arr, pass1_result["indptr"], total_spectra
-        )
-
-        logger.info(
-            f"Pass 2 complete: {pass1_result['total_nnz']:,} non-zeros written to Zarr"
-        )
-
-        avg_spectrum = pass1_result["total_intensity"] / max(
-            pass1_result["pixel_count"], 1
-        )
-
-        return {
-            "total_nnz": pass1_result["total_nnz"],
-            "n_rows": n_rows,
-            "n_cols": n_cols,
-            "tic_values": pass1_result["tic_values"],
-            "avg_spectrum": avg_spectrum,
-            "pixel_count": pass1_result["pixel_count"],
-            "avg_spectrum_per_region": pass1_result.get("avg_spectrum_per_region"),
-        }
 
     def _init_region_accumulators(self, n_cols: int) -> Tuple[
         Optional[Dict[tuple, int]],
@@ -468,316 +326,6 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             for r, total in region_total.items()
         }
 
-    def _coo_pass1_count_nonzeros(
-        self,
-        n_x: int,
-        n_y: int,
-        n_z: int,
-        n_rows: int,
-        n_cols: int,
-        total_spectra: int,
-    ) -> Dict[str, Any]:
-        """Pass 1: Count non-zeros per row and compute TIC/total intensity.
-
-        Args:
-            n_x: Number of pixels in x dimension.
-            n_y: Number of pixels in y dimension.
-            n_z: Number of pixels in z dimension.
-            n_rows: Total number of rows (pixels).
-            n_cols: Number of columns (m/z bins).
-            total_spectra: Total number of spectra to process.
-
-        Returns:
-            Dictionary with nnz_per_row, total_nnz, tic_values, total_intensity,
-            pixel_count, and indptr.
-        """
-        logger.info(
-            f"Pass 1: Counting non-zeros per row ({total_spectra:,} spectra)..."
-        )
-
-        tic_values = np.zeros((n_y, n_x), dtype=np.float64)
-        total_intensity = np.zeros(n_cols, dtype=np.float64)
-        nnz_per_row = np.zeros(n_rows, dtype=np.int64)
-        total_nnz = 0
-        pixel_count = 0
-        n_out_of_bounds = 0
-
-        region_map, region_total, region_count = self._init_region_accumulators(n_cols)
-
-        with tqdm(
-            total=total_spectra, desc="Pass 1: Counting", unit="spectrum"
-        ) as pbar:
-            for coords, mzs, intensities in self.reader.iter_spectra(
-                batch_size=self._buffer_size
-            ):
-                x, y, z = coords
-                pixel_idx = z * (n_x * n_y) + y * n_x + x
-
-                mz_indices, resampled_ints = self._process_spectrum(mzs, intensities)
-                nnz = len(mz_indices)
-
-                # The row count and the TIC are both indexed by grid
-                # position, so both need the bounds check: a coordinate
-                # outside the declared dimensions would otherwise wrap
-                # round and land on an unrelated pixel. Unlike the PCS
-                # pre-scan the guard sits outside the `nnz > 0` test,
-                # because this assignment is unconditional -- a wrapped
-                # empty spectrum would overwrite a real row's count with
-                # zero. total_nnz travels with nnz_per_row so that
-                # indptr[-1] keeps matching the array size derived from
-                # it; pass 2 skips the same spectra.
-                if 0 <= y < n_y and 0 <= x < n_x:
-                    nnz_per_row[pixel_idx] = nnz
-                    total_nnz += nnz
-                    tic_values[y, x] = float(np.sum(resampled_ints))
-                else:
-                    n_out_of_bounds += 1
-
-                if nnz > 0:
-                    np.add.at(total_intensity, mz_indices, resampled_ints)
-
-                    if region_map is not None:
-                        self._accumulate_region(
-                            region_map,
-                            region_total,
-                            region_count,
-                            x,
-                            y,
-                            mz_indices,
-                            resampled_ints,
-                        )
-
-                pixel_count += 1
-                pbar.update(1)
-
-        logger.info(f"Pass 1 complete: {total_nnz:,} total non-zeros")
-        if n_out_of_bounds:
-            logger.warning(
-                "%d spectra sat outside the declared %dx%d grid and were "
-                "skipped. Previously they were written to a wrapped-round "
-                "row index, silently overwriting an unrelated pixel.",
-                n_out_of_bounds,
-                n_x,
-                n_y,
-            )
-
-        # Build indptr from nnz counts
-        indptr = np.zeros(n_rows + 1, dtype=np.int64)
-        indptr[1:] = np.cumsum(nnz_per_row)
-        del nnz_per_row
-        gc.collect()
-
-        return {
-            "total_nnz": total_nnz,
-            "tic_values": tic_values,
-            "total_intensity": total_intensity,
-            "pixel_count": pixel_count,
-            "indptr": indptr,
-            "avg_spectrum_per_region": self._compute_region_averages(
-                region_total, region_count
-            ),
-        }
-
-    def _coo_setup_zarr_arrays(
-        self,
-        n_rows: int,
-        n_cols: int,
-        total_nnz: int,
-        indptr: NDArray[np.int64],
-    ) -> Tuple[Any, Any]:
-        """Setup CSR component arrays in Zarr store.
-
-        Args:
-            n_rows: Number of rows in the matrix.
-            n_cols: Number of columns in the matrix.
-            total_nnz: Total number of non-zero entries.
-            indptr: Row pointers array.
-
-        Returns:
-            Tuple of (indices_arr, data_arr) Zarr arrays.
-        """
-        if self._zarr_store is None:
-            raise RuntimeError("Zarr store not initialized")
-        X_group = self._zarr_store.create_group("X")
-        X_group.attrs["encoding-type"] = "csr_matrix"
-        X_group.attrs["encoding-version"] = "0.1.0"
-        X_group.attrs["shape"] = [n_rows, n_cols]
-
-        # Use int64 for indptr if total_nnz exceeds int32 max
-        indptr_dtype = np.int64 if total_nnz > np.iinfo(np.int32).max else np.int32
-        indptr_arr = X_group.create_array("indptr", data=indptr.astype(indptr_dtype))
-        indptr_arr.attrs["encoding-type"] = "array"
-        indptr_arr.attrs["encoding-version"] = "0.2.0"
-
-        # Column indices are bounded by n_cols, not by total_nnz, so they need
-        # their own dtype decision. Hardcoding int32 here wrapped silently
-        # above 2,147,483,647 m/z bins: zarr truncates an oversized write
-        # without warning, and the resulting negative indices survive all the
-        # way into scipy without an error. This is the same switch point scipy
-        # uses, so the matrix rebuilt from these arrays needs no cast.
-        indices_dtype = np.int64 if n_cols > np.iinfo(np.int32).max else np.int32
-
-        chunk_size_zarr = min(total_nnz, 1000000)
-        indices_arr = X_group.create_array(
-            "indices",
-            shape=(total_nnz,),
-            dtype=indices_dtype,
-            chunks=(chunk_size_zarr,),
-        )
-        indices_arr.attrs["encoding-type"] = "array"
-        indices_arr.attrs["encoding-version"] = "0.2.0"
-        data_arr = X_group.create_array(
-            "data",
-            shape=(total_nnz,),
-            dtype=np.float64,
-            chunks=(chunk_size_zarr,),
-        )
-        data_arr.attrs["encoding-type"] = "array"
-        data_arr.attrs["encoding-version"] = "0.2.0"
-
-        return indices_arr, data_arr
-
-    def _coo_pass2_write_data(
-        self,
-        indices_arr: Any,
-        data_arr: Any,
-        indptr: NDArray[np.int64],
-        total_spectra: int,
-    ) -> None:
-        """Pass 2: Write spectrum data to correct CSR positions.
-
-        Each spectrum's data must be written at the position indicated by
-        the indptr for its pixel_idx (row-major grid position), NOT in
-        iteration order. The reader may yield spectra in frame order which
-        differs from row-major pixel order.
-
-        Args:
-            indices_arr: Zarr array for column indices.
-            data_arr: Zarr array for data values.
-            indptr: Row pointers from Pass 1 (indexed by pixel position).
-            total_spectra: Total number of spectra to process.
-        """
-        if self._dimensions is None:
-            raise ValueError("Dimensions not initialized")
-
-        n_x, n_y, n_z = self._dimensions
-
-        logger.info("Pass 2: Writing data to Zarr (position-aware)...")
-
-        if hasattr(self.reader, "reset"):
-            self.reader.reset()
-        self._suppress_reader_progress()
-
-        # Track write position per row, starting at each row's indptr offset
-        write_pos = indptr[:-1].copy()
-
-        # Buffer writes for efficiency: collect (zarr_position, col_idx, value)
-        buf_positions: list = []
-        buf_indices: list = []
-        buf_data: list = []
-        buf_size = 0
-        flush_threshold = 5_000_000  # flush every ~5M entries
-
-        with tqdm(total=total_spectra, desc="Pass 2: Writing", unit="spectrum") as pbar:
-            for coords, mzs, intensities in self.reader.iter_spectra(
-                batch_size=self._buffer_size
-            ):
-                x, y, z = coords
-                pixel_idx = z * (n_x * n_y) + y * n_x + x
-
-                mz_indices, resampled_ints = self._process_spectrum(mzs, intensities)
-                nnz = len(mz_indices)
-
-                # Same bounds check as pass 1, and it has to be the same
-                # one: that pass reserved no room for a spectrum outside
-                # the grid, so writing it here would overrun the row it
-                # wrapped onto and displace that row's own entries.
-                if nnz > 0 and 0 <= y < n_y and 0 <= x < n_x:
-                    pos = write_pos[pixel_idx]
-                    positions = np.arange(pos, pos + nnz)
-                    buf_positions.append(positions)
-                    # Take the dtype from the destination array rather than
-                    # re-deriving it, so the buffer and the store cannot drift
-                    # apart. Zarr accepts an oversized write and truncates it
-                    # silently, so a mismatch here would be invisible.
-                    buf_indices.append(mz_indices.astype(indices_arr.dtype))
-                    buf_data.append(resampled_ints.astype(np.float64))
-                    write_pos[pixel_idx] += nnz
-                    buf_size += nnz
-
-                if buf_size >= flush_threshold:
-                    self._flush_positioned_to_zarr(
-                        buf_positions,
-                        buf_indices,
-                        buf_data,
-                        indices_arr,
-                        data_arr,
-                    )
-                    buf_positions = []
-                    buf_indices = []
-                    buf_data = []
-                    buf_size = 0
-
-                pbar.update(1)
-
-        # Flush remaining
-        if buf_positions:
-            self._flush_positioned_to_zarr(
-                buf_positions,
-                buf_indices,
-                buf_data,
-                indices_arr,
-                data_arr,
-            )
-
-    def _flush_positioned_to_zarr(
-        self,
-        buf_positions: list,
-        buf_indices: list,
-        buf_data: list,
-        indices_arr: Any,
-        data_arr: Any,
-    ) -> None:
-        """Flush buffered data to correct positions in Zarr arrays.
-
-        Sorts entries by position so contiguous ranges can be written
-        efficiently in bulk.
-
-        Args:
-            buf_positions: List of position arrays (where to write).
-            buf_indices: List of column index arrays.
-            buf_data: List of data value arrays.
-            indices_arr: Zarr array for column indices.
-            data_arr: Zarr array for data values.
-        """
-        if not buf_positions:
-            return
-
-        all_pos = np.concatenate(buf_positions)
-        all_idx = np.concatenate(buf_indices)
-        all_dat = np.concatenate(buf_data)
-
-        # Sort by position for efficient sequential writes
-        order = np.argsort(all_pos)
-        all_pos = all_pos[order]
-        all_idx = all_idx[order]
-        all_dat = all_dat[order]
-
-        # Find run boundaries vectorised, then write one Zarr slice per
-        # contiguous run. The previous element-at-a-time Python walk cost
-        # ~2.5 s per 5M-entry flush against ~27 ms for the same answer.
-        n = len(all_pos)
-        breaks = np.flatnonzero(np.diff(all_pos) != 1)
-        starts = np.concatenate(([0], breaks + 1))
-        ends = np.concatenate((breaks + 1, [n]))
-        for i, j in zip(starts.tolist(), ends.tolist()):
-            start_pos = int(all_pos[i])
-            indices_arr[start_pos : start_pos + (j - i)] = all_idx[i:j]
-            data_arr[start_pos : start_pos + (j - i)] = all_dat[i:j]
-
-        del all_pos, all_idx, all_dat
-        gc.collect()
-
     def _process_spectrum(
         self, mzs: np.ndarray, intensities: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
@@ -811,275 +359,24 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         # every bin, then mask -- was 35x the cost of reading the file.
         return self._tic_preserving_resample_sparse(mzs, intensities)
 
-    def _create_data_structures_from_coo(
-        self, coo_result: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Create SpatialData structures from CSR components in Zarr.
-
-        Reads CSR components (indptr, indices, data) from Zarr and creates
-        a scipy sparse matrix. This is more memory-efficient than the old
-        COO approach because we read pre-built CSR components.
-
-        Args:
-            coo_result: Dictionary with matrix info and metadata
-
-        Returns:
-            Data structures dictionary for SpatialData creation
-        """
-        logger.info("Reading CSR components from Zarr...")
-
-        n_rows = coo_result["n_rows"]
-        n_cols = coo_result["n_cols"]
-
-        # Read CSR components directly from Zarr
-        if self._zarr_store is None:
-            raise RuntimeError("Zarr store not initialized")
-        X_group = self._zarr_store["X"]
-        if not isinstance(X_group, zarr.Group):
-            raise TypeError("Expected zarr.Group for X")
-        indptr = np.asarray(X_group["indptr"])
-        indices = np.asarray(X_group["indices"])
-        data = np.asarray(X_group["data"])
-
-        logger.info(f"Loaded CSR components: {len(data):,} entries")
-
-        # indices already carries the dtype chosen at write time, keyed on the
-        # column count (see _coo_setup_zarr_arrays), so there is nothing to fix
-        # up here. Upcasting it was never a safeguard anyway: it widened values
-        # that had already been truncated on the way in, and it was keyed on
-        # the wrong quantity. indptr is bounded by nnz, hence the check below.
-        # copy=False makes the no-op case free rather than a full-size copy.
-        if len(data) > np.iinfo(np.int32).max:
-            logger.info("Large dataset detected, using 64-bit sparse matrix indices")
-            indptr = indptr.astype(np.int64, copy=False)
-
-        # Create CSR matrix directly (no COO intermediate)
-        sparse_matrix: Union[sparse.csr_matrix, sparse.csc_matrix] = sparse.csr_matrix(
-            (data, indices, indptr),
-            shape=(n_rows, n_cols),
-            dtype=np.float64,
-        )
-
-        del indptr, indices, data
-        gc.collect()
-
-        # Convert to CSC if needed
-        if self._sparse_format == "csc":
-            logger.info("Converting CSR to CSC format...")
-            sparse_matrix = sparse_matrix.tocsc()
-            gc.collect()
-
-        logger.info(
-            f"Created sparse matrix: {sparse_matrix.shape}, {sparse_matrix.nnz:,} nnz"
-        )
-
-        # Build data structures
-        if self._dimensions is None:
-            raise ValueError("Dimensions not initialized")
-
-        n_x, n_y, n_z = self._dimensions
-
-        # Create slice data structure (similar to 2D converter)
-        slice_id = f"{self.dataset_id}_z0"
-
-        tables: Dict[str, Any] = {}
-        shapes: Dict[str, Any] = {}
-        images: Dict[str, Any] = {}
-
-        return {
-            "mode": "2d_slices",
-            "slices_data": {
-                slice_id: {
-                    "sparse_matrix": sparse_matrix,
-                    "coords_df": self._create_coordinates_dataframe_for_slice(0),
-                    "tic_values": coo_result["tic_values"],
-                }
-            },
-            "tables": tables,
-            "shapes": shapes,
-            "images": images,
-            "var_df": self._create_mass_dataframe(),
-            "avg_spectrum": coo_result["avg_spectrum"],
-            "pixel_count": coo_result["pixel_count"],
-            "avg_spectrum_per_region": coo_result.get("avg_spectrum_per_region"),
-        }
-
     def _create_data_structures(self) -> Dict[str, Any]:
         """Not used in streaming mode - required by ABC."""
-        raise NotImplementedError("Streaming converter uses _stream_build_coo instead")
-
-    def _create_coordinates_dataframe_for_slice(self, z_value: int) -> pd.DataFrame:
-        """Create a coordinates dataframe for a single Z-slice.
-
-        Args:
-            z_value: Z-index of the slice
-
-        Returns:
-            DataFrame with pixel coordinates
-        """
-        if self._dimensions is None:
-            raise ValueError("Dimensions are not initialized")
-
-        n_x, n_y, _ = self._dimensions
-
-        # Pre-allocate arrays for better performance
-        pixel_count = n_x * n_y
-        y_values: NDArray[np.int32] = np.repeat(np.arange(n_y, dtype=np.int32), n_x)
-        x_values: NDArray[np.int32] = np.tile(np.arange(n_x, dtype=np.int32), n_y)
-        instance_ids: NDArray[np.int32] = np.arange(pixel_count, dtype=np.int32)
-
-        # Create DataFrame in one operation
-        coords_df = pd.DataFrame(
-            {
-                "y": y_values,
-                "x": x_values,
-                "instance_id": instance_ids,
-                "region": f"{self.dataset_id}_z{z_value}_pixels",
-            }
+        raise NotImplementedError(
+            "Streaming converter uses _convert_to_csc_no_cache instead"
         )
 
-        # Set index efficiently
-        coords_df["instance_id"] = coords_df["instance_id"].astype(str)
-        coords_df.set_index("instance_id", inplace=True)
-
-        # Add spatial coordinates in a vectorized operation
-        coords_df["spatial_x"] = coords_df["x"] * self.pixel_size_um
-        coords_df["spatial_y"] = coords_df["y"] * self.pixel_size_um
-
-        # Always add per-pixel region numbers for a consistent schema.
-        coords_df["region_number"] = self.build_region_numbers(x_values, y_values)
-
-        return coords_df
-
     def _finalize_data(self, data_structures: Dict[str, Any]) -> None:
-        """Finalize data by creating tables, shapes, and images.
+        """Not used in streaming mode - required by ABC.
 
-        Args:
-            data_structures: Data structures containing processed data
+        The in-memory converters build their tables, shapes and images
+        here from an in-RAM matrix. This route has none: the table goes
+        to disk from memmaps, and the elements beside it are written by
+        :meth:`_add_tic_image_and_shapes_to_store`.
         """
-        if not SPATIALDATA_AVAILABLE:
-            raise ImportError("SpatialData dependencies not available")
-
-        avg_spectrum = data_structures["avg_spectrum"]
-        self._non_empty_pixel_count = data_structures["pixel_count"]
-
-        # Process each slice
-        for slice_id, slice_data in data_structures["slices_data"].items():
-            try:
-                sparse_matrix = slice_data["sparse_matrix"]
-                coords_df = slice_data["coords_df"]
-
-                # Create AnnData for this slice
-                adata = AnnData(
-                    X=sparse_matrix,
-                    obs=coords_df,
-                    var=data_structures["var_df"],
-                )
-
-                # Drop bbox positions that have no spectrum (#88)
-                adata = self._drop_empty_pixels(adata)
-
-                # Add average spectrum to .uns
-                adata.uns["average_spectrum"] = avg_spectrum
-
-                # Add per-region mean spectra for multi-region datasets
-                avg_per_region = data_structures.get("avg_spectrum_per_region")
-                if avg_per_region is not None:
-                    adata.uns["average_spectrum_per_region"] = avg_per_region
-
-                # Decide on the sibling tables first so uns can name them,
-                # then run the raw mobility pass once for the heatmap and
-                # the grid's discovery together, before uns is built.
-                self._mobility_table_key = self._plan_mobility_table(slice_id)
-                self._msms_table_key = self._plan_msms_table(slice_id)
-                self._prepare_sibling_scans(adata.obs, z_value=0)
-
-                # Add MSI metadata to .uns
-                self._add_metadata_to_uns(adata)
-
-                # Make sure region column exists and is correct
-                region_key = f"{slice_id}_pixels"
-                if "region" not in adata.obs.columns:
-                    adata.obs["region"] = pd.Categorical([region_key] * len(adata))
-                elif not isinstance(adata.obs["region"].dtype, pd.CategoricalDtype):
-                    adata.obs["region"] = pd.Categorical(adata.obs["region"])
-
-                # Make sure instance_key is a string column
-                adata.obs["instance_key"] = adata.obs.index.astype(str)
-
-                # Create table model
-                table = TableModel.parse(
-                    adata,
-                    region=region_key,
-                    region_key="region",
-                    instance_key="instance_key",
-                )
-
-                # Add to tables and create shapes
-                data_structures["tables"][slice_id] = table
-                data_structures["shapes"][region_key] = self._create_pixel_shapes(adata)
-                self._attach_sibling_tables(
-                    data_structures, slice_id, region_key, adata.obs, z_value=0
-                )
-
-                # Create TIC image for this slice
-                tic_values = slice_data["tic_values"]
-                y_size, x_size = tic_values.shape
-
-                # Add channel dimension to make it (c, y, x) as required by SpatialData
-                tic_values_with_channel = tic_values.reshape(1, y_size, x_size)
-
-                # The image array is intrinsically in raster pixel indices.
-                # The transform to "global" expresses the conversion from
-                # raster indices into the chosen global frame:
-                #   - With FlexImaging optical alignment: Affine into optical
-                #     image pixel space. global = optical pixels.
-                #   - Without alignment: Scale into physical micrometers, so
-                #     "global" agrees with the pixel-polygon shapes (which
-                #     are stored in um). global = micrometers.
-                tic_image = xr.DataArray(
-                    tic_values_with_channel,
-                    dims=("c", "y", "x"),
-                )
-                # Gate the alignment-based affine on apply_optical_alignment.
-                # When the caller opts out (e.g. Ousia's wizard), MSI lands
-                # in pure micrometer coordinates so downstream registration
-                # is the canonical alignment step.  The optical image still
-                # uses the alignment internally to land in this same um
-                # frame (see _load_single_optical_image).
-                if (
-                    self._apply_optical_alignment
-                    and self._tic_to_image_matrix is not None
-                ):
-                    transform = Affine(
-                        self._tic_to_image_matrix,
-                        input_axes=("x", "y"),
-                        output_axes=("x", "y"),
-                    )
-                else:
-                    transform = Scale(
-                        [self.pixel_size_um, self.pixel_size_um],
-                        axes=("x", "y"),
-                    )
-
-                # Create Image2DModel for the TIC image
-                data_structures["images"][f"{slice_id}_tic"] = Image2DModel.parse(
-                    tic_image,
-                    transformations={
-                        self.dataset_id: transform,
-                        "global": transform,
-                    },
-                )
-
-            except Exception as e:
-                logger.error(f"Error processing slice {slice_id}: {e}")
-                import traceback
-
-                logger.debug(f"Detailed traceback:\n{traceback.format_exc()}")
-                raise
-
-        # Add optical images if available
-        self._add_optical_images(data_structures)
+        raise NotImplementedError(
+            "Streaming converter writes its elements from "
+            "_write_csc_arrays_to_zarr instead"
+        )
 
     # ========================================================================
     # No-Cache CSC Conversion (Optimized)
@@ -1355,9 +652,9 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                     passes.count(frame, (y * n_x + x) if gets_row else None)
                 if nnz > 0:
                     # Accumulate for average spectrum (vectorized). Left
-                    # outside the bounds check to match the COO pre-scan,
-                    # which also averages over every spectrum read rather
-                    # than every spectrum stored.
+                    # outside the bounds check on purpose: the average is
+                    # over every spectrum read rather than every spectrum
+                    # stored, as it is on the in-memory converters.
                     np.add.at(total_intensity, mz_indices, resampled_ints)
 
                     # Column counts, TIC and occupancy all describe a
@@ -1816,8 +1113,8 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         # Built in chunks rather than from a list comprehension. Materialising
         # n_cols Python str objects first costs about 88 bytes per entry at
         # peak, against 17.5 for this; at 10 million bins that is 883 MB
-        # versus 175 MB, on a path whose docstring promises roughly 200 MB
-        # regardless of dataset size. The values are identical.
+        # versus 175 MB, on a path whose whole point is not holding the
+        # dataset in RAM. The values are identical.
         mz_index = np.empty(n_cols, dtype=str_dtype)
         for start in range(0, n_cols, _INDEX_BUILD_CHUNK):
             stop = min(start + _INDEX_BUILD_CHUNK, n_cols)
@@ -2042,9 +1339,10 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 ],
             )
 
-        # Load optical images through the COO converter's path so they get
+        # Load optical images through the base converter's path so they get
         # the same multi-scale pyramid + chunked layout and identical
-        # transforms.  Honours self._include_optical internally.
+        # transforms as the in-memory converters.  Honours
+        # self._include_optical internally.
         self._add_optical_images(data_structures)
 
         with _suppress_upstream_warnings():

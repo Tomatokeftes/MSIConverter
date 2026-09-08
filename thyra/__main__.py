@@ -657,7 +657,10 @@ class GroupedCommand(click.Command):
     "--sparse-format",
     type=click.Choice(["csc", "csr"]),
     default="csc",
-    help="Sparse matrix format: csc or csr (default: csc)",
+    help=(
+        "Sparse matrix format: csc or csr (default: csc). The streaming "
+        "route writes csc only, so csr needs --streaming false."
+    ),
 )
 # -- Resampling (advanced) --
 @click.option(

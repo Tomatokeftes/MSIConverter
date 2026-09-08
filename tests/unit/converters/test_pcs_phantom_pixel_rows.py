@@ -11,8 +11,8 @@ three write paths fix with ``_drop_empty_pixels``. On real ``pea.imzML``:
 ``shapes/ds_z0_pixels`` carrying a polygon for each phantom.
 
 **The depth.** ``_scatter_spectra_direct`` computes its row index as
-``y * n_x + x``, with no ``z`` term, where the COO path uses
-``z * (n_x * n_y) + y * n_x + x``. Nothing caught that, because the
+``y * n_x + x``, with no ``z`` term (the COO route it sat beside used
+``z * (n_x * n_y) + y * n_x + x``). Nothing caught that, because the
 *other* consequence of the full-grid layout did: ``obs`` was built over
 ``n_y * n_x`` positions while ``X`` was sized ``n_x * n_y * n_z``, so a
 multi-plane dataset died on the length mismatch before anyone could
@@ -24,8 +24,7 @@ number in the suite and not a claim in a commit message.
 
 The streaming route was never able to write depth anyway: ``__init__``
 forces ``handle_3d=False``, the table is named ``_z0``, the TIC is
-``(n_y, n_x)``, and the COO path builds obs from
-``_create_coordinates_dataframe_for_slice(0)``. Refusing names a
+``(n_y, n_x)``, and obs is built for one plane. Refusing names a
 restriction that already existed.
 """
 
@@ -61,13 +60,12 @@ def _config(n_z: int = 1, sparsity: float = 0.0) -> MockMSIConfig:
     )
 
 
-def _converter(output_path: Path, config: MockMSIConfig, use_csc: bool = True):
+def _converter(output_path: Path, config: MockMSIConfig):
     return StreamingSpatialDataConverter(
         reader=MockMSIReader(config),
         output_path=output_path,
         dataset_id="mock",
         pixel_size_um=10.0,
-        use_csc=use_csc,
     )
 
 
@@ -135,17 +133,16 @@ def test_fully_populated_grid_is_unchanged(tmp_path):
     assert _n_obs(out) == _N_X * _N_Y
 
 
-@pytest.mark.parametrize("use_csc", [True, False])
-def test_streaming_refuses_more_than_one_z_plane(tmp_path, use_csc):
-    """Both streaming sub-routes refuse depth, and write nothing.
+def test_streaming_refuses_more_than_one_z_plane(tmp_path):
+    """The streaming route refuses depth, and writes nothing.
 
-    Before this they failed too, but only after two full passes over the
-    spectra, and with an anndata length complaint ("obs must have as many
-    rows as X has rows (18), but has 9 rows") that says nothing about
-    what to do instead.
+    Before this it failed too, but only after two full passes over the
+    spectra, and with a pandas length complaint ("Length of values (9)
+    does not match length of index (18)") that says nothing about what
+    to do instead.
     """
-    out = tmp_path / f"z2_{use_csc}.zarr"
-    converter = _converter(out, _config(n_z=2), use_csc=use_csc)
+    out = tmp_path / "z2.zarr"
+    converter = _converter(out, _config(n_z=2))
 
     assert converter.convert() is False
     assert not out.exists(), "a refused conversion must leave no store behind"

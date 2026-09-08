@@ -12,9 +12,9 @@ suite.
 
 ``test_read_lazy_contract`` is the one file that builds an independent
 expectation, but its fixture converts through ``convert_msi`` defaults --
-the in-memory path. Neither streaming writer had an equivalent.
+the in-memory path. The streaming writer had no equivalent.
 
-This file closes that gap for all three write paths. It is a regression
+This file closes that gap for both write paths. It is a regression
 net, not a bug hunt: it is expected to pass. The specific failure it
 exists to catch is on the PCS path, where ``obs`` positions come from
 ``kept_grid`` (``streaming_converter._write_csc_arrays_to_zarr``) while
@@ -140,7 +140,6 @@ NAMED_PIXEL = (4, 1)
 WRITE_PATHS: Dict[str, Dict[str, Any]] = {
     "in_memory": {},
     "streaming_pcs": {"streaming": True, "use_csc": True},
-    "streaming_coo": {"streaming": True, "use_csc": False},
 }
 
 # Both surfaces a consumer opens the store with. Ousia uses the lazy one.
@@ -181,7 +180,7 @@ def _dense_matrix(adata: "anndata.AnnData") -> np.ndarray:
 def _row_of_pixel(adata: "anndata.AnnData", x: int, y: int) -> int:
     """Row offset holding pixel ``(x, y)``, resolved through ``instance_id``.
 
-    The obs index is the grid index as a string on all three paths. This
+    The obs index is the grid index as a string on both paths. This
     is the whole point of the file: the row offset is derived from the
     identity, never assumed equal to it.
     """

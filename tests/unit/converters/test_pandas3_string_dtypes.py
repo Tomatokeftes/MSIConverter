@@ -14,11 +14,10 @@ anndata's own handling instead of Thyra's workaround.
 They are still worth keeping.  The rest of the suite runs with pandas' default
 inference, so nothing else in CI would notice a regression here; every test in
 this module turns ``future.infer_string`` on for its duration and restores it
-afterwards.  All three write paths are covered: the in-memory converter (the
+afterwards.  Both write paths are covered: the in-memory converter (the
 default for anything under the 10 GB streaming threshold, i.e. most
-conversions), the streaming COO path, and the streaming PCS path, which
-hand-writes the AnnData layout straight to Zarr and never reaches anndata's
-writer at all.
+conversions) and the streaming PCS path, which hand-writes the AnnData
+layout straight to Zarr and never reaches anndata's writer at all.
 """
 
 from typing import Callable, Dict
@@ -87,21 +86,9 @@ def _streaming_pcs(output_path):
     )
 
 
-def _streaming_coo(output_path):
-    """``streaming=True, use_csc=False`` -- writes via ``SpatialData.write()``."""
-    return StreamingSpatialDataConverter(
-        reader=MockMSIReader(_small_config()),
-        output_path=output_path,
-        dataset_id="mock",
-        pixel_size_um=10.0,
-        use_csc=False,
-    )
-
-
 WRITE_PATHS: Dict[str, Callable] = {
     "in_memory": _in_memory,
     "streaming_pcs": _streaming_pcs,
-    "streaming_coo": _streaming_coo,
 }
 
 
@@ -126,9 +113,9 @@ def _string_obs_table() -> pd.DataFrame:
 
 @pytest.mark.parametrize("path_name", list(WRITE_PATHS))
 def test_write_path_converts_under_infer_string(tmp_path, path_name):
-    """All three write paths must convert with pandas 3 string dtypes.
+    """Both write paths must convert with pandas 3 string dtypes.
 
-    ``in_memory`` and ``streaming_coo`` both fail here without the coercion.
+    ``in_memory`` failed here before anndata 0.13 without the coercion.
     """
     # Own output path per case: reusing one filename makes the second
     # conversion fail with "Destination already exists", which reads like a

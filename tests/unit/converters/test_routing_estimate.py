@@ -12,21 +12,21 @@ points over 250-1200 m/z was scored as though it had 95,000, inflating it
 low, which routed the very largest datasets to the method that holds the
 most in memory.
 
-**The routing half of that is now history.** ``_should_use_pcs`` no longer
-consults the estimate at all: PCS is faster and lighter at every size
-measured, so ``"auto"`` picks it unconditionally and
-``PCS_SIZE_THRESHOLD_GB`` is gone. The estimate survives as a log line, and
-these tests survive with it -- an inaccurate number in a support log is a
-smaller problem than an inaccurate route, but it is still a problem, and the
-24x inflation is the kind of thing that gets re-derived if nobody wrote down
-that the fallback is unreliable.
+**The routing half of that is now history.** PCS was faster and lighter at
+every size measured, so ``"auto"`` first picked it unconditionally and
+``PCS_SIZE_THRESHOLD_GB`` went; then the COO route itself went, and with it
+the predicate. The estimate survives as a log line, and these tests survive
+with it -- an inaccurate number in a support log is a smaller problem than
+an inaccurate route, but it is still a problem, and the 24x inflation is
+the kind of thing that gets re-derived if nobody wrote down that the
+fallback is unreliable.
 
 ``convert()`` runs ``_initialize_conversion()`` before reaching the
 estimate, so the axis is already built and there is nothing to guess. These
 tests pin that the built axis is preferred, that the old heuristics still
 apply when it is not available -- which is the case when the estimator is
 called directly, as the older tests in ``test_streaming_converter.py`` do --
-and that no combination of sizes changes the route.
+and that ``use_csc`` survives only as a compatibility keyword.
 """
 
 from __future__ import annotations
@@ -38,9 +38,7 @@ from typing import Optional, Tuple
 import numpy as np
 import pytest
 
-from tests.fixtures.mock_msi_generator import MockMSIConfig, MockMSIReader
 from thyra.converters.spatialdata.streaming_converter import (
-    SPATIALDATA_AVAILABLE,
     StreamingSpatialDataConverter,
 )
 
@@ -71,14 +69,15 @@ def _converter(
     mass_range: Tuple[float, float] = (250.0, 1200.0),
     axis: Optional[np.ndarray] = None,
     resampling_config=None,
+    **kwargs,
 ):
     """Build a converter, optionally with the mass axis already resolved."""
     with tempfile.TemporaryDirectory() as tmpdir:
         conv = StreamingSpatialDataConverter(
             reader=_Reader(dimensions, mass_range),
             output_path=Path(tmpdir) / "out.zarr",
-            use_csc="auto",
             resampling_config=resampling_config,
+            **kwargs,
         )
     conv._common_mass_axis = axis
     return conv
@@ -138,68 +137,41 @@ class TestFallbacksStillApply:
         assert conv._estimate_output_size_gb() == pytest.approx(expected, rel=1e-9)
 
 
-class TestRoutingIsSizeIndependent:
-    """``"auto"`` means PCS, whatever the estimate says.
+class TestUseCscIsCompatibilityOnly:
+    """``use_csc`` names a route that no longer has a sibling.
 
-    Each case below picked a *different* route under the old threshold, so
-    together they pin that the size no longer reaches the decision.
+    Ousia's import wizard pins ``use_csc=True`` from when a second route
+    existed, so the keyword stays accepted. ``False`` selected the COO
+    route, which is gone, and must say so rather than fall through to the
+    only route as if it had been chosen.
     """
 
-    def test_tiny_dataset_still_routes_to_pcs(self):
-        """A 400-byte dataset. Went to COO under the threshold."""
-        conv = _converter((10, 10, 1), axis=np.linspace(250.0, 1200.0, 10))
+    @pytest.mark.parametrize("value", ["auto", True])
+    def test_auto_and_true_are_accepted(self, value):
+        conv = _converter((10, 10, 1), use_csc=value)
+        assert conv._estimate_output_size_gb() >= 0.0
 
-        assert conv._estimate_output_size_gb() < 1.0
-        assert conv._should_use_pcs() is True
+    def test_false_names_the_removed_route(self):
+        with pytest.raises(ValueError, match=r"COO route, which has been removed"):
+            _converter((10, 10, 1), use_csc=False)
 
-    def test_narrow_real_axis_routes_to_pcs(self):
-        """Comfortably under the old 30 GB gate, so this went to COO."""
-        conv = _converter((1000, 600, 1), axis=np.linspace(250.0, 1200.0, 4_000))
+    def test_csr_is_refused_rather_than_stored_as_csc(self):
+        """The route has no CSR layout.
 
-        assert conv._estimate_output_size_gb() < 30.0
-        assert conv._should_use_pcs() is True
-
-    def test_wide_real_axis_routes_to_pcs(self):
-        """Over the old gate, so this one already went to PCS. Still does."""
-        conv = _converter((250, 200, 1), axis=np.linspace(250.0, 1200.0, 200_000))
-
-        assert conv._estimate_output_size_gb() > 30.0
-        assert conv._should_use_pcs() is True
-
-    def test_route_does_not_move_when_the_estimate_does(self):
-        """The strongest form: swing the estimate 24x, route must not budge.
-
-        Dropping the built axis makes the estimator fall back to the 10 mDa
-        heuristic, which inflates this dataset from ~9 GB to ~223 GB -- a
-        swing that straddled the old threshold and flipped the route. If a
-        size gate is ever reintroduced, this is what fails.
+        It used to accept ``sparse_format="csr"`` and store CSC anyway,
+        which nothing reported; a caller who asked for row access got the
+        opposite. The refusal names the converter that does write CSR.
         """
-        conv = _converter((1000, 600, 1), axis=np.linspace(250.0, 1200.0, 4_000))
+        with pytest.raises(ValueError, match=r"CSC only.*streaming=False"):
+            _converter((10, 10, 1), sparse_format="csr")
 
-        with_axis = conv._estimate_output_size_gb()
-        assert conv._should_use_pcs() is True
-
-        conv._common_mass_axis = None
-        without_axis = conv._estimate_output_size_gb()
-
-        assert without_axis > with_axis * 20  # 95,000 / 4,000 = 23.75x
-        assert conv._should_use_pcs() is True
-
-    def test_explicit_use_csc_still_wins(self):
-        """COO stays reachable: it is an escape hatch, not dead code."""
-        conv = _converter((10, 10, 1), axis=np.linspace(250.0, 1200.0, 10))
-
-        conv._use_csc = True
-        assert conv._should_use_pcs() is True
-        conv._use_csc = False
-        assert conv._should_use_pcs() is False
-
-    def test_the_threshold_constant_is_gone(self):
-        """A leftover constant would read as a live gate. It is not one.
+    def test_the_route_machinery_is_gone(self):
+        """A leftover predicate or constant would read as a live gate.
 
         Left behind, the next person tunes it and nothing happens.
         """
-        assert not hasattr(StreamingSpatialDataConverter, "PCS_SIZE_THRESHOLD_GB")
+        for name in ("PCS_SIZE_THRESHOLD_GB", "_should_use_pcs", "_stream_build_coo"):
+            assert not hasattr(StreamingSpatialDataConverter, name), name
 
 
 class TestDegenerate:
@@ -208,76 +180,8 @@ class TestDegenerate:
     def test_empty_axis_is_zero_sized(self):
         conv = _converter((10, 10, 1), axis=np.array([]))
         assert conv._estimate_output_size_gb() == 0.0
-        # Zero is a size like any other now; it does not divert the route.
-        assert conv._should_use_pcs() is True
 
     def test_single_bin_axis(self):
         conv = _converter((10, 10, 1), axis=np.array([500.0]))
         expected = 100 * 1 * 4 / (1024**3)
         assert conv._estimate_output_size_gb() == pytest.approx(expected, rel=1e-9)
-
-
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
-class TestTheRouteIsActuallyTaken:
-    """End-to-end: which branch ``convert()`` reaches, not what a predicate says.
-
-    ``_should_use_pcs`` returning True is not the same as the conversion
-    taking the PCS branch -- ``convert()`` has to consult it and act on the
-    answer. Asserting the predicate alone would keep passing if that wiring
-    were bypassed, so this drives a real conversion and records which of the
-    two entry points ran.
-    """
-
-    @staticmethod
-    def _route_taken(**kwargs) -> str:
-        reader = MockMSIReader(
-            MockMSIConfig(n_x=6, n_y=4, n_mz_bins=400, peaks_per_spectrum=(20, 40))
-        )
-        with tempfile.TemporaryDirectory() as tmpdir:
-            converter = StreamingSpatialDataConverter(
-                reader=reader,
-                output_path=Path(tmpdir) / "out.zarr",
-                dataset_id="route",
-                pixel_size_um=10.0,
-                **kwargs,
-            )
-
-            calls: list[str] = []
-
-            def _spy(name):
-                original = getattr(converter, name)
-
-                def wrapper(*args, **kwargs_):
-                    calls.append(name)
-                    return original(*args, **kwargs_)
-
-                return wrapper
-
-            for entry_point in ("_convert_to_csc_no_cache", "_stream_build_coo"):
-                setattr(converter, entry_point, _spy(entry_point))
-
-            assert converter.convert() is True, "conversion fixture failed"
-
-        if "_convert_to_csc_no_cache" in calls:
-            return "pcs"
-        if "_stream_build_coo" in calls:
-            return "coo"
-        raise AssertionError(f"neither route ran: {calls}")
-
-    def test_default_conversion_takes_pcs(self):
-        """No ``use_csc`` at all -- the case every in-repo caller hits.
-
-        Nothing in ``thyra/`` passes ``use_csc``, so this is what the CLI and
-        the public API did, and before this change it was COO.
-        """
-        assert self._route_taken() == "pcs"
-
-    def test_explicit_true_takes_pcs(self):
-        assert self._route_taken(use_csc=True) == "pcs"
-
-    def test_explicit_false_still_takes_coo(self):
-        """COO must stay reachable, or the tests covering it stop meaning anything."""
-        assert self._route_taken(use_csc=False) == "coo"

@@ -418,7 +418,9 @@ def convert_msi(
               files where it disagrees with what detection would
               have chosen, because the representation feeds
               instrument and axis-type selection.
-        sparse_format: Sparse matrix format ('csc' or 'csr')
+        sparse_format: Sparse matrix format ('csc' or 'csr'). The
+            streaming converter writes CSC only and refuses 'csr'; pass
+            streaming=False to write CSR.
         include_optical: Include optical images (default: True)
         apply_optical_alignment: If True (default) and the MSI source
             carries FlexImaging Area metadata, MSI elements are placed

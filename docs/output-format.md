@@ -185,7 +185,8 @@ print(f"Non-zero: {X.nnz:,} ({X.nnz / (X.shape[0] * X.shape[1]) * 100:.2f}%)")
 !!! tip "Sparse format"
     The default storage is CSC (Compressed Sparse Column), which is fast for
     extracting ion images (column = one m/z across all pixels). If you need fast
-    per-pixel access, convert with `--sparse-format csr`.
+    per-pixel access, convert with `--sparse-format csr --streaming false`;
+    only the in-memory converter writes CSR.
 
     The stored matrix is canonical: within every column the row indices are in
     ascending order, whatever order the source delivered its pixels in (a
