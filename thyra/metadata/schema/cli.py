@@ -18,12 +18,33 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import click
 
+from ...utils.windows_paths import prepare_zarr_read_path
 from .metaspace import to_metaspace
 from .models import MSI_METADATA_UNS_KEY, MSIMetadata
 from .store_io import deep_merge, read_msi_metadata_blocks
 from .validate import ValidationIssue, check_store_var_conventions, validate_document
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_store_path(path: Path) -> Path:
+    r"""The path to read ``path`` through, refusing a missing one first.
+
+    ``click.Path(exists=True)`` cannot be used for these arguments. The
+    converter writes a store to a deep Windows path through an
+    extended-length (``\\?\``) path, and click's existence check runs
+    before anything can prepare the path the same way -- so the CLI
+    refused to validate a store the CLI had just written, with
+    ``Path '...deep.zarr' does not exist`` while the API validated it
+    fine (issue #257). Existence is checked here instead, on the
+    prepared path, and the same preparation is what the read then uses.
+    """
+    prepared = prepare_zarr_read_path(path)
+    if not prepared.exists():
+        raise click.BadParameter(
+            f"Path {str(path)!r} does not exist.", param_hint="PATH"
+        )
+    return prepared
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -87,7 +108,7 @@ def _echo_issues(label: str, issues: List[ValidationIssue]) -> None:
 
 
 @click.command("validate")
-@click.argument("path", type=click.Path(exists=True, path_type=Path))
+@click.argument("path", type=click.Path(exists=False, path_type=Path))
 @click.option(
     "--merge",
     "merge_path",
@@ -110,6 +131,7 @@ def validate_command(path: Path, merge_path: Optional[Path], as_json: bool) -> N
     is 0 when every document conforms (warnings allowed), 1 otherwise,
     so it can gate CI.
     """
+    path = _resolve_store_path(path)
     documents = _apply_merge(_load_documents(path), merge_path)
     var_issues = _store_var_issues(path)
 
@@ -187,7 +209,7 @@ def _validated_model(label: str, document: Dict[str, Any]) -> MSIMetadata:
 
 
 @click.command("export-metaspace")
-@click.argument("path", type=click.Path(exists=True, path_type=Path))
+@click.argument("path", type=click.Path(exists=False, path_type=Path))
 @click.option(
     "--merge",
     "merge_path",
@@ -222,6 +244,7 @@ def export_metaspace_command(
     empty and reported as warnings on stderr; fill them via --merge or
     on the METASPACE submission form.
     """
+    path = _resolve_store_path(path)
     documents = _apply_merge(_load_documents(path), merge_path)
     label, document = _select_document(documents, table)
     meta = _validated_model(label, document)

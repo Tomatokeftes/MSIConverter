@@ -17,6 +17,8 @@ from enum import Enum
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from ...errors import ConversionRefused
+
 logger = logging.getLogger(__name__)
 
 
@@ -115,7 +117,7 @@ class BrukerFolderStructure:
             ValueError: If path doesn't exist
         """
         if not self.path.exists():
-            raise ValueError(f"Path does not exist: {self.path}")
+            raise ConversionRefused(f"Path does not exist: {self.path}")
 
         # Cache the result
         if self._info is None:

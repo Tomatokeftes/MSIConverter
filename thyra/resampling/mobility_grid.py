@@ -43,6 +43,8 @@ from typing import Any, Dict, Optional
 import numpy as np
 from numpy.typing import NDArray
 
+from ..errors import ConversionRefused
+
 logger = logging.getLogger(__name__)
 
 #: Number of mobility channels, exactly, and the default for a grid table.
@@ -233,16 +235,16 @@ def build_mobility_grid(
             positive, or the law is unknown.
     """
     if not np.isfinite(lower) or not np.isfinite(upper) or upper <= lower:
-        raise ValueError(
+        raise ConversionRefused(
             f"The mobility range [{lower}, {upper}] has no extent to bin over"
         )
     if int(n_channels) < 1:
-        raise ValueError(
+        raise ConversionRefused(
             f"A mobility grid needs at least one channel, got {n_channels}"
         )
     generator = MOBILITY_GRID_GENERATORS.get(law)
     if generator is None:
-        raise ValueError(
+        raise ConversionRefused(
             f"Unknown mobility grid law {law!r}; known laws are "
             f"{sorted(MOBILITY_GRID_GENERATORS)}"
         )

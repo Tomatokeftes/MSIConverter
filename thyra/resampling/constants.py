@@ -2,6 +2,8 @@
 
 from typing import Dict, Optional
 
+from ..errors import ConversionRefused
+
 
 class ImzMLAccessions:
     """PSI-MS and imzML controlled vocabulary accession codes."""
@@ -76,7 +78,7 @@ def normalize_spectrum_type(value: Optional[object]) -> Optional[str]:
         return None
 
     if not isinstance(value, str):
-        raise ValueError(
+        raise ConversionRefused(
             f"spectrum_type must be a string or None, got {type(value).__name__}"
         )
 
@@ -85,7 +87,9 @@ def normalize_spectrum_type(value: Optional[object]) -> Optional[str]:
         return SPECTRUM_TYPE_ALIASES[key]
 
     accepted = ", ".join(repr(k) for k in sorted(SPECTRUM_TYPE_ALIASES))
-    raise ValueError(f"Unknown spectrum_type {value!r}. Accepted values: {accepted}.")
+    raise ConversionRefused(
+        f"Unknown spectrum_type {value!r}. Accepted values: {accepted}."
+    )
 
 
 class BinaryDataType:

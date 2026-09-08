@@ -15,6 +15,7 @@ from numpy.typing import NDArray
 from ...alignment import AreaAlignmentResult, TeachingPointAlignment
 from ...core.base_converter import BaseMSIConverter, PixelSizeSource
 from ...core.base_reader import BaseMSIReader
+from ...errors import ConversionRefused
 from ...metadata.types import ComprehensiveMetadata, EssentialMetadata
 from ...resampling import ResamplingDecisionTree, ResamplingMethod
 from ...resampling.gaps import zero_across_gaps
@@ -129,7 +130,7 @@ def _resolve_config_enum(raw: Any, by_name: Dict[str, Any], key: str) -> Any:
         if raw in ("auto", ""):
             return None
         if raw not in by_name:
-            raise ValueError(
+            raise ConversionRefused(
                 f"Unknown resampling_config[{key!r}] value {raw!r}. "
                 f"Valid values are: {valid}."
             )
@@ -138,10 +139,30 @@ def _resolve_config_enum(raw: Any, by_name: Dict[str, Any], key: str) -> Any:
     if raw in by_name.values():
         return raw
 
-    raise ValueError(
+    raise ConversionRefused(
         f"Unsupported resampling_config[{key!r}] value {raw!r}. "
         f"Pass one of {valid}, or the matching enum member."
     )
+
+
+#: Every key :func:`_normalize_resampling_config` reads out of a
+#: ``resampling_config`` dict. Anything else in the dict is a typo or a
+#: leftover, and is warned about rather than ignored.
+_RESAMPLING_CONFIG_KEYS = frozenset(
+    {
+        "method",
+        "axis_type",
+        "target_bins",
+        "width_at_mz",
+        "reference_mz",
+        "min_mz",
+        "max_mz",
+        "gap_tolerance_da",
+        "tof_a",
+        "tof_b",
+        "bins_per_fwhm",
+    }
+)
 
 
 def _normalize_resampling_config(
@@ -159,6 +180,23 @@ def _normalize_resampling_config(
     """
     if isinstance(config, ResamplingConfig):
         return config
+
+    # A key this function does not read changes nothing, and used to
+    # change nothing silently: ``{"target_bin": 4000}`` was accepted and
+    # the axis built from the default (issue #250). Said once, with the
+    # keys that would have worked, rather than refused -- a caller
+    # passing an extra key is not necessarily wrong, but a caller with a
+    # typo always is.
+    unknown = sorted(set(config) - _RESAMPLING_CONFIG_KEYS)
+    if unknown:
+        logger.warning(
+            "resampling_config holds %s, which %s not read and %s no effect. "
+            "Known keys: %s.",
+            ", ".join(repr(key) for key in unknown),
+            "is" if len(unknown) == 1 else "are",
+            "has" if len(unknown) == 1 else "have",
+            ", ".join(sorted(_RESAMPLING_CONFIG_KEYS)),
+        )
 
     from ...resampling.types import DEFAULT_REFERENCE_MZ, AxisType
 
@@ -277,6 +315,15 @@ def _calc_optical_scale_factors(
         cur /= factor
     return factors
 
+
+#: How far the heatmap's total may sit from the stored mean spectrum's and
+#: still be called equal. Looser than :data:`_MARGINAL_TOLERANCE` because
+#: the two are not the same sum reordered: the heatmap coarsens the mass
+#: axis by an integer factor and clips mobility into the edge channels, so
+#: float32 storage of the counts sets the floor. Measured at 4e-8 under
+#: scan_sum and 0.15 under the vendor centroid, so the gap either side of
+#: this is four orders of magnitude wide.
+_HEATMAP_TOLERANCE = 1e-4
 
 #: How far a marginal may sit from the column it mirrors, relative to the
 #: largest value in the summed table, and still be called exact. Summing
@@ -448,7 +495,7 @@ def _tof_plan(converter: Any) -> Tuple[float, float, float]:
     if a is None or b is None:
         law = getattr(converter, "_detected_tof_law", None)
         if law is None:
-            raise ValueError(
+            raise ConversionRefused(
                 "A 'tof' mass axis needs the width law's coefficients: pass "
                 "--tof-law A B, or convert a run whose instrument declares "
                 "them (SELECT SERIES MRT centroid, timsTOF)."
@@ -749,7 +796,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         # caller who asked for CSR would get CSC and no signal. That is the
         # failure this removal was meant to end, so say it instead.
         if "sparse_format" in kwargs:
-            raise ValueError(
+            raise ConversionRefused(
                 "sparse_format was removed: every converter writes CSC, which "
                 "is the layout an ion image reads down. Drop the argument; for "
                 "row-wise access call X.tocsr() on the matrix you read back."
@@ -773,9 +820,11 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
 
         # Validate inputs
         if pixel_size_um <= 0:
-            raise ValueError(f"pixel_size_um must be positive, got {pixel_size_um}")
+            raise ConversionRefused(
+                f"pixel_size_um must be positive, got {pixel_size_um}"
+            )
         if not dataset_id.strip():
-            raise ValueError("dataset_id cannot be empty")
+            raise ConversionRefused("dataset_id cannot be empty")
 
         # Extract pixel_size_detection_info from kwargs if provided
         kwargs_filtered = dict(kwargs)
@@ -802,6 +851,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         # _count_out_of_range().
         self._out_of_range_peaks: int = 0
         self._out_of_range_warned: bool = False
+        # Intensities dropped for being non-finite or negative, and
+        # whether that has been said yet. See _count_unusable_intensities().
+        self._unusable_intensities: int = 0
+        self._unusable_intensities_warned: bool = False
         self._pixel_size_detection_info = pixel_size_detection_info
         self._resampling_config = (
             _normalize_resampling_config(resampling_config)
@@ -1778,7 +1831,11 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             return
         table.uns["demultiplexed_current"] = block
         if abs(float(block["current_ratio"]) - 1.0) > _MARGINAL_TOLERANCE:
-            logger.info(
+            # WARNING, not INFO. It is the same disagreement between the
+            # same two tables that the mobility grid reports at WARNING,
+            # and a reader who has to know about one has to know about
+            # the other (issue #253).
+            logger.warning(
                 "The demultiplexed table holds %.4fx the summed table's ion "
                 "current (per pixel %.4f to %.4f). Above 1 under an explicit "
                 "--tdf-spectrum vendor_centroid, which discards counts the "
@@ -1944,7 +2001,57 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         """Apply :meth:`build_uns_metadata` to an AnnData about to be written."""
         uns = self.build_uns_metadata()
         adata.uns.update(uns)
+        self._record_heatmap_current(adata)
         logger.debug("Added MSI metadata to AnnData .uns: %s", sorted(uns))
+
+    @staticmethod
+    def _record_heatmap_current(adata) -> None:
+        """Say how much of the stored mean spectrum the heatmap holds.
+
+        The heatmap's marginal over mobility is the stored mean spectrum
+        coarsened to its own m/z bins -- exactly, under the default
+        ``--tdf-spectrum scan_sum``, and not at all under the vendor
+        centroid, which is a peak-picked spectrum over the same scans
+        while the heatmap is built from the raw points. Measured at 15%
+        off on every vendor_centroid store.
+
+        docs/output-format.md says the identity holds only under
+        scan_sum, but nothing in the store said which case a given store
+        was, so a consumer plotting the heatmap next to the mean spectrum
+        had no way to tell the 15% from a bug (issue #253). The grid's
+        ``uns["mobility_marginal"]`` has recorded its ratio since it
+        existed; this is the same number for the heatmap.
+
+        Both quantities are per-pixel means over the same pixels, so
+        their totals compare directly: the ratio is one scalar and needs
+        nothing materialised.
+        """
+        block = adata.uns.get("mobility_heatmap")
+        spectrum = adata.uns.get("average_spectrum")
+        if not isinstance(block, dict) or spectrum is None:
+            return
+        try:
+            stored = float(np.asarray(spectrum, dtype=np.float64).sum())
+            held = float(np.asarray(block["counts"], dtype=np.float64).sum())
+        except Exception as e:  # pragma: no cover - defensive
+            # str(e), not e: this is the finalize path, where a retained
+            # record pins the memmaps the table is built on (issue #249).
+            logger.debug("Could not compare the mobility heatmap: %s", str(e))
+            return
+        if stored <= 0:
+            return
+        ratio = held / stored
+        block["current_ratio"] = ratio
+        if abs(ratio - 1.0) > _HEATMAP_TOLERANCE:
+            logger.warning(
+                "The mass-mobility heatmap holds %.4fx the stored mean "
+                "spectrum's ion current. Its marginal over mobility is that "
+                "spectrum only under --tdf-spectrum scan_sum; the vendor "
+                "centroid keeps only the current inside the peaks it picks, "
+                "while the heatmap reads raw points. "
+                'uns["mobility_heatmap"]["current_ratio"] records it.',
+                ratio,
+            )
 
     def _serialize_for_zarr(self, obj):
         """Recursively convert tuples to lists for Zarr serialization.
@@ -2078,6 +2185,21 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         min_mz = mass_range[0] if self._min_mz is None else self._min_mz
         max_mz = mass_range[1] if self._max_mz is None else self._max_mz
 
+        # An inverted range has no axis to lay. Unchecked, it built a
+        # descending one, dropped every peak against it, reported "4 of 3
+        # in the first spectrum affected" from a negative count, and
+        # succeeded with an empty store (issue #250).
+        if not (min_mz < max_mz):
+            raise ConversionRefused(
+                f"The resampling mass range [{min_mz:g}, {max_mz:g}] m/z is "
+                "empty: the minimum has to be below the maximum. "
+                + (
+                    "Both come from the source's own mass range."
+                    if self._min_mz is None and self._max_mz is None
+                    else "Check --resample-min-mz / --resample-max-mz."
+                )
+            )
+
         tree = ResamplingDecisionTree()
         if hasattr(self, "_manual_axis_type") and self._manual_axis_type is not None:
             axis_type = self._manual_axis_type
@@ -2115,6 +2237,17 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             target_bins = self._calculate_bins_from_width(min_mz, max_mz, axis_type)
         else:
             target_bins = self._target_bins
+
+        # A one-point axis has no bin width, and the log line that
+        # reports one reduced an empty array: "zero-size array to
+        # reduction operation minimum which has no identity", raised out
+        # of initialization rather than said as a refusal (issue #250).
+        if target_bins < 2:
+            raise ConversionRefused(
+                f"A mass axis needs at least 2 bins, got {target_bins}. "
+                "One point is a single m/z value, not an axis: it has no bin "
+                "width and nothing can be resampled onto it."
+            )
 
         return min_mz, max_mz, axis_type, target_bins
 
@@ -2210,7 +2343,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
 
             self._dimensions = essential.dimensions
             if any(d <= 0 for d in self._dimensions):
-                raise ValueError(
+                raise ConversionRefused(
                     f"Invalid dimensions: {self._dimensions}. All dimensions "
                     f"must be positive."
                 )
@@ -2285,6 +2418,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             if self._common_mass_axis is None:
                 raise RuntimeError("Common mass axis is None after initialization")
             logger.info(f"Common mass axis length: {len(self._common_mass_axis)}")
+        except ConversionRefused:
+            # Said once, by whoever catches it. Re-prefixing a refusal
+            # with the stage it came from adds nothing a user can act on.
+            raise
         except Exception as e:
             logger.error(f"Error during initialization: {e}")
             raise
@@ -2322,13 +2459,121 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 )
             self._common_mass_axis = self.reader.get_common_mass_axis()
             if len(self._common_mass_axis) == 0:
-                raise ValueError(
+                raise ConversionRefused(
                     "Common mass axis is empty. Cannot proceed with conversion."
                 )
             logger.info(
                 f"Using raw mass axis with "
                 f"{len(self._common_mass_axis)} unique m/z values"
             )
+
+        self._refuse_non_finite_axis()
+
+    def _refuse_non_finite_axis(self) -> None:
+        """Refuse a mass axis carrying NaN or infinity.
+
+        ``var.mz`` is this axis. Nothing on the way here tested it for
+        finiteness, so a source with NaN m/z converted at exit 0 and
+        ``thyra validate`` then refused the result with
+        ``ERROR var.mz: 'mz' contains non-finite values``: the converter
+        wrote a store its own validator rejects (issue #248). Dropping
+        the values instead is not an option on the raw path -- the axis
+        *is* the source's m/z values, and every spectrum's indices are
+        paired with a full intensity array -- so this is a refusal.
+
+        One pass over the axis, which is at most a few million float64s
+        and is walked several times either way.
+        """
+        axis = self._common_mass_axis
+        if axis is None or len(axis) == 0:
+            return
+        finite = np.isfinite(axis)
+        if bool(finite.all()):
+            return
+        n_bad = int(axis.size - finite.sum())
+        raise ConversionRefused(
+            f"The common mass axis holds {n_bad:,} non-finite value(s) out of "
+            f"{axis.size:,} (NaN or infinity). It becomes var['mz'], where "
+            "every value has to be a real mass, so this store would be "
+            "written and then refused by `thyra validate`. On a resampled "
+            "conversion, check --resample-min-mz / --resample-max-mz; on "
+            "--no-resample, the axis is the source's own m/z values and the "
+            "source is what carries them."
+        )
+
+    def _drop_unusable_intensities(
+        self, mzs: NDArray[np.float64], intensities: NDArray[np.float64]
+    ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """Drop intensities that are not a measurement, before resampling.
+
+        Two kinds, one rule (issue #248):
+
+        *Non-finite.* A NaN intensity reached ``X.data`` unchallenged,
+        turned ``uns["average_spectrum"]`` into NaN, and passed
+        validation -- one unusable value poisoning every aggregate over
+        the column it sits in.
+
+        *Negative.* An intensity is a count of ions, or an ADC reading
+        proportional to one. A negative value is not a smaller
+        measurement; it is a baseline subtraction that overshot, and no
+        consumer of a converted store reads it as signal -- a TIC, an ion
+        image and a mean spectrum all take it as removing current that
+        was never there. Keeping it also made the two resampling methods
+        disagree in kind rather than in detail: nearest_neighbor stored
+        it (giving a pixel a TIC of 0), while tic_preserving found a
+        non-positive total for the spectrum and zeroed the whole thing.
+
+        Dropped here, before either method runs, so both see the same
+        spectrum and produce the same store. Dropping rather than
+        refusing, because baseline-subtracted profile data really does
+        carry small negatives and refusing it would leave no way to
+        convert those files at all; the count says how much went.
+
+        The arrays are returned unchanged -- the same objects -- when
+        there is nothing to drop, which is every ordinary spectrum, so
+        the shared-axis identity fast path downstream is untouched.
+        """
+        if intensities.size == 0:
+            return mzs, intensities
+        keep = np.isfinite(intensities) & (intensities >= 0)
+        if bool(keep.all()):
+            return mzs, intensities
+        self._count_unusable_intensities(
+            int(intensities.size - keep.sum()),
+            int(intensities.size),
+            intensities[~keep],
+        )
+        return mzs[keep], intensities[keep]
+
+    def _count_unusable_intensities(
+        self, n_dropped: int, n_total: int, dropped: NDArray[np.float64]
+    ) -> None:
+        """Record intensities dropped as unusable, warning once.
+
+        Once per conversion rather than once per spectrum, for the reason
+        :meth:`_count_out_of_range` gives: a source with negatives usually
+        has them in every spectrum. ``_unusable_intensities`` keeps the
+        running total, and like that counter it counts *calls*, so it
+        double-counts a two-pass conversion; read the warning for the
+        per-spectrum figure.
+        """
+        self._unusable_intensities += n_dropped
+        if self._unusable_intensities_warned:
+            return
+        self._unusable_intensities_warned = True
+        n_nan = int(np.count_nonzero(~np.isfinite(dropped)))
+        logger.warning(
+            "Dropping intensities that are not a measurement -- %d of %d in "
+            "the first spectrum affected (%d non-finite, %d negative). A NaN "
+            "would make every aggregate over its column NaN, and a negative "
+            "value is a baseline subtraction that overshot, not signal. Both "
+            "resampling methods see the spectrum without them, so they agree "
+            "on what is stored.",
+            n_dropped,
+            n_total,
+            n_nan,
+            n_dropped - n_nan,
+        )
 
     @staticmethod
     def _coalesce_duplicate_bins(

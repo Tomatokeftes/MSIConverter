@@ -21,6 +21,8 @@ from typing import Tuple
 import numpy as np
 from numpy.typing import NDArray
 
+from ...errors import ConversionRefused
+
 logger = logging.getLogger(__name__)
 
 
@@ -117,14 +119,14 @@ def build_mass_axis(
         ValueError: If the parameters leave no usable channel.
     """
     if bin_size_ns <= 0:
-        raise ValueError(f"SpecBinSize must be positive, got {bin_size_ns}")
+        raise ConversionRefused(f"SpecBinSize must be positive, got {bin_size_ns}")
 
     bin_ps = bin_size_ns * 1000.0
     start_ps = start_flight_time_us * 1e6
     stop_ps = stop_flight_time_us * 1e6
     n_full = int(math.floor((stop_ps - start_ps) / bin_ps)) + 1
     if n_full <= 0:
-        raise ValueError(
+        raise ConversionRefused(
             f"Flight-time range {start_flight_time_us}-{stop_flight_time_us} us "
             f"yields no channels at {bin_size_ns} ns per channel"
         )
@@ -141,7 +143,7 @@ def build_mass_axis(
 
     hits = np.nonzero(usable)[0]
     if hits.size == 0:
-        raise ValueError(
+        raise ConversionRefused(
             "No time channel maps into the declared mass range "
             f"{start_mz}-{stop_mz} with slope={slope}, offset={offset}"
         )

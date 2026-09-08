@@ -23,6 +23,7 @@ from functools import cached_property
 from math import isfinite
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
+from ...errors import ConversionRefused
 from .masslynx_lib import NO_POSITION, FunctionType, MassLynxLib, ScanInfoData
 
 logger = logging.getLogger(__name__)
@@ -227,7 +228,7 @@ def _fit_axis(positions: Sequence[float], axis: str) -> AxisLattice:
     seed = statistics.median(intervals)
     span = unique[-1] - unique[0]
     if seed <= 0.0 or span <= 0.0:
-        raise ValueError(
+        raise ConversionRefused(
             f"Waters stage readings on the {axis} axis have no measurable "
             f"raster pitch ({len(unique)} distinct positions spanning "
             f"{span:.4f} um)."
@@ -240,7 +241,7 @@ def _fit_axis(positions: Sequence[float], axis: str) -> AxisLattice:
     worst = max(unique, key=lattice.offset)
     worst_offset = lattice.offset(worst)
     if worst_offset > _LATTICE_TOLERANCE * pitch:
-        raise ValueError(
+        raise ConversionRefused(
             f"Waters stage readings on the {axis} axis do not lie on a "
             f"regular raster: with a fitted pitch of {pitch:.4f} um the "
             f"reading at {worst:.2f} um sits {worst_offset:.4f} um "
@@ -251,7 +252,7 @@ def _fit_axis(positions: Sequence[float], axis: str) -> AxisLattice:
 
     occupancy = len(unique) / count
     if occupancy < _MIN_LATTICE_OCCUPANCY:
-        raise ValueError(
+        raise ConversionRefused(
             f"Waters stage readings on the {axis} axis fit a raster of "
             f"{count} lines at {pitch:.4f} um but only {len(unique)} of "
             f"them carry a reading ({100.0 * occupancy:.1f} %). That is "
@@ -347,7 +348,7 @@ def _grid_from_scan_map(
         )
 
     if not census.x_positions or not census.y_positions:
-        raise ValueError("No valid laser positions found in Waters imaging data")
+        raise ConversionRefused("No valid laser positions found in Waters imaging data")
 
     x_lattice = _fit_axis(census.x_positions, "x")
     y_lattice = _fit_axis(census.y_positions, "y")
@@ -391,7 +392,7 @@ def _grid_from_scan_map(
     # these fields and grid normally (401x401, 247x140, ...), so this
     # refuses the non-images without costing anything real. See issue #213.
     if x_lattice.count == 1 and y_lattice.count == 1:
-        raise ValueError(
+        raise ConversionRefused(
             f"Every positioned scan reports the same stage position "
             f"(x={x_lattice.origin:.1f} um, y={y_lattice.origin:.1f} um), so "
             f"this acquisition has a single pixel: {census.positioned} "

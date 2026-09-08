@@ -40,6 +40,7 @@ from ....core.msms import (
     IsolationWindow,
 )
 from ....core.registry import register_reader
+from ....errors import ConversionRefused
 from ....metadata.extractors.bruker_extractor import BrukerMetadataExtractor
 from ....utils.bruker_exceptions import DataError, FileFormatError, SDKError
 from ..base_bruker_reader import BrukerBaseMSIReader
@@ -416,7 +417,7 @@ class BrukerReader(BrukerBaseMSIReader):
         self._requested_region = region
         self._metadata_only = bool(metadata_only)
         if tdf_spectrum not in TDF_SPECTRUM_MODES:
-            raise ValueError(
+            raise ConversionRefused(
                 f"tdf_spectrum must be one of {TDF_SPECTRUM_MODES}, "
                 f"got {tdf_spectrum!r}"
             )
@@ -829,14 +830,29 @@ class BrukerReader(BrukerBaseMSIReader):
             )
             return resolved
         try:
-            return int(request_str)
+            resolved = int(request_str)
         except ValueError:
             available = ", ".join(sorted(name_to_num)) or "(none)"
-            raise ValueError(
+            raise ConversionRefused(
                 f"--region '{request_str}' is not a recognised .mis Area "
                 f"Name and is not a valid integer. Available area names: "
                 f"{available}"
             )
+        # Said out loud, because the two spellings look alike and pick
+        # different areas: on a three-area set '02' matches no Area Name,
+        # falls through to here as RegionNumber 2, and selects Area '04'.
+        # The name path has always logged what it resolved; this one
+        # logged nothing at all (issue #252).
+        available = ", ".join(sorted(name_to_num)) or "(none)"
+        logger.info(
+            "--region '%s' matches no .mis Area Name (found: %s), so it is "
+            "read as DB RegionNumber %d. Area Names are what flexImaging "
+            "shows; pass one of those to select by name.",
+            request_str,
+            available,
+            resolved,
+        )
+        return resolved
 
     def _select_region(self) -> Tuple[Optional[int], Optional[set]]:
         """Select region based on user request or convert all regions.
@@ -853,6 +869,11 @@ class BrukerReader(BrukerBaseMSIReader):
         self._log_region_mapping()
 
         if not self._region_info or len(self._region_info) <= 1:
+            # A request still has to be answered. Returning here first
+            # meant --region was never even parsed on a single-area set:
+            # '--region foo' converted all 713 pixels at exit 0 while the
+            # three-area set refused the same word (issue #252).
+            self._check_region_on_single_region_set()
             return (None, None)
 
         # Multiple regions exist
@@ -863,7 +884,7 @@ class BrukerReader(BrukerBaseMSIReader):
         if resolved is not None:
             # User explicitly requested a specific region
             if resolved not in valid_regions:
-                raise ValueError(
+                raise ConversionRefused(
                     f"Region {resolved} not found. "
                     f"Available regions: {valid_regions}"
                 )
@@ -888,6 +909,39 @@ class BrukerReader(BrukerBaseMSIReader):
             f"Use region= parameter to select a specific region."
         )
         return (None, None)
+
+    def _check_region_on_single_region_set(self) -> None:
+        """Answer a ``--region`` request on a set with nothing to select from.
+
+        There is no filtering to do either way -- one region is the whole
+        dataset -- so a request naming that region converts exactly as it
+        would have without it. A request naming anything else is refused,
+        in the same words the multi-region path uses, rather than being
+        dropped on the floor.
+        """
+        if self._requested_region is None:
+            return
+
+        if not self._region_info:
+            raise ConversionRefused(
+                f"--region {self._requested_region!r} was given but this "
+                "dataset carries no region information (no MaldiFrameInfo "
+                "table), so there is nothing to select. Drop the option to "
+                "convert it."
+            )
+
+        resolved = self._resolve_requested_region()
+        valid_regions = [r for r, _ in self._region_info]
+        if resolved not in valid_regions:
+            raise ConversionRefused(
+                f"Region {resolved} not found. Available regions: " f"{valid_regions}"
+            )
+        logger.info(
+            "Region %d is the only region in this dataset; all %d frames are "
+            "converted.",
+            resolved,
+            self._region_info[0][1],
+        )
 
     def get_region_map(self) -> Optional[Dict[tuple, int]]:
         """Get per-pixel region mapping from MaldiFrameInfo.

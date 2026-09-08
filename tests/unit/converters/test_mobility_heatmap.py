@@ -468,7 +468,12 @@ class TestStoredBlock:
         table = _read(out).tables["stub_z0"]
 
         block = table.uns["mobility_heatmap"]
-        assert set(block) == {"mz_edges", "mobility_edges", "counts"}
+        assert set(block) == {
+            "mz_edges",
+            "mobility_edges",
+            "counts",
+            "current_ratio",
+        }
         counts = np.asarray(block["counts"])
         assert counts.dtype == np.float32 and counts.shape == (4, 256)
         assert np.asarray(block["mz_edges"]).shape == (5,)
@@ -480,6 +485,10 @@ class TestStoredBlock:
         np.testing.assert_allclose(
             counts.sum(axis=1), np.asarray(table.uns["average_spectrum"]), rtol=1e-6
         )
+        # ...and the block says so, so a consumer plotting the two
+        # together can tell a lossless store from a vendor-centroid one
+        # without recomputing the sum (issue #253).
+        assert block["current_ratio"] == pytest.approx(1.0, abs=1e-6)
         # Built exactly once, however many uns blocks asked for it.
         assert reader.mobility_passes == 1
 
@@ -501,7 +510,12 @@ class TestStoredBlock:
             str(prepare_zarr_read_path(out) / "tables" / "stub_z0")
         )
         block = lazy.uns["mobility_heatmap"]
-        assert set(block) == {"mz_edges", "mobility_edges", "counts"}
+        assert set(block) == {
+            "mz_edges",
+            "mobility_edges",
+            "counts",
+            "current_ratio",
+        }
         assert np.asarray(block["counts"]).shape == (4, 256)
 
     def test_opt_out_leaves_the_axis_and_drops_the_heatmap(self, tmp_path):

@@ -18,6 +18,7 @@ from ...core.base_extractor import MetadataExtractor
 from ...core.base_reader import BaseMSIReader
 from ...core.mobility import MobilityAxis, classify_mobility_array
 from ...core.registry import register_reader
+from ...errors import ConversionRefused
 from ...metadata.extractors.imzml_extractor import ImzMLMetadataExtractor
 from ...resampling.constants import normalize_spectrum_type
 from ...utils.pyimzml_direct import read_spectrum_mzs_only
@@ -421,9 +422,9 @@ class _MassAxisAccumulator:
         self._buf = None
 
         if not self.saw_any or self._acc is None:
-            raise ValueError("No spectra found to build common mass axis")
+            raise ConversionRefused("No spectra found to build common mass axis")
         if self._acc.size == 0:
-            raise ValueError("Failed to extract any m/z values")
+            raise ConversionRefused("Failed to extract any m/z values")
         return self._acc
 
     def _allocate(self, m: int, dtype: Any, exact: bool = False) -> None:
@@ -478,7 +479,7 @@ class _MassAxisAccumulator:
             return
         if self._acc.size <= self._max_length:
             return
-        raise ValueError(
+        raise ConversionRefused(
             f"Common mass axis exceeded {self._max_length:,} unique m/z values "
             f"after {index + 1:,} of {self._total_spectra:,} spectra "
             f"({self._acc.size:,} so far). The peak lists in this dataset do "
@@ -625,7 +626,9 @@ class ImzMLReader(BaseMSIReader):
         self.ibd_path = imzml_path.with_suffix(".ibd")
 
         if not self.ibd_path.exists():
-            raise ValueError(f"Corresponding .ibd file not found for {imzml_path}")
+            raise ConversionRefused(
+                f"Corresponding .ibd file not found for {imzml_path}"
+            )
 
         # Open the .ibd file for reading
         self.ibd_file = open(self.ibd_path, mode="rb")
@@ -678,7 +681,7 @@ class ImzMLReader(BaseMSIReader):
             raise
 
         if self.parser.metadata is None:
-            raise ValueError("Failed to parse metadata from imzML file.")
+            raise ConversionRefused("Failed to parse metadata from imzML file.")
 
         # Determine file mode
         # Determine if file is continuous mode
@@ -691,7 +694,7 @@ class ImzMLReader(BaseMSIReader):
         )
 
         if self.is_continuous == self.is_processed:
-            raise ValueError(
+            raise ConversionRefused(
                 "Invalid file mode, expected either 'continuous' or " "'processed'."
             )
 
@@ -705,7 +708,7 @@ class ImzMLReader(BaseMSIReader):
             self._mobility = detect_mobility_array(self.parser.metadata)
             if self._mobility is not None:
                 if self._mobility.compressed:
-                    raise ValueError(
+                    raise ConversionRefused(
                         f"{imzml_path} declares zlib compression on its ion "
                         f"mobility array ({self._mobility.array_accession}); "
                         "compressed binary arrays are not supported"
@@ -826,14 +829,14 @@ class ImzMLReader(BaseMSIReader):
         groups = parser.metadata.referenceable_param_groups
         group = groups.get(group_id)
         if group is None or precision is None:
-            raise ValueError(
+            raise ConversionRefused(
                 f"imzML declares no usable referenceable param group for the "
                 f"{label} array, so pyimzml cannot know how to decode it "
                 f"(looked for {group_id!r} among {sorted(map(str, groups))})."
             )
 
         if _ZLIB_ACCESSION in group or _ZLIB_NAME in group:
-            raise ValueError(
+            raise ConversionRefused(
                 f"imzML declares zlib compression ({_ZLIB_ACCESSION}) on its "
                 f"{label} array. pyimzml 1.5.5 has no decompression path: it "
                 f"reads IMS:1000103 x itemsize raw deflate bytes and decodes "
@@ -848,7 +851,7 @@ class ImzMLReader(BaseMSIReader):
             name for name in parser.precisionDict if name in group.param_by_name
         ]
         if len(declared) != 1:
-            raise ValueError(
+            raise ConversionRefused(
                 f"imzML param group {group_id!r} declares {len(declared)} "
                 f"precision terms for the {label} array "
                 f"({', '.join(declared) if declared else 'none'}); exactly one "
@@ -858,14 +861,14 @@ class ImzMLReader(BaseMSIReader):
 
         resolved = parser.precisionDict[declared[0]]
         if resolved != precision:
-            raise ValueError(
+            raise ConversionRefused(
                 f"imzML param group {group_id!r} declares {declared[0]!r} for "
                 f"the {label} array, which is {resolved!r}, but pyimzml "
                 f"resolved {precision!r} and will decode at that width."
             )
 
         if precision in _PLATFORM_DEPENDENT_PRECISIONS:
-            raise ValueError(
+            raise ConversionRefused(
                 f"imzML declares {declared[0]!r} for its {label} array. "
                 f"pyimzml reads {parser.sizeDict[precision]} bytes per value "
                 f"but decodes them as numpy's 'l', whose itemsize is "
@@ -920,7 +923,7 @@ class ImzMLReader(BaseMSIReader):
             itemsize = parser.sizeDict[precision]
             expected = array_length * itemsize
             if encoded_length != expected:
-                raise ValueError(
+                raise ConversionRefused(
                     f"imzML spectrum 0 declares {encoded_length:,} encoded "
                     f"bytes ({_ENCODED_LENGTH_ACCESSION}) for its {label} "
                     f"array, but its {array_length:,} values at the resolved "
@@ -954,7 +957,7 @@ class ImzMLReader(BaseMSIReader):
             negative = np.flatnonzero(values < 0)
             if negative.size:
                 idx = int(negative[0])
-                raise ValueError(
+                raise ConversionRefused(
                     f"imzML spectrum {idx} declares a negative {label} of "
                     f"{int(values[idx]):,} ({negative.size:,} spectra "
                     f"affected). Offsets and lengths are byte and element "
@@ -965,7 +968,7 @@ class ImzMLReader(BaseMSIReader):
         mismatch = np.flatnonzero(arrays.mz_lengths != arrays.int_lengths)
         if mismatch.size:
             idx = int(mismatch[0])
-            raise ValueError(
+            raise ConversionRefused(
                 f"imzML spectrum {idx} declares {int(arrays.mz_lengths[idx]):,} "
                 f"m/z values but {int(arrays.int_lengths[idx]):,} intensity "
                 f"values ({mismatch.size:,} spectra disagree). A spectrum's two "
@@ -1021,7 +1024,7 @@ class ImzMLReader(BaseMSIReader):
             past = np.flatnonzero(end > ibd_size)
             if past.size:
                 idx = int(past[0])
-                raise ValueError(
+                raise ConversionRefused(
                     f"imzML spectrum {idx} declares a {label} array ending at "
                     f"byte {int(end[idx]):,}, but {self.ibd_path.name} is "
                     f"{ibd_size:,} bytes ({past.size:,} spectra are affected; "
@@ -1136,7 +1139,7 @@ class ImzMLReader(BaseMSIReader):
 
                     mzs = spectrum_data[0]
                     if mzs.size == 0:
-                        raise ValueError("First spectrum contains no m/z values")
+                        raise ConversionRefused("First spectrum contains no m/z values")
 
                     self._common_mass_axis = self._deduplicated_shared_axis(mzs)
                     if self._continuous_uniform:
@@ -1479,7 +1482,7 @@ class ImzMLReader(BaseMSIReader):
         if self._mobility_offsets is not None:
             return self._mobility_offsets
         if self._mobility is None or self.imzml_path is None:
-            raise ValueError("This imzML declares no ion mobility array")
+            raise ConversionRefused("This imzML declares no ion mobility array")
         parser = cast(ImzMLParser, self.parser)
         n_spectra = len(parser.coordinates)
         offsets, lengths, encoded = collect_array_offsets(
@@ -1487,7 +1490,7 @@ class ImzMLReader(BaseMSIReader):
         )
         missing = int(np.count_nonzero(offsets < 0))
         if missing:
-            raise ValueError(
+            raise ConversionRefused(
                 f"{missing} of {n_spectra} spectra reference no ion mobility array "
                 f"although the file declares one ({self._mobility.group_id})"
             )
@@ -1495,7 +1498,7 @@ class ImzMLReader(BaseMSIReader):
         mismatch = np.flatnonzero(lengths != mz_lengths)
         if mismatch.size:
             first = int(mismatch[0])
-            raise ValueError(
+            raise ConversionRefused(
                 f"Spectrum {first} declares {int(lengths[first])} ion mobility "
                 f"values for {int(mz_lengths[first])} m/z values; the arrays "
                 "must be parallel"
@@ -1513,7 +1516,7 @@ class ImzMLReader(BaseMSIReader):
         data = m.read(int(lengths[idx]) * spec.dtype.itemsize)
         values = np.frombuffer(data, dtype=spec.dtype)
         if values.size != int(lengths[idx]):
-            raise ValueError(
+            raise ConversionRefused(
                 f"Spectrum {idx}: ion mobility array truncated in the .ibd "
                 f"({values.size} of {int(lengths[idx])} values)"
             )
@@ -1594,7 +1597,7 @@ class ImzMLReader(BaseMSIReader):
                 self._continuous_mzs = mzs
         mobility = cast(NDArray[np.float64], self._mobility_shared)
         if mzs.size != mobility.size:
-            raise ValueError(
+            raise ConversionRefused(
                 f"Shared m/z block has {mzs.size} values but the shared mobility "
                 f"array has {mobility.size}"
             )
@@ -1641,7 +1644,7 @@ class ImzMLReader(BaseMSIReader):
                         shared if shared is not None else self._read_mobility_array(idx)
                     )
                     if mobility.size != mzs.size:
-                        raise ValueError(
+                        raise ConversionRefused(
                             f"{mobility.size} mobility values for {mzs.size} m/z values"
                         )
                     if self._intensity_threshold is not None:

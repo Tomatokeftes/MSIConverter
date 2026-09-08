@@ -22,6 +22,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ...core.mobility import MOBILITY_ARRAY_TERMS
+from ...errors import ConversionRefused
 
 _MZML_NS = "{http://psi.hupo.org/ms/mzml}"
 _OFFSET_ACCESSION = "IMS:1000102"
@@ -147,7 +148,7 @@ def collect_array_offsets(
         if elem.tag != f"{_MZML_NS}spectrum":
             continue
         if index >= n_spectra:
-            raise ValueError(
+            raise ConversionRefused(
                 f"{imzml_path} holds more <spectrum> elements than the "
                 f"{n_spectra} pyimzml reported"
             )
@@ -170,7 +171,7 @@ def collect_array_offsets(
         elem.clear()
 
     if index != n_spectra:
-        raise ValueError(
+        raise ConversionRefused(
             f"{imzml_path} holds {index} <spectrum> elements but pyimzml "
             f"reported {n_spectra}"
         )

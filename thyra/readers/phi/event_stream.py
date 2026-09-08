@@ -47,6 +47,7 @@ from typing import Dict, Iterator, List, Optional, Tuple
 import numpy as np
 from numpy.typing import NDArray
 
+from ...errors import ConversionRefused
 from .phi_header import PhiHeader
 
 logger = logging.getLogger(__name__)
@@ -191,7 +192,7 @@ def _finalise_index(index: BlockIndex, path: Path, pos: int, file_size: int) -> 
             file_size - pos,
         )
     if not index.data_spans:
-        raise ValueError(
+        raise ConversionRefused(
             f"No event blocks (id {index.data_block_id}) found in {path}. "
             "Is this a PHI imaging acquisition?"
         )

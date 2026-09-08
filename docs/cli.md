@@ -27,6 +27,12 @@ thyra [OPTIONS] INPUT OUTPUT
 | `1` | Conversion failed |
 | `2` | Invalid command-line arguments (click usage error) |
 
+A refusal Thyra planned for -- a `.d` directory with no analysis files, a
+Waters raster whose stage never moved, a mass range with no extent -- prints
+its message once at `ERROR` and nothing else. The traceback behind it is kept
+for `-v DEBUG`, and a traceback at `ERROR` now means an exception nobody
+planned for, which is worth reporting as a bug.
+
 A failed conversion renames any partially written store to
 `<output>.zarr.failed`, so the output path stays free for a retry and an
 incomplete store is never left where a finished one is expected. This makes
@@ -44,7 +50,7 @@ thyra input.imzML output.zarr && python analyse.py output.zarr
 |--------|---------|-------------|
 | `--format [spatialdata]` | `spatialdata` | Output format |
 | `--pixel-size FLOAT` | auto-detect | Pixel size in micrometers |
-| `--region TEXT` | all | Convert one region, by `.mis` Area Name or by DB RegionNumber |
+| `--region TEXT` | all | Convert one region, by `.mis` Area Name or by DB RegionNumber. Checked against the dataset's own region list whether it has one region or several; a value that matches no Area Name is read as a RegionNumber, and says so |
 | `--resample / --no-resample` | enabled | Mass axis resampling |
 | `--include-optical / --no-optical` | enabled | Include optical images in output |
 | `--mobility-table / --no-mobility-table` | enabled | Also write the mobility-resolved sibling table when the source shares one set of (m/z, ion mobility) features across pixels (see [Output Format](output-format.md#ion-mobility)) |
@@ -114,12 +120,13 @@ thyra input.imzML output.zarr --log-file conversion.log
 
 ## Ion Mobility Grid (Advanced)
 
-These size the grid `--mobility-grid` bins onto. They do nothing without it.
+These size the grid `--mobility-grid` bins onto. They do nothing without it,
+and passing one without it is logged at `WARNING`.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--mobility-bins INTEGER` | `256` | Mobility channels the grid divides the range into |
-| `--mobility-min FLOAT` | axis minimum | Lower edge of the grid, in the axis unit (1/K0 for TIMS) |
+| `--mobility-bins INTEGER` | `256` | Mobility channels the grid divides the range into. At least 1 |
+| `--mobility-min FLOAT` | axis minimum | Lower edge of the grid, in the axis unit (1/K0 for TIMS). May be zero or negative -- it is a position on an axis, not a quantity -- but must be below `--mobility-max` |
 | `--mobility-max FLOAT` | axis maximum | Upper edge of the grid |
 
 ### Examples
@@ -309,9 +316,17 @@ flags that used to live here select nothing.
 
 ## imzML-Specific
 
+!!! note "A vendor option on another vendor's file is logged as ignored"
+    Each of the format-specific groups below -- imzML, Bruker, Waters -- and
+    the ion mobility grid options are accepted on any input and do nothing on
+    a source they do not apply to. Passing one on another format is now
+    logged at `WARNING`, naming the option and both formats, so a script that
+    has been carrying a dead flag says so on the next run rather than
+    producing a store byte-identical to the plain one in silence.
+
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--spectrum-type TYPE` | `auto` | `auto`, `profile`, or `centroid` -- declare the spectrum representation instead of detecting it |
+| `--spectrum-type TYPE` | `auto` | `auto`, `profile`, or `centroid` -- declare the spectrum representation instead of detecting it. imzML only |
 
 By default Thyra reads the representation the file declares (`MS:1000127`
 centroid / `MS:1000128` profile), wherever in the document it is written, and
@@ -345,14 +360,17 @@ thyra input.imzML output.zarr -v INFO
 
 ## Bruker-Specific
 
-These options only apply when converting Bruker `.d` directories.
+Grouped here because this is where they are reached for. All but
+`--intensity-threshold` only apply when converting Bruker `.d` directories;
+that one is honoured by every reader, and is here because continuous-mode
+Bruker data is what usually needs it.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--use-recalibrated / --no-recalibrated` | enabled | Use recalibrated m/z state |
-| `--interactive-calibration` | off | Display available calibration states |
-| `--intensity-threshold FLOAT` | none | Minimum intensity filter |
-| `--tdf-spectrum {scan_sum,vendor_centroid}` | `scan_sum` | How a TDF (TIMS) frame's mobility scans collapse into one spectrum per pixel |
+| `--use-recalibrated / --no-recalibrated` | enabled | Use recalibrated m/z state. Bruker `.d` only |
+| `--interactive-calibration` | off | Display available calibration states. Bruker `.d` only |
+| `--intensity-threshold FLOAT` | none | Minimum intensity filter. **Every format** |
+| `--tdf-spectrum {scan_sum,vendor_centroid}` | `scan_sum` | How a TDF (TIMS) frame's mobility scans collapse into one spectrum per pixel. Bruker TDF only |
 
 ### Examples
 
@@ -389,7 +407,8 @@ thyra tims_data.d output.zarr --tdf-spectrum vendor_centroid
 
 ## Waters-Specific
 
-This option only applies when converting Waters `.raw` directories.
+This option only applies when converting Waters `.raw` directories; on any
+other input it is logged as ignored.
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -437,7 +456,7 @@ thyra synapt_run.raw output.zarr --waters-spectrum profile
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--dataset-id TEXT` | `msi_dataset` | Dataset identifier used in element keys |
+| `--dataset-id TEXT` | `msi_dataset` | Dataset identifier used in element keys. Letters, digits, underscores, dots and hyphens only, and not `.`, `..` or a leading `__`: it names every element in the store, so SpatialData's naming rule applies to it. Checked before any pass over the source |
 | `--handle-3d` | off | Process as 3D volume instead of 2D slices |
 | `--z-spacing FLOAT` | in-plane pixel size | Distance between consecutive slices, in um. Only used with `--handle-3d` |
 
@@ -476,6 +495,12 @@ the number has to come from whoever cut them.
     Without 3D handling each slice is written as its own 2D image and there is
     no z axis to space out. Passing `--z-spacing` on its own is logged as
     ignored rather than silently accepted.
+
+!!! warning "`--handle-3d` on a single-slice acquisition"
+    One plane has no slice-to-slice distance, so no `z_spacing_um` is applied
+    or recorded and a `--z-spacing` given alongside is logged as ignored. The
+    store is still written as a volume of one plane, which changes the element
+    keys -- the table is `{id}`, not `{id}_z0` -- but not the values.
 
 ---
 

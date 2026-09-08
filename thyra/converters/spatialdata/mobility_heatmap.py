@@ -43,6 +43,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ...core.base_reader import BaseMSIReader
+from ...errors import ConversionRefused
 from ...resampling.mobility_grid import (
     MOBILITY_CHANNELS,
     build_mobility_grid,
@@ -91,7 +92,7 @@ def mz_bin_edges(
     axis = np.asarray(axis, dtype=np.float64)
     n = int(axis.size)
     if n == 0:
-        raise ValueError("The mass axis is empty")
+        raise ConversionRefused("The mass axis is empty")
     if n == 1:
         axis_edges = np.array([axis[0] - 0.5, axis[0] + 0.5])
     else:
@@ -116,6 +117,24 @@ def mobility_bin_edges(
     return build_mobility_grid(lower, upper, channels).edges
 
 
+def usable_intensities(intensities: NDArray[np.float64]) -> Optional[NDArray[np.bool_]]:
+    """Which points carry a measurement, or ``None`` when they all do.
+
+    The same rule the summed table applies before resampling (see
+    ``BaseSpatialDataConverter._drop_unusable_intensities``): a NaN is
+    not a measurement and a negative value is an overshot baseline
+    subtraction, and neither is signal. It has to be the same rule here
+    or a grid table's marginal over channels would stop reproducing the
+    summed table's column on exactly the sources that carry them
+    (issue #248).
+
+    ``None`` for the ordinary spectrum, so the callers can skip masking
+    entirely rather than allocating a copy of every array per pixel.
+    """
+    usable = np.isfinite(intensities) & (intensities >= 0)
+    return None if bool(usable.all()) else usable
+
+
 def map_points_to_axis(
     axis: NDArray[np.float64],
     mzs: NDArray[np.float64],
@@ -127,21 +146,33 @@ def map_points_to_axis(
     "In range" is the strict axis span, and a point outside it is dropped
     rather than folded onto an edge bin -- the summed table drops it, so
     a marginal over mobility that kept it would exceed the column it
-    mirrors. Points in range go to their nearest axis entry through the
-    converter's own rule (ties to the right). This is the one place the
-    mapping is written: the heatmap, the grid's discovery pass and the
-    grid's scatter pass all go through it, so they cannot disagree.
+    mirrors. A point whose intensity is not a measurement goes for the
+    same reason, by the same rule (:func:`usable_intensities`). Points in
+    range go to their nearest axis entry through the converter's own rule
+    (ties to the right). This is the one place the mapping is written: the
+    heatmap, the grid's discovery pass and the grid's scatter pass all go
+    through it, so they cannot disagree.
 
     Returns:
         ``(bins, mobility, intensities, n_dropped)`` -- the axis index of
         every kept point, the two other arrays masked to match, and how
-        many points were dropped.
+        many points were dropped for lying outside the axis.
     """
     mzs = np.asarray(mzs, dtype=np.float64)
     mobility = np.asarray(mobility, dtype=np.float64)
     intensities = np.asarray(intensities, dtype=np.float64)
     if mzs.size == 0:
         return np.zeros(0, dtype=np.int64), mobility, intensities, 0
+    # Not counted in ``n_dropped``: these points were not outside the
+    # axis, they were never measurements. The summed table's own path
+    # counts them and says so once.
+    usable = usable_intensities(intensities)
+    if usable is not None:
+        mzs = mzs[usable]
+        mobility = mobility[usable]
+        intensities = intensities[usable]
+        if mzs.size == 0:
+            return np.zeros(0, dtype=np.int64), mobility, intensities, 0
     in_range = (mzs >= axis[0]) & (mzs <= axis[-1])
     n_dropped = 0
     if not in_range.all():
@@ -185,6 +216,16 @@ def map_indexed_points_to_axis(
     intensities = np.asarray(intensities, dtype=np.float64)
     if inverse.size == 0:
         return np.zeros(0, dtype=np.int64), mobility, intensities, 0
+    # Applied to the points, not to the unique m/z values: the rule is
+    # about the intensity a point carries, and two points sharing an m/z
+    # need not share a fate.
+    usable = usable_intensities(intensities)
+    if usable is not None:
+        inverse = inverse[usable]
+        mobility = mobility[usable]
+        intensities = intensities[usable]
+        if inverse.size == 0:
+            return np.zeros(0, dtype=np.int64), mobility, intensities, 0
     bins = _nn_map_to_bins(axis, unique_mz).astype(np.int64)
     in_range = (unique_mz >= axis[0]) & (unique_mz <= axis[-1])
     if in_range.all():

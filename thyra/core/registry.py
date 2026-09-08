@@ -6,6 +6,7 @@ from pathlib import Path
 from threading import RLock
 from typing import Dict, NoReturn, Type
 
+from ..errors import ConversionRefused
 from .base_converter import BaseMSIConverter
 from .base_reader import BaseMSIReader
 
@@ -149,7 +150,7 @@ class MSIRegistry:
         - .raw files (PHI SmartSoft-TOF ToF-SIMS)
         """
         if not input_path.exists():
-            raise ValueError(f"Input path does not exist: {input_path}")
+            raise ConversionRefused(f"Input path does not exist: {input_path}")
 
         format_name = self._detect_format_name(input_path)
         self._validate_format(format_name, input_path)
@@ -175,7 +176,7 @@ class MSIRegistry:
     def _detect_bruker_d_format(self, input_path: Path) -> str:
         """Validate and detect Bruker format from .d directory."""
         if not input_path.is_dir():
-            raise ValueError(
+            raise ConversionRefused(
                 "Bruker format requires .d directory, " f"got file: {input_path}"
             )
         bruker_format = self._detect_bruker_format(input_path)
@@ -183,14 +184,16 @@ class MSIRegistry:
             return bruker_format
         BrukerFolderStructure, _ = _get_bruker_folder_structure()
         if BrukerFolderStructure.is_solarix_without_peaks(input_path):
-            raise ValueError(
+            raise ConversionRefused(
                 f"solariX .d directory without peaks.sqlite: {input_path}. "
                 "The acquisition holds raw transients (ser) but no processed "
                 "peak store, which is what Thyra reads. Export the dataset "
                 "as imzML from the Bruker software (DataAnalysis, SCiLS Lab, "
                 "or flexImaging) and convert the imzML file instead."
             )
-        raise ValueError("Bruker .d directory missing analysis " f"files: {input_path}")
+        raise ConversionRefused(
+            "Bruker .d directory missing analysis " f"files: {input_path}"
+        )
 
     def _detect_mzpeak_format(self, input_path: Path) -> str:
         """Validate that a ``.mzpeak`` path really is an mzPeak archive.
@@ -212,7 +215,7 @@ class MSIRegistry:
             ValueError: If the file is not a ZIP or carries no index member.
         """
         if input_path.is_dir():
-            raise ValueError(
+            raise ConversionRefused(
                 f"mzPeak format requires a .mzpeak archive file, got "
                 f"directory: {input_path}"
             )
@@ -220,20 +223,20 @@ class MSIRegistry:
             with input_path.open("rb") as handle:
                 magic = handle.read(4)
         except (OSError, PermissionError) as exc:
-            raise ValueError(f"Cannot read {input_path}: {exc}") from exc
+            raise ConversionRefused(f"Cannot read {input_path}: {exc}") from exc
 
         if magic != b"PK\x03\x04":
-            raise ValueError(
+            raise ConversionRefused(
                 f"Not an mzPeak archive (missing ZIP signature): {input_path}"
             )
 
         if not zipfile.is_zipfile(input_path):
-            raise ValueError(
+            raise ConversionRefused(
                 f"Not an mzPeak archive (unreadable ZIP container): " f"{input_path}"
             )
         with zipfile.ZipFile(input_path) as archive:
             if "mzpeak_index.json" not in archive.namelist():
-                raise ValueError(
+                raise ConversionRefused(
                     f"Not an mzPeak archive (no mzpeak_index.json member): "
                     f"{input_path}"
                 )
@@ -249,12 +252,12 @@ class MSIRegistry:
         if input_path.is_dir():
             if self._detect_waters_format(input_path):
                 return "waters"
-            raise ValueError(
+            raise ConversionRefused(
                 "Waters .raw directory missing " f"_FUNC*.DAT files: {input_path}"
             )
         if self._detect_phi_format(input_path):
             return "phi"
-        raise ValueError(
+        raise ConversionRefused(
             f"Unrecognised .raw file: {input_path}. Expected either a Waters "
             "directory containing _FUNC*.DAT files, or a PHI SmartSoft-TOF "
             "file beginning with the SOFH magic."
@@ -277,7 +280,7 @@ class MSIRegistry:
         development. Until it lands, IMAGEREVEAL MS can export the data
         as imzML, which Thyra converts today.
         """
-        raise ValueError(
+        raise ConversionRefused(
             f"Shimadzu imaging data detected: {input_path}. Native support "
             "for Shimadzu formats (.imdx, .kbd) is in development. In the "
             "meantime, export the dataset as imzML from IMAGEREVEAL MS and "
@@ -295,7 +298,7 @@ class MSIRegistry:
             ".raw directory (Waters)",
             ".raw file (PHI SmartSoft-TOF)",
         ]
-        raise ValueError(
+        raise ConversionRefused(
             f"Unsupported format for '{input_path}'. "
             f"Supported: {', '.join(available)}"
         )
@@ -305,7 +308,7 @@ class MSIRegistry:
         if format_name == "imzml":
             ibd_path = input_path.with_suffix(".ibd")
             if not ibd_path.exists():
-                raise ValueError(
+                raise ConversionRefused(
                     f"ImzML file requires corresponding .ibd file: {ibd_path}"
                 )
         elif format_name == "bruker":
@@ -320,7 +323,7 @@ class MSIRegistry:
         BrukerFolderStructure, BrukerFormat = _get_bruker_folder_structure()
 
         if not input_path.is_dir():
-            raise ValueError(
+            raise ConversionRefused(
                 f"Bruker format requires .d directory, got file: {input_path}"
             )
 
@@ -329,7 +332,7 @@ class MSIRegistry:
             folder = BrukerFolderStructure(input_path)
             info = folder.analyze()
             if info.format == BrukerFormat.UNKNOWN:
-                raise ValueError(
+                raise ConversionRefused(
                     f"Bruker .d directory missing analysis files: {input_path}"
                 )
         except Exception as e:
@@ -339,7 +342,7 @@ class MSIRegistry:
             has_tsf = (input_path / "analysis.tsf").exists()
             has_tdf = (input_path / "analysis.tdf").exists()
             if not has_tsf and not has_tdf:
-                raise ValueError(
+                raise ConversionRefused(
                     f"Bruker .d directory missing analysis files: {input_path}"
                 ) from e
 
@@ -348,7 +351,7 @@ class MSIRegistry:
         with self._lock:
             if format_name not in self._readers:
                 available = list(self._readers.keys())
-                raise ValueError(
+                raise ConversionRefused(
                     f"No reader for format "
                     f"'{format_name}'. "
                     f"Available: {available}"
@@ -360,7 +363,7 @@ class MSIRegistry:
         with self._lock:
             if format_name not in self._converters:
                 available = list(self._converters.keys())
-                raise ValueError(
+                raise ConversionRefused(
                     f"No converter for format '{format_name}'. Available: "
                     f"{available}"
                 )

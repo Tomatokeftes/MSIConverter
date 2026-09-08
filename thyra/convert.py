@@ -4,10 +4,11 @@ import traceback
 import warnings
 from math import isfinite
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from .core.base_converter import PixelSizeSource
 from .core.registry import detect_format, get_converter_class, get_reader_class
+from .errors import ConversionRefused
 from .utils.windows_paths import prepare_zarr_output_path
 
 logger = logging.getLogger(__name__)
@@ -35,14 +36,55 @@ def _validate_paths_parameters(
     return True
 
 
+#: Characters SpatialData allows in an element name, besides letters and
+#: digits. Its rule (``spatialdata._core.validation.check_valid_name``) is
+#: not part of the public API, so it is restated here rather than imported:
+#: a private import that moves would take the front-door check down with
+#: it, and the only cost of the two drifting is that SpatialData refuses a
+#: name Thyra let through -- which is exactly today's behaviour.
+_ELEMENT_NAME_EXTRA_CHARS = "_-."
+
+
+def dataset_id_problem(dataset_id: Any) -> Optional[str]:
+    """Why ``dataset_id`` cannot name SpatialData elements, or ``None``.
+
+    Every element key in the store is built from this id -- ``<id>_z0``,
+    ``<id>_z0_tic``, ``<id>_pixels`` -- so SpatialData's naming rule
+    applies to it. It used to be checked for emptiness only, and an id
+    with a space or a slash was refused by SpatialData at ``_save_output``,
+    after both passes over the source had run (issue #250). The suffixes
+    Thyra appends are all legal characters, so an id that passes here
+    yields keys that pass there.
+    """
+    if not isinstance(dataset_id, str):
+        return f"Dataset ID must be a string, not {type(dataset_id).__name__}"
+    if not dataset_id.strip():
+        return "Dataset ID must be a non-empty string"
+    if dataset_id in (".", ".."):
+        return f"Dataset ID cannot be {dataset_id!r}"
+    if dataset_id.startswith("__"):
+        return "Dataset ID cannot start with '__'"
+    bad = sorted(
+        {c for c in dataset_id if not (c.isalnum() or c in _ELEMENT_NAME_EXTRA_CHARS)}
+    )
+    if bad:
+        return (
+            "Dataset ID names every element in the store, so it may hold only "
+            "letters, digits, underscores, dots and hyphens; "
+            f"{dataset_id!r} also holds " + ", ".join(repr(c) for c in bad)
+        )
+    return None
+
+
 def _validate_string_parameters(format_type: str, dataset_id: str) -> bool:
     """Validate string parameters."""
     if not isinstance(format_type, str) or not format_type.strip():
         logger.error("Format type must be a non-empty string")
         return False
 
-    if not isinstance(dataset_id, str) or not dataset_id.strip():
-        logger.error("Dataset ID must be a non-empty string")
+    problem = dataset_id_problem(dataset_id)
+    if problem is not None:
+        logger.error(problem)
         return False
 
     return True
@@ -107,17 +149,17 @@ def _validate_paths(input_path: Path, output_path: Path) -> bool:
 def _create_reader(
     input_path: Path,
     reader_options: Optional[Dict[str, Any]] = None,
-    lossless_spectrum: str = "",
+    lossless_tables: Optional[List[str]] = None,
 ) -> Tuple[Any, str]:
     """Create and return a reader for the input format.
 
     Args:
         input_path: Path to the input MSI data
         reader_options: Optional format-specific reader options (e.g., calibration settings)
-        lossless_spectrum: Names the sibling table being written that
-            needs the summed spectrum to keep all of the ion current
-            (``"mobility grid"``, ``"demultiplexed MS/MS"``), so that
-            table adds back up to the summed one exactly; empty when none.
+        lossless_tables: Names the sibling tables being written that need
+            the summed spectrum to keep all of the ion current
+            (``"mobility grid"``, ``"demultiplexed MS/MS"``), so each of
+            them adds back up to the summed one exactly; empty when none.
 
     Returns:
         Tuple of (reader instance, detected format string)
@@ -129,12 +171,14 @@ def _create_reader(
 
     # Pass reader options to the reader if provided
     options = dict(reader_options or {})
-    if lossless_spectrum:
-        _force_scan_sum(reader_class, options, lossless_spectrum)
+    if lossless_tables:
+        _force_scan_sum(input_format, options, lossless_tables)
     return reader_class(input_path, **options), input_format
 
 
-def _force_scan_sum(reader_class: Any, options: Dict[str, Any], what: str) -> None:
+def _force_scan_sum(
+    input_format: str, options: Dict[str, Any], wanted: List[str]
+) -> None:
     """Say out loud when a sibling table will not add up to the summed one.
 
     A sibling table -- the mobility grid, the demultiplexed MS/MS table --
@@ -147,27 +191,48 @@ def _force_scan_sum(reader_class: Any, options: Dict[str, Any], what: str) -> No
     acquisitions), so an explicit ``--tdf-spectrum vendor_centroid`` is
     the caller saying they want the mismatch, which the sibling's ``uns``
     block then records. It is said at WARNING rather than overridden.
+
+    Said before the reader is opened, because the spectrum mode binds
+    into the vendor handle -- which is also why it cannot yet know
+    whether the source is a PASEF acquisition at all. So it names the
+    tables that *would* carry the mismatch; whether each is written is
+    then said by name when the converter plans it.
     """
     mode = options.get("tdf_spectrum")
     if mode is None or mode == "scan_sum":
         return
+    if input_format != "bruker":
+        # The option reaches no other reader, so nothing about the summed
+        # spectrum changed and there is no mismatch to announce. The CLI
+        # has already said the flag is ignored here (issue #260).
+        return
+    subject = " and ".join(f"a {name} table" for name in wanted)
     logger.warning(
-        "A %s table was asked for with --tdf-spectrum %s. The table reads "
-        "raw scans, so it will not add back up to the summed table; its "
-        "uns block records by how much.",
-        what,
+        "%s %s written with --tdf-spectrum %s. Such a table reads raw "
+        "scans, so it will not add back up to the summed table; its uns "
+        "block records by how much.",
+        subject[0].upper() + subject[1:],
+        "is" if len(wanted) == 1 else "are",
         mode,
     )
 
 
-def _lossless_spectrum_for(kwargs: Dict[str, Any]) -> str:
-    """Which sibling table, if any, needs the lossless summed spectrum."""
+def _lossless_spectrum_for(kwargs: Dict[str, Any]) -> List[str]:
+    """Which sibling tables, if any, need the lossless summed spectrum.
+
+    ``msms_table`` defaults to *on* in the converter (design decision D2),
+    and the CLI forwards the keyword only when the flag was given, so
+    reading it as off-by-default meant the common path -- the default-on
+    table -- never reached :func:`_force_scan_sum` and the mismatch it
+    warns about went unsaid (issue #253). The default here is the
+    converter's own.
+    """
     wanted = []
     if kwargs.get("mobility_grid", False):
         wanted.append("mobility grid")
-    if kwargs.get("msms_table", False):
+    if kwargs.get("msms_table", True):
         wanted.append("demultiplexed MS/MS")
-    return " and ".join(wanted)
+    return wanted
 
 
 def _determine_pixel_size(
@@ -191,7 +256,7 @@ def _determine_pixel_size(
     if essential_metadata.pixel_size is None:
         logger.error("Pixel size not found in metadata")
         logger.error("Use --pixel-size parameter (e.g., --pixel-size 25)")
-        raise ValueError("Pixel size not found in metadata")
+        raise ConversionRefused("Pixel size not found in metadata")
 
     final_pixel_size = essential_metadata.pixel_size[0]  # Use X size
     logger.info(f"Detected pixel size: {final_pixel_size:.1f} um")
@@ -281,7 +346,7 @@ def _resolve_converter_class(format_type: str) -> Any:
             logger.error("Try upgrading your dependencies:")
             logger.error("  pip install --upgrade anndata spatialdata zarr")
             logger.error("Or create a fresh environment with compatible versions.")
-            raise ValueError("SpatialData converter unavailable") from e
+            raise ConversionRefused("SpatialData converter unavailable") from e
         else:
             raise e
 
@@ -454,6 +519,7 @@ def convert_msi(
         reader_options = dict(reader_options or {})
         reader_options["region"] = region
 
+    reader = None
     try:
         # Create reader with format-specific options. A mobility grid
         # table decides the summed spectrum's semantics, so it has to be
@@ -462,7 +528,7 @@ def convert_msi(
         reader, input_format = _create_reader(
             input_path,
             reader_options,
-            lossless_spectrum=_lossless_spectrum_for(kwargs),
+            lossless_tables=_lossless_spectrum_for(kwargs),
         )
 
         # Determine pixel size
@@ -491,7 +557,34 @@ def convert_msi(
         # Perform conversion with cleanup
         return _perform_conversion_with_cleanup(converter, reader)
 
+    except ConversionRefused as e:
+        # A refusal Thyra wrote: the message is the whole explanation, and
+        # a traceback in front of it reads like a crash the code did not
+        # plan for. The traceback is still there under --log-level DEBUG,
+        # for the cases where the refusal itself is the surprise (#234).
+        #
+        # ``str(e)``, never ``e``: a log handler that retains records --
+        # pytest's capture, Ousia's per-session log -- would otherwise hold
+        # the exception, its traceback and every frame in it, which pins
+        # the reader and leaves its file open (see issue #249).
+        logger.error("%s", str(e))
+        logger.debug("Refusal raised at:\n%s", traceback.format_exc())
+        return False
+
     except Exception as e:
         logger.error(f"Error during conversion: {e}")
         logger.error(f"Detailed traceback:\n{traceback.format_exc()}")
         return False
+
+    finally:
+        # Only the conversion itself closed the reader, so anything that
+        # failed before it -- "Pixel size not found in metadata" is the
+        # common one -- left the source open until the garbage collector
+        # happened to reach it. On Windows that holds a lock on the file
+        # the user is about to retry with. Every reader's close() is
+        # idempotent, so the conversion's own close is not disturbed.
+        if reader is not None and hasattr(reader, "close"):
+            try:
+                reader.close()
+            except Exception as close_error:  # pragma: no cover - defensive
+                logger.debug("Could not close the reader: %s", str(close_error))

@@ -53,6 +53,7 @@ from typing import Any, Dict, Literal, Optional, Tuple
 import numpy as np
 from numpy.typing import NDArray
 
+from .....errors import ConversionRefused
 from .....utils.bruker_exceptions import SDKError
 from .dll_manager import DLLManager
 
@@ -141,7 +142,7 @@ class SDKFunctions:
                 TSF, whose line spectrum is already per pixel.
         """
         if tdf_spectrum not in TDF_SPECTRUM_MODES:
-            raise ValueError(
+            raise ConversionRefused(
                 f"tdf_spectrum must be one of {TDF_SPECTRUM_MODES}, "
                 f"got {tdf_spectrum!r}"
             )

@@ -21,6 +21,8 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 from numpy.typing import NDArray
 
+from ..errors import ConversionRefused
+
 #: The two mobility quantities an instrument records, as PSI-MS terms.
 INVERSE_REDUCED_MOBILITY_ACCESSION = "MS:1002815"
 DRIFT_TIME_ACCESSION = "MS:1002476"
@@ -272,7 +274,7 @@ def _checked_charge(charge: Any) -> int:
     if isinstance(charge, bool) or not isinstance(charge, (int, np.integer)):
         raise TypeError(f"charge must be an integer charge state, got {charge!r}")
     if int(charge) < 1:
-        raise ValueError(
+        raise ConversionRefused(
             f"charge must be a positive charge state (the absolute value), "
             f"got {int(charge)}"
         )
