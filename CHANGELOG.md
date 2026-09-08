@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v3.23.0 (2026-09-08)
+
+### Features
+
+- **converters**: Fold the in-memory converters into the streaming route
+  ([`8eb9f76`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/8eb9f76bcd4a7fe35e191398db26a7550d09f662))
+
+
 ## v3.22.0 (2026-09-08)
 
 ### Features
