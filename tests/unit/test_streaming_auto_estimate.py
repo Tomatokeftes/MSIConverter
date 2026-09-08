@@ -127,7 +127,16 @@ class TestValuesPerSpectrum:
         assert _values_per_spectrum(meta, 500) == 500
 
     def test_an_unknown_representation_is_treated_as_centroid(self):
-        """The conservative half: it never inflates a source we cannot type."""
+        """Bruker is the source that leaves this unset, and it is sparse.
+
+        No Bruker extractor populates ``spectrum_type``, so this branch is
+        the TDF/TSF path rather than an edge case. Its summed spectra are
+        per-index counts with gaps, which is the centroid case; sizing them
+        densely would send every Bruker conversion to streaming. Measured
+        on two real slides (2026-09-08), the routing is unchanged either
+        way: a 33,800-pixel slide scores 1.17 GB and a 918,855-pixel one
+        28.06 GB, the same side of the threshold as before.
+        """
         meta = _meta((10, 10, 1), total_peaks=2_000 * 100, n_spectra=100)
         assert _values_per_spectrum(meta, 240_794) == 2_000
 
