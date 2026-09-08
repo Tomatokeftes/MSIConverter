@@ -624,9 +624,15 @@ every one of the 16 lands on the **same** position. So the two cases
 separate cleanly on the positions: a chunked raster tiles them, a real
 parallel acquisition repeats them.
 
-(That file grids to 1x1, because the reader builds the grid from laser
-coordinates and a DESI stage records none. That is a separate gap, tracked
-outside this entry; it is not what D7 is about.)
+(That file grids to 1x1 -- one unique x, one unique y -- and the reader now
+refuses it rather than converting the whole acquisition onto a single pixel
+with a 0.0 um pitch (issue #213). The refusal is right for this file: it is a
+single-spot DDA run, not an image. It is *not* a DESI gap, as that issue
+first supposed. Surveying the whole share settled it: real DESI images do
+carry stage coordinates in the same laser fields and grid normally --
+401x401, 247x140, 200x63 -- while 76 of the 105 `.raw` dirs there collapse
+to one pixel and every one of those is a calibration, a tuning run, a lysis
+test or a single-spot acquisition. Not one is an image.)
 
 ### Decision
 
@@ -685,13 +691,48 @@ the cost and the flags:
     of centroids: pass --waters-spectrum profile --streaming true to convert
     the whole image.
 
-`--streaming true` is in that sentence because the profile store is large
-and `--streaming auto` does not notice: its estimate assumes 10,000 peaks
-per spectrum whatever the source, which is 0.57 GB for this run, while the
-streaming converter's own estimate once running is **74.1 GB** (7,682
-pixels x 2,590,447 bins). Left on `auto` the conversion stays in memory and
-dies at 72 percent asking for a 24.5 GiB array on a 128 GB machine. That
-estimate is a general defect, tracked separately.
+`--streaming true` is in that sentence because, when it was written,
+`--streaming auto` did not notice how large the profile store is: its
+estimate assumed 10,000 peaks per spectrum whatever the source, which is
+0.57 GB for this run, while the streaming converter's own estimate once
+running is **74.1 GB** (7,682 pixels x 2,590,447 bins). Left on `auto` the
+conversion stayed in memory and died at 72 percent asking for a 24.5 GiB
+array on a 128 GB machine.
+
+That was a general defect, not a Waters one, and it is fixed (issue #214).
+Two things were wrong with the old estimate and both had to go, which the
+measurements below settled:
+
+| what `auto` scores this run at | GB |
+|---|---|
+| the old fixed 10,000 peaks per spectrum, 8 bytes each | 0.57 |
+| the source's own measured width (85,117 points per spectrum), 16 bytes each | 9.7 |
+| the same, against the axis the run is resampled onto (2,590,447 bins) | 296.5 |
+
+The first fix is to stop guessing the width. `total_peaks` divided by the
+spectrum count is *measured* by every extractor, and it is the profile bin
+count on profile data and the peak count on centroided data. The second is
+to count the 16 bytes a value costs the standard converter's COO arrays
+(`int32` row, `int32` column, `float64` value) rather than 8.
+
+Those two alone give 9.7 GB, which is still under the 10 GB threshold --
+so they do not fix this run, and that is why the axis is consulted as well.
+Interpolating a contiguous trace onto an axis 30x finer than it (2,590,447
+bins against 85,117 points) fills the bins in between, and the array the
+conversion died on says by how much: 24.5 GiB of `float64` is 3.3e9 values,
+about 428,000 per spectrum, five times the source width. So a *profile*
+source is sized at the axis it will be written onto and a centroid source
+at its own peak count, since peaks stay peaks and a finer axis does not
+multiply them. The bin count comes from the converter's own planner rather
+than a second copy of that arithmetic, which is what issue #87 was.
+
+This run now scores 296.5 GB and upgrades itself, so `--streaming true` is
+belt-and-braces rather than required. That over-states what the conversion
+really needs -- those 3.3e9 values are about 49 GB across the three COO
+arrays -- and deliberately so: the decision is one-sided, since
+under-estimating keeps a conversion in memory that had to stream and it
+dies there, while over-estimating costs at most a streaming run that would
+also have fit.
 
 The alternative -- forcing the whole run to the profile trace whenever a
 chunk cannot be centroided -- would keep the image whole automatically, but
