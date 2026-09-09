@@ -187,6 +187,45 @@ succeeding. That is exactly where SCiLS puts `MS:1000127`.
 
 ---
 
+## The coordinate base is not a constant
+
+The specification numbers x and y from 1, and pyimzml passes through whatever
+the document holds. Exports numbered from **0** exist, so subtracting a
+constant 1 -- which Thyra did until v3.24.0 -- produced `x = -1` for the first
+column of one. A negative index is a legal *negative* numpy index, so the
+converter's grid guard dropped those spectra rather than crashing: a 3x3
+acquisition at coordinates 0..2 previewed as `grid (2, 2)`, warned that "5
+spectra sat outside the declared 2x2x1 grid", stored 4 rows and exited 0.
+
+The base is now measured, by `thyra.utils.imzml_coordinate_base`, and the rule
+is deliberately **not** the one z uses:
+
+| axis | rule | why |
+|---|---|---|
+| x, y | `min(observed_minimum, 1)` | 0 folds down; 1 and anything above it keep the spec base |
+| z | `observed_minimum` | z has no physical origin to preserve |
+
+Rebasing x and y on their observed minimum would move a legitimately **cropped**
+acquisition. A file whose leftmost occupied column is `x = 5` is a region of a
+larger slide, not a 0-based export, and nothing in the document distinguishes
+the two; sliding it to the origin would change its grid width, every
+`obs["spatial_x"]`, the TIC image extent and its pixel footprint. Folding only
+a 0 down leaves every such file exactly where it was.
+
+The declared `IMS:1000042` / `IMS:1000043` pixel counts were the third
+candidate and are still unread here. `mzpeak_extractor` is the only place in
+Thyra that reads them at all, and it carries a comment about a declared extent
+disagreeing with the coordinates shipped beside it.
+
+Whatever is subtracted is reported as
+`EssentialMetadata.coordinate_offsets` and written to
+`coordinate_systems.global.coordinate_offsets_px`, so a store can say where its
+origin came from. Before this the imzML extractor set no offsets at all.
+
+Pinned by `tests/unit/readers/test_imzml_zero_based.py`, which converts a
+0-based file, a 1-based one and a cropped 1-based one -- the last being the
+file the rejected alternative would have moved.
+
 ## Fixed in Thyra, still true of pyimzml
 
 One finding was real enough to grow code: **`imzmldict` discards

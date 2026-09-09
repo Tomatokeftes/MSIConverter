@@ -1,5 +1,5 @@
 # tests/unit/converters/test_out_of_range_peaks.py
-"""Peaks outside the target mass axis are dropped, not folded into the edges.
+"""Peaks outside the target mass range are dropped, not folded into the edges.
 
 ``_nearest_neighbor_resample`` clipped every source index into
 ``[0, len(axis) - 1]`` and then accumulated with ``np.bincount``, so a peak
@@ -14,11 +14,13 @@ against a median interior bin of 118 -- and the stored pixel total was the
 *whole* input TIC, 1,090,866, rather than the 364,816 that actually lies in
 range.
 
-"In range" is the strict axis span: a peak is kept when
-``axis[0] <= mz <= axis[-1]``, not when it is within half a bin of an end.
-That matches ``_tic_preserving_resample``, whose ``np.interp(left=0,
-right=0)`` and ``preserved_tic`` both cut at the endpoints -- so the two
-methods now agree on which peaks the axis covers.
+"In range" is the **declared** ``[min_mz, max_mz]``, which for the uniform
+``np.linspace`` axes used throughout this file is exactly the axis span
+``[axis[0], axis[-1]]`` -- so every case here reads the same either way. On a
+physics axis the two differ by half a bin, and
+``tests/unit/converters/test_declared_range_edge_bins.py`` covers that (issue
+#239). Both resampling methods follow the one rule, which is what stops them
+disagreeing about what the axis covers.
 """
 
 from __future__ import annotations
@@ -127,7 +129,13 @@ class TestEdgeBinsHoldOnlyWhatBelongsThere:
         assert values.sum() == pytest.approx(7.0)
 
     def test_a_peak_just_outside_is_out(self):
-        """Half a bin of slack would have kept these; the rule is the span."""
+        """A peak outside the declared range is dropped, however close.
+
+        On this uniform axis the declared range *is* the axis span, so a
+        peak a nanodalton below 100.0 is outside both. Half a bin of slack
+        would have kept these; the rule reaches the declared bound and
+        stops.
+        """
         indices, _ = _resample(_stub(self.AXIS), [100.0 - 1e-9, 110.0 + 1e-9], [3, 4])
 
         assert indices.size == 0
@@ -186,9 +194,9 @@ class TestTicPreservingAlreadyAgreed:
 
     ``_tic_preserving_resample`` never had this bug -- ``np.interp`` is
     given ``left=0, right=0`` and the rescale target comes from
-    ``preserved_tic``, which integrates only over the axis span. Pinning it
-    here so a future change cannot make nearest-neighbour the odd one out
-    again in the other direction.
+    ``preserved_tic``, which integrates only over the range the axis
+    covers. Pinning it here so a future change cannot make
+    nearest-neighbour the odd one out again in the other direction.
     """
 
     def test_tic_preserving_keeps_only_the_in_range_share(self):

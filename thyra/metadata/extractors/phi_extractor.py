@@ -27,25 +27,53 @@ class PhiMetadataExtractor(MetadataExtractor):
         reader: The :class:`PhiReader` to describe.
     """
 
-    def __init__(self, reader: "PhiReader"):
+    def __init__(self, reader: "PhiReader", skip_event_aggregate: bool = False):
         """Initialise the extractor.
 
         Args:
             reader: The :class:`PhiReader` to describe.
+            skip_event_aggregate: If True, answer from the acquisition
+                header and the block chain alone -- ``n_spectra`` and
+                ``total_peaks`` come back as 0 with
+                ``n_spectra_counted=False``, and ``peak_counts_per_pixel``
+                as None. Used by metadata-only callers (``preview_msi``)
+                to avoid the pass over every ion event that
+                :meth:`PhiReader.get_peak_counts_per_pixel` performs, which
+                is linear in file size and so made a preview cost what a
+                conversion costs (issue #240). The same role
+                ``skip_total_peaks`` plays for Bruker.
         """
         super().__init__(reader)
         self._reader = reader
+        self._skip_event_aggregate = bool(skip_event_aggregate)
 
     def _extract_essential_impl(self) -> EssentialMetadata:
-        """Extract metadata needed to drive conversion."""
+        """Extract metadata needed to drive conversion.
+
+        The header knows the tile geometry, so ``dimensions`` and
+        ``coordinate_bounds`` are free. It does **not** know which of those
+        pixels recorded an ion: PHI stores a stream of events, not a list
+        of spectra, so the only way to count occupied pixels is to decode
+        every event. When ``skip_event_aggregate`` is set that count is
+        reported as absent rather than guessed at -- see
+        :attr:`EssentialMetadata.n_spectra_counted`. Reporting the raster
+        size instead would have made ``n_spectra`` mean "positions the
+        raster covers" for PHI and "spectra present" for every other
+        format.
+        """
         reader = self._reader
         dimensions = reader.dimensions
         n_x, n_y, _ = dimensions
 
-        peak_counts = reader.get_peak_counts_per_pixel()
-        assert peak_counts is not None
-        total_peaks = int(peak_counts.sum())
-        n_spectra = int(np.count_nonzero(peak_counts))
+        if self._skip_event_aggregate:
+            peak_counts = None
+            total_peaks = 0
+            n_spectra = 0
+        else:
+            peak_counts = reader.get_peak_counts_per_pixel()
+            assert peak_counts is not None
+            total_peaks = int(peak_counts.sum())
+            n_spectra = int(np.count_nonzero(peak_counts))
 
         pixel_size = None
         size_um = reader.pixel_size_um
@@ -58,6 +86,7 @@ class PhiMetadataExtractor(MetadataExtractor):
             mass_range=reader.mass_axis.mass_range,
             pixel_size=pixel_size,
             n_spectra=n_spectra,
+            n_spectra_counted=not self._skip_event_aggregate,
             total_peaks=total_peaks,
             estimated_memory_gb=(total_peaks * 2 * 8) / (1024**3),
             source_path=str(reader.data_path),

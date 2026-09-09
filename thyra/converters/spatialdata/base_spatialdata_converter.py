@@ -404,6 +404,57 @@ def _current_ratio_block(
     }
 
 
+def _kept_mz_range(
+    axis: NDArray[np.float64],
+    axis_range: Optional[Tuple[float, float]],
+) -> Tuple[float, float]:
+    """The m/z range a peak has to be inside to survive resampling.
+
+    Every physics generator lays ``target_bins + 1`` bin *edges* across the
+    requested ``[min_mz, max_mz]`` and returns the midpoints, so the first
+    and last axis point sit half a bin *inside* the range that was asked
+    for -- ``[50.0001, 999.9975]`` for a source declaring 50-1000. Testing
+    membership against the axis points therefore discarded peaks the caller
+    had asked to keep, and did it worst on the sources that declare their
+    range *as* their first and last sample: PHI TOF-SIMS takes
+    ``mass_range`` from the first and last detector channel, so both were
+    dropped in every pixel (issue #239).
+
+    The rule is the **declared** range, which is the outer bin edges, which
+    is at most half a bin beyond the first and last centre. That bound is
+    what keeps this from becoming the clamp
+    :meth:`BaseSpatialDataConverter._nearest_neighbor_resample` documents:
+    a peak further out than the range is still dropped, so narrowing the
+    range with ``--resample-min-mz`` cannot pile the discarded part of the
+    spectrum onto bin 0.
+
+    A uniform axis is ``np.linspace(min_mz, max_mz, n)``, whose end points
+    *are* the declared bounds, so nothing changes there -- nor for
+    ``--no-resample``, where no axis was built and ``axis_range`` is None.
+
+    A module-level function rather than a method for the reason
+    :func:`_nn_map_to_bins` is: the unbound-call test harnesses drive the
+    resampling surface on a ``SimpleNamespace`` that has no methods.
+
+    Args:
+        axis: The target mass axis, ascending.
+        axis_range: The declared ``(min_mz, max_mz)``, or None when no
+            resampled axis was built.
+
+    Returns:
+        ``(min_mz, max_mz)``, always covering ``axis`` itself.
+    """
+    if axis_range is None:
+        return float(axis[0]), float(axis[-1])
+    # Never narrower than the axis: a generator that returned points
+    # outside the range it was handed must not cost anyone a peak that has
+    # a bin waiting for it.
+    return (
+        min(float(axis_range[0]), float(axis[0])),
+        max(float(axis_range[1]), float(axis[-1])),
+    )
+
+
 def _nn_map_to_bins(
     axis: NDArray[np.float64], mzs: NDArray[np.float64]
 ) -> NDArray[np.int_]:
@@ -417,7 +468,9 @@ def _nn_map_to_bins(
 
     Args:
         axis: The target mass axis, ascending.
-        mzs: m/z values, all within ``[axis[0], axis[-1]]``.
+        mzs: m/z values, all within the range :func:`_kept_mz_range`
+            reports -- so within half a bin of ``axis``, not necessarily
+            within ``[axis[0], axis[-1]]``.
 
     Returns:
         The nearest-bin index of each m/z value, same length as ``mzs``.
@@ -425,9 +478,10 @@ def _nn_map_to_bins(
     # Find insertion points using vectorized binary search
     indices = np.searchsorted(axis, mzs)
 
-    # Clip to valid range. Everything reaching here is inside the axis,
-    # so this only pins searchsorted's one-past-the-end result for a
-    # value equal to axis[-1]; it can no longer pull an outside peak in.
+    # Clip to valid range. Everything reaching here is inside the declared
+    # range, so this pins searchsorted's one-past-the-end result and sends
+    # a peak in the half-bin skirt of either end into the edge bin it
+    # belongs to; it can no longer pull in a peak from outside the range.
     indices_clipped = np.clip(indices, 0, len(axis) - 1)
 
     # For non-boundary points, check if left is closer
@@ -621,6 +675,7 @@ def _tic_preserving_sparse(
     mzs: NDArray[np.float64],
     intensities: NDArray[np.float64],
     gap_tolerance_da: Optional[float],
+    axis_range: Optional[Tuple[float, float]] = None,
 ) -> Tuple[NDArray[np.int_], NDArray[np.float64]]:
     """TIC-preserving resampling, evaluated only where it can be non-zero.
 
@@ -643,6 +698,12 @@ def _tic_preserving_sparse(
         mzs: Source m/z values, any order.
         intensities: Source intensities, parallel to ``mzs``.
         gap_tolerance_da: See :func:`thyra.resampling.gaps.zero_across_gaps`.
+        axis_range: The declared ``(min_mz, max_mz)`` the axis was built
+            across, which is the share of the spectrum the result is
+            entitled to carry. ``None`` falls back to the axis's own span.
+            See :func:`_kept_mz_range`: the two resampling methods have to
+            agree on what the axis covers, so this is the same range
+            ``_nearest_neighbor_resample`` keeps peaks inside.
 
     Returns:
         ``(bin_indices, intensities)`` holding only the non-zero bins,
@@ -651,6 +712,8 @@ def _tic_preserving_sparse(
     empty = (np.array([], dtype=np.int_), np.array([], dtype=np.float64))
     if mzs.size == 0:
         return empty
+
+    kept_range = _kept_mz_range(axis, axis_range)
 
     if np.all(mzs[:-1] <= mzs[1:]):
         mzs_sorted = mzs
@@ -666,7 +729,7 @@ def _tic_preserving_sparse(
         # Place it in its nearest bin, as the nearest_neighbor path and
         # TICPreservingStrategy both do.
         target_tic = preserved_tic(
-            mzs_sorted, intensities_sorted, float(axis[0]), float(axis[-1])
+            mzs_sorted, intensities_sorted, kept_range[0], kept_range[1]
         )
         if target_tic <= 0.0:
             return empty
@@ -689,9 +752,9 @@ def _tic_preserving_sparse(
     zero_across_gaps(values, targets, mzs_sorted, gap_tolerance_da)
 
     # Rescale to the required TIC -- the step that makes the method live up
-    # to its name. Reads only the axis endpoints and the sum of ``values``,
-    # so the subset evaluation rescales exactly as the dense one would.
-    rescale_to_preserved_tic(values, axis, mzs_sorted, intensities_sorted)
+    # to its name. Reads only the kept range and the sum of ``values``, so
+    # the subset evaluation rescales exactly as the dense one would.
+    rescale_to_preserved_tic(values, axis, mzs_sorted, intensities_sorted, kept_range)
 
     keep = values != 0
     return indices[keep], values[keep]
@@ -887,11 +950,17 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         )
 
         self._non_empty_pixel_count: int = 0
-        # Peaks discarded for falling outside the target mass axis, and
+        # Peaks discarded for falling outside the target mass range, and
         # whether the one-line summary has been emitted yet. See
         # _count_out_of_range().
         self._out_of_range_peaks: int = 0
         self._out_of_range_warned: bool = False
+        # The m/z range a peak has to be inside to be kept, as opposed to
+        # the span of the axis points themselves. Filled by
+        # _build_resampled_mass_axis(); ``None`` means "no resampled axis
+        # was built", and the span is then the axis's own. See
+        # :func:`_kept_mz_range`.
+        self._axis_range: Optional[Tuple[float, float]] = None
         # Intensities dropped for being non-finite or negative, and
         # whether that has been said yet. See _count_unusable_intensities().
         self._unusable_intensities: int = 0
@@ -1039,6 +1108,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         else:
             # Use provided method directly (already an enum)
             self._resampling_method = method
+            self._warn_if_override_contradicts_detector(method, config)
 
         logger.info(f"Using resampling method: {self._resampling_method}")
 
@@ -1066,6 +1136,81 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 f"Interpolation gap tolerance: {self._gap_tolerance_da} Da "
                 "(target bins farther than this from any source m/z are zeroed)"
             )
+
+    def _warn_if_override_contradicts_detector(
+        self, method: ResamplingMethod, config: Any
+    ) -> None:
+        """Say so when an explicit ``--resample-method`` overrules the detector.
+
+        The detector has a verdict for every source; until #246 only the
+        ``auto`` path ever asked for it, so an explicit method was applied
+        with nothing checked and nothing said. The asymmetry is the whole
+        defect: ``tic_preserving`` on a Bruker TDF -- for which the
+        detector chooses nearest-neighbour -- interpolates across the gaps
+        of a sparse centroid list and fills the axis. Measured on a
+        713-frame PASEF acquisition: 423,386,757 stored non-zeros against
+        302,106, a 583 MB table against 7.6 MB, 5.9 GB of peak RSS against
+        0.5. Per-pixel TIC is identical either way, so the TIC identity
+        cannot see it; what breaks is the siblings, and quietly (the
+        heatmap marginal against the stored mean spectrum came to rel 68).
+
+        This is the same bug class as #168 on PHI ToF-SIMS, which was fixed
+        *by* adding a detector -- which is exactly why a detector is not
+        enough on its own. A detector only steers ``auto``.
+
+        Why a warning and not a refusal or an automatic gap tolerance is
+        design decision D15 in ``docs/design-decisions.md``. In short: the
+        remedy already has a flag, and nothing stored changes.
+
+        Args:
+            method: The method the caller asked for.
+            config: The resampling config, read for a gap tolerance that
+                is already in force (``self._gap_tolerance_da`` is not
+                assigned until later in :meth:`_setup_resampling`).
+        """
+        try:
+            detected = ResamplingDecisionTree().select_strategy(
+                self._get_reader_metadata_for_resampling()
+            )
+        except Exception as exc:
+            # Detection is advisory here. A source it cannot classify must
+            # still convert with the method that was actually asked for.
+            logger.debug(
+                "Could not check --resample-method against the detector: %s",
+                str(exc),
+            )
+            return
+
+        if detected is method:
+            return
+
+        message = (
+            "Resampling method %s was given explicitly, but this source's "
+            "detector chose %s for it. "
+        )
+        args: List[Any] = [method.name, detected.name]
+
+        if method is ResamplingMethod.TIC_PRESERVING:
+            tolerance = getattr(config, "gap_tolerance_da", None)
+            if tolerance is None:
+                message += (
+                    "Interpolating a source the detector reads as sparse "
+                    "fills the whole axis: every bin between two measured "
+                    "points gets a fabricated intensity, the stored matrix "
+                    "grows by orders of magnitude, and per-pixel TIC still "
+                    "balances so no total reveals it. Pass "
+                    "--resample-gap-tolerance to discard bins no measured "
+                    "m/z vouches for, or drop the override."
+                )
+            else:
+                message += (
+                    "--resample-gap-tolerance %s Da is set, so bins further "
+                    "than that from a measured m/z are discarded rather "
+                    "than interpolated across."
+                )
+                args.append(tolerance)
+
+        logger.warning(message, *args)
 
     def _get_cached_metadata_for_resampling(self) -> Dict[str, Any]:
         """Get cached metadata for resampling decision tree to avoid multiple reader calls."""
@@ -2384,6 +2529,12 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         if self._common_mass_axis is None:
             raise RuntimeError("Common mass axis is None after assignment")
 
+        # The range the bins were laid across, kept because a physics axis
+        # reports bin *centres* and so stops half a bin short of it at
+        # either end. It, not the axis's own span, is what decides whether
+        # a peak is in range -- see _kept_mz_range() (issue #239).
+        self._axis_range = (float(min_mz), float(max_mz))
+
         # Bin sizes for the log line, in chunks. ``np.diff`` over the whole
         # axis is another float64 array of its length -- 1.6 GB on a 200M
         # bin axis, allocated for two numbers in one INFO line (#251).
@@ -2683,7 +2834,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         return unique.astype(indices.dtype, copy=False), summed
 
     def _count_out_of_range(self, n_dropped: int, n_total: int) -> None:
-        """Record peaks discarded for lying outside the target mass axis.
+        """Record peaks discarded for lying outside the target mass range.
 
         Narrowing the mass range is deliberate, so dropping the peaks
         outside it is the correct answer and not an error -- but it is not
@@ -2708,13 +2859,16 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         if self._out_of_range_warned or self._common_mass_axis is None:
             return
         self._out_of_range_warned = True
+        lo_mz, hi_mz = _kept_mz_range(
+            self._common_mass_axis, getattr(self, "_axis_range", None)
+        )
         logger.warning(
-            "Dropping peaks that fall outside the target mass axis "
+            "Dropping peaks that fall outside the target mass range "
             "[%.4f, %.4f] m/z -- %d of %d in the first spectrum affected. "
             "They are discarded, not folded into the edge bins. Widen the "
             "resampling range to keep them.",
-            float(self._common_mass_axis[0]),
-            float(self._common_mass_axis[-1]),
+            lo_mz,
+            hi_mz,
             n_dropped,
             n_total,
         )
@@ -2738,11 +2892,13 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         not see it; the peak was simply in the wrong place, 1,634x the
         median interior bin.
 
-        "In range" is the strict axis span, ``[axis[0], axis[-1]]``: a peak
-        is kept when the axis covers it, not when it is within half a bin of
-        the end. That is the same rule ``_tic_preserving_resample`` already
-        follows -- ``np.interp(..., left=0, right=0)`` and
-        ``thyra.resampling.tic.preserved_tic`` both cut at the endpoints.
+        "In range" is the **declared** ``[min_mz, max_mz]``, which is the
+        outer bin edges and so at most half a bin beyond the first and last
+        centre -- see :func:`_kept_mz_range` for why the axis points
+        themselves are the wrong test and why the rule stops there. A peak
+        further out is dropped, not clamped. ``_tic_preserving_resample``
+        follows the same range, so the two methods agree on what the axis
+        covers.
 
         Args:
             mzs: Original m/z values from spectrum
@@ -2775,7 +2931,8 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             if result is not None:
                 return result
 
-        in_range = (mzs >= axis[0]) & (mzs <= axis[-1])
+        lo_mz, hi_mz = _kept_mz_range(axis, getattr(self, "_axis_range", None))
+        in_range = (mzs >= lo_mz) & (mzs <= hi_mz)
         if not in_range.all():
             self._count_out_of_range(int(mzs.size - in_range.sum()), int(mzs.size))
             mzs = mzs[in_range]
@@ -2800,9 +2957,11 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             return None
 
         # Ascending m/z makes the in-range subset one contiguous slice,
-        # with the same inclusive endpoints as the generic path's mask.
-        lo = int(np.searchsorted(mzs, axis[0], side="left"))
-        hi = int(np.searchsorted(mzs, axis[-1], side="right"))
+        # with the same inclusive endpoints as the generic path's mask --
+        # the declared range, not the axis's own span (_kept_mz_range).
+        lo_mz, hi_mz = _kept_mz_range(axis, getattr(self, "_axis_range", None))
+        lo = int(np.searchsorted(mzs, lo_mz, side="left"))
+        hi = int(np.searchsorted(mzs, hi_mz, side="right"))
 
         cache = _SharedAxisNNCache()
         cache.key = mzs.copy()
@@ -2918,7 +3077,11 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
 
         axis = self._common_mass_axis
         indices, values = _tic_preserving_sparse(
-            axis, mzs, intensities, getattr(self, "_gap_tolerance_da", None)
+            axis,
+            mzs,
+            intensities,
+            getattr(self, "_gap_tolerance_da", None),
+            getattr(self, "_axis_range", None),
         )
         resampled = np.zeros(len(axis))
         resampled[indices] = values
@@ -2945,6 +3108,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             mzs,
             intensities,
             getattr(self, "_gap_tolerance_da", None),
+            getattr(self, "_axis_range", None),
         )
 
     def build_region_numbers(self, x_values, y_values) -> NDArray[np.int32]:

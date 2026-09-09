@@ -206,6 +206,28 @@ INFO - Selected resampling method: NEAREST_NEIGHBOR
 INFO - Selected axis type: REFLECTOR_TOF
 ```
 
+### Overriding the detector
+
+`--resample-method` overrules the detector, and the detector is still asked
+what it would have picked. When the two disagree, the conversion says so and
+carries on:
+
+```
+WARNING - Resampling method TIC_PRESERVING was given explicitly, but this
+source's detector chose NEAREST_NEIGHBOR for it. Interpolating a source the
+detector reads as sparse fills the whole axis: [...] Pass
+--resample-gap-tolerance to discard bins no measured m/z vouches for, or drop
+the override.
+```
+
+Nothing about the output changes -- the method you asked for is the method
+used. The warning exists because the failure it points at is invisible in the
+totals: on a 713-frame PASEF acquisition, `--resample-method tic_preserving`
+stored **423,386,757** non-zeros against 302,106 for the detector's choice, a
+583 MB table against 7.6 MB, and per-pixel TIC identical to the last digit.
+Adding `--resample-gap-tolerance 0.01` to the same command brings it down to
+4,801,946. See [Gaps in the source m/z values](#gaps-in-the-source-mz-values).
+
 ---
 
 ## Methods
@@ -279,6 +301,44 @@ asking for `tic_preserving` anyway.
 
 `nearest_neighbor` needs no such parameter: it only ever fills a bin some peak
 was snapped into.
+
+---
+
+## What "in range" means
+
+Both methods keep a peak when it lies inside the **declared** mass range --
+`--resample-min-mz` and `--resample-max-mz`, or the source's own range when you
+set neither. Peaks outside it are **discarded**, not folded into the first or
+last bin.
+
+The declared range is not quite the same as the span of the axis points. Every
+physics axis type lays its bins as `target_bins + 1` edges across the range and
+stores the **centres**, so the first and last centre sit half a bin inside the
+range you asked for: a source declaring 50-1000 m/z builds an axis running
+`50.0001` to `999.9975`. A peak at exactly 50.0 belongs in the first bin, and
+until v3.24.0 it was thrown away instead. That mattered most for sources whose
+declared range *is* their first and last sample -- PHI ToF-SIMS takes its mass
+range from the first and last detector channel, so both channels were lost in
+every pixel.
+
+`constant` axes are unaffected either way: they are laid out with
+`np.linspace(min_mz, max_mz, n)`, whose end points already are the declared
+bounds. `--no-resample` is unaffected too -- the axis there is the source's own
+values.
+
+Dropping is deliberate and is reported once per conversion:
+
+```
+WARNING - Dropping peaks that fall outside the target mass range
+[250.0000, 1200.0000] m/z -- 2 of 20 in the first spectrum affected. They are
+discarded, not folded into the edge bins. Widen the resampling range to keep
+them.
+```
+
+Folding them in instead would be worse, and used to happen: clamping every
+out-of-range peak onto the nearest edge bin put 654,158 counts in bin 0 of
+`pea.imzML` cropped to 400-800 m/z, where a real peak there is around 80. The
+total was conserved exactly, so no TIC check could see it.
 
 ---
 

@@ -21,6 +21,7 @@ from ...core.registry import register_reader
 from ...errors import ConversionRefused
 from ...metadata.extractors.imzml_extractor import ImzMLMetadataExtractor
 from ...resampling.constants import normalize_spectrum_type
+from ...utils.imzml_coordinate_base import coordinate_bases
 from ...utils.pyimzml_direct import read_spectrum_mzs_only
 from ._pyimzml_compat import ensure_lenient_cv_param_values
 from .mobility_array import (
@@ -556,7 +557,8 @@ class ImzMLReader(BaseMSIReader):
         self._coordinates_array: Optional[NDArray[np.int32]] = (
             None  # Fast numpy array cache
         )
-        self._z_base_value: Optional[int] = None  # See _z_base()
+        # See _coordinate_bases(): one memoised pass gives all three.
+        self._coordinate_bases_value: Optional[Tuple[int, int, int]] = None
 
         # Continuous-mode fast read: the shared m/z block, and whether the
         # file really does point every spectrum at one block -- verified
@@ -1056,13 +1058,15 @@ class ImzMLReader(BaseMSIReader):
     def _cache_all_coordinates(self) -> None:
         """Cache all coordinates for faster access.
 
-        Converts 1-based coordinates from imzML to 0-based coordinates
-        for internal use. Uses vectorized numpy operations for speed.
-        Stores as numpy array for O(1) index lookup without dict overhead.
+        Converts the file's coordinates to 0-based coordinates for internal
+        use. Uses vectorized numpy operations for speed. Stores as numpy
+        array for O(1) index lookup without dict overhead.
 
-        x and y are 1-based by the imzML specification. z is not reliably
-        either, so its base comes from :meth:`_z_base` rather than from a
-        constant.
+        No axis gets a constant base. x and y are 1-based by the imzML
+        specification, but 0-based exports exist and subtracting a constant
+        1 cost them their first row and column (issue #244); z is not
+        reliably either base. All three come from
+        :meth:`_coordinate_bases`.
         """
         # Parser should already be initialized when this is called from
         # _initialize_parser
@@ -1072,15 +1076,16 @@ class ImzMLReader(BaseMSIReader):
         n_coords = len(self.parser.coordinates)
         logger.info(f"Caching {n_coords:,} coordinates...")
 
-        z_base = self._z_base()
+        x_base, y_base, z_base = self._coordinate_bases()
 
         # Vectorized conversion using numpy (much faster than Python loop)
         # np.array() on the coordinates list is the main cost here
         self._coordinates_array = np.array(self.parser.coordinates, dtype=np.int32)
 
         # Convert to 0-based in place
-        self._coordinates_array[:, :2] -= 1  # x and y
-        self._coordinates_array[:, 2] -= z_base  # z
+        self._coordinates_array[:, 0] -= x_base
+        self._coordinates_array[:, 1] -= y_base
+        self._coordinates_array[:, 2] -= z_base
 
         logger.info(f"Cached {n_coords:,} coordinates as numpy array")
 
@@ -1211,8 +1216,8 @@ class ImzMLReader(BaseMSIReader):
         logger.info(f"Created common mass axis with {axis.size} unique m/z values")
         return axis
 
-    def _z_base(self) -> int:
-        """The z value in this file that maps onto plane 0.
+    def _coordinate_bases(self) -> Tuple[int, int, int]:
+        """The ``(x, y, z)`` values in this file that map onto index 0.
 
         Measured off the file rather than assumed, because imzML gives no
         guarantee about the base and pyimzml is inconsistent about it:
@@ -1220,16 +1225,20 @@ class ImzMLReader(BaseMSIReader):
         explicit ``z = 0`` is passed through verbatim -- contradicting its
         own docstring, which promises zero.
 
-        Both were previously folded onto plane 0 by ``np.maximum(z - 1, 0)``.
-        On a file written 0-based that merges planes 0 and 1: a two-plane
-        acquisition converts to a two-row table whose rows are the union of
-        both planes, with nothing logged. Subtracting the observed minimum
-        is correct for either convention.
+        Both z conventions were previously folded onto plane 0 by
+        ``np.maximum(z - 1, 0)``. On a file written 0-based that merges
+        planes 0 and 1: a two-plane acquisition converts to a two-row table
+        whose rows are the union of both planes, with nothing logged.
+
+        x and y are **not** rebased the same way, and
+        :mod:`thyra.utils.imzml_coordinate_base` holds the reasoning: they
+        have a physical origin that z does not, so only a 0 is folded down
+        (issue #244).
 
         Neither ``bellini``, ``pea`` nor ``xenium`` declares ``IMS:1000052``,
         so all three go through pyimzml's synthesised ``z = 1`` and this
-        returns 1 -- the same answer the clamp gave. The whole z path is
-        exercised only in the shape real data does not have, which is why
+        returns 1 for z -- the same answer the clamp gave. The whole z path
+        is exercised only in the shape real data does not have, which is why
         this went unnoticed.
 
         Memoised: the scan is one pass over ``parser.coordinates``
@@ -1237,19 +1246,16 @@ class ImzMLReader(BaseMSIReader):
         below would otherwise repeat it per spectrum.
 
         Returns:
-            The smallest z present in the file's coordinates.
+            ``(x_base, y_base, z_base)``.
 
         Raises:
             RuntimeError: If the parser is not initialised.
         """
-        if self._z_base_value is None:
+        if self._coordinate_bases_value is None:
             if self.parser is None:
                 raise RuntimeError("Parser is not initialized")
-            coordinates = self.parser.coordinates
-            self._z_base_value = (
-                int(min(coord[2] for coord in coordinates)) if coordinates else 0
-            )
-        return self._z_base_value
+            self._coordinate_bases_value = coordinate_bases(self.parser.coordinates)
+        return self._coordinate_bases_value
 
     def _get_spectrum_coordinates(
         self, parser: ImzMLParser, idx: int
@@ -1260,12 +1266,13 @@ class ImzMLReader(BaseMSIReader):
             row = self._coordinates_array[idx]
             return (int(row[0]), int(row[1]), int(row[2]))
 
-        # Fallback: compute on the fly. z is rebased on what the file
-        # actually contains -- see _z_base().
+        # Fallback: compute on the fly. Every axis is rebased on what the
+        # file actually contains -- see _coordinate_bases().
         x, y, z = parser.coordinates[idx]
+        x_base, y_base, z_base = self._coordinate_bases()
         return cast(
             Tuple[int, int, int],
-            (x - 1, y - 1, z - self._z_base()),
+            (x - x_base, y - y_base, z - z_base),
         )
 
     def _read_spectrum_arrays(

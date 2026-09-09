@@ -159,6 +159,71 @@ def create_minimal_imzml(temp_dir):
     return imzml_path, ibd_path, mzs, all_intensities
 
 
+def _write_square_imzml(path, origin, side):
+    """Write a ``side`` x ``side`` imzML whose lowest coordinate is ``origin``.
+
+    Every pixel carries one peak whose intensity encodes its position, so a
+    row that moved can be told from a row that went missing.
+
+    Args:
+        path: Where to write the ``.imzML`` (the ``.ibd`` goes beside it).
+        origin: The smallest x and y written to the file. ``1`` is what the
+            specification says; ``0`` is what some exporters write.
+        side: Pixels per side.
+
+    Returns:
+        ``(path, mzs, expected)`` where ``expected`` maps the 0-based
+        ``(x, y)`` the store should hold to that pixel's intensity.
+    """
+    mzs = np.linspace(100.0, 200.0, 5)
+    expected = {}
+
+    with ImzMLWriter(str(path), mode="processed") as writer:
+        for row in range(side):
+            for col in range(side):
+                intensity = np.zeros_like(mzs)
+                # Distinct per pixel, and never zero: a pixel whose only
+                # peak is zero gets no row at all, which would hide the
+                # very loss this fixture exists to detect.
+                intensity[2] = 100.0 + 10.0 * row + col
+                writer.addSpectrum(mzs, intensity, (origin + col, origin + row, 1))
+                expected[(col, row)] = intensity[2]
+
+    return path, mzs, expected
+
+
+@pytest.fixture
+def zero_based_imzml(temp_dir):
+    """A 3x3 imzML numbered from 0 -- the shape of issue #244.
+
+    The imzML specification numbers pixels from 1, and the reader used to
+    subtract a constant 1. On a file written 0-based that produced
+    ``x = -1`` for the first column, which the converter's grid guard
+    dropped: the store came out 4 rows of a 3x3 acquisition, with a
+    warning naming a 2x2 grid the file never declared, and exit 0.
+    """
+    return _write_square_imzml(temp_dir / "zero_based.imzML", origin=0, side=3)
+
+
+@pytest.fixture
+def one_based_imzml(temp_dir):
+    """The same 3x3 acquisition written the way the specification says."""
+    return _write_square_imzml(temp_dir / "one_based.imzML", origin=1, side=3)
+
+
+@pytest.fixture
+def cropped_one_based_imzml(temp_dir):
+    """A 1-based acquisition whose leftmost column is x = 5, not x = 1.
+
+    The reason x and y do not simply rebase on their observed minimum the
+    way z does: this file is a legitimately cropped region of the slide,
+    and sliding it to the origin would change its grid width, every
+    ``obs`` coordinate and its pixel footprint -- on a file that converts
+    correctly today.
+    """
+    return _write_square_imzml(temp_dir / "cropped.imzML", origin=5, side=3)
+
+
 @pytest.fixture
 def mock_bruker_data(temp_dir):
     """

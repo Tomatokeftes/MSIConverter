@@ -37,8 +37,18 @@ class MsiPreview:
     Attributes:
         mz_range: ``(min_mz, max_mz)`` of the source mass axis, in Da.
             ``(0.0, 0.0)`` when ``readable=False``.
-        n_pixels: Total number of spectra (pixels) in the dataset.
-            ``0`` when ``readable=False``.
+        n_pixels: Number of spectra (pixels) the dataset actually holds --
+            the positions that carry a measurement, not the extent of the
+            raster, which is :attr:`grid_dims`.  ``0`` when
+            ``readable=False``.  ``None`` when the format cannot report it
+            without decoding spectra, which a preview will not do: PHI
+            SmartSoft-TOF stores a stream of ion events rather than a list
+            of spectra, so counting occupied pixels means reading the whole
+            file, and previewing a multi-gigabyte acquisition cost what
+            converting it costs (issue #240).  ``None`` is deliberately not
+            filled in with ``n_x * n_y``: that number is the raster, already
+            in :attr:`grid_dims`, and putting it here would make this field
+            mean one thing for PHI and another for every other format.
         grid_dims: Grid dimensions as ``(width, height)`` in pixels --
             i.e. ``(x, y)`` from :attr:`EssentialMetadata.dimensions`.
             ``(0, 0)`` when ``readable=False``.
@@ -77,7 +87,7 @@ class MsiPreview:
     """
 
     mz_range: Tuple[float, float]
-    n_pixels: int
+    n_pixels: Optional[int]
     grid_dims: Tuple[int, int]
     instrument_type: Optional[AxisType]
     pixel_size_um: Optional[float]
@@ -302,7 +312,11 @@ def preview_msi(path: Path) -> MsiPreview:
         dims = essential.dimensions
         return MsiPreview(
             mz_range=(float(essential.mass_range[0]), float(essential.mass_range[1])),
-            n_pixels=int(essential.n_spectra),
+            n_pixels=(
+                int(essential.n_spectra)
+                if getattr(essential, "n_spectra_counted", True)
+                else None
+            ),
             grid_dims=(int(dims[0]), int(dims[1])),
             instrument_type=_guess_axis_type(essential, comprehensive),
             pixel_size_um=_pixel_size_um(essential.pixel_size),
