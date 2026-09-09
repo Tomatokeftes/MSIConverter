@@ -2,6 +2,26 @@
 
 <!-- version list -->
 
+## v3.23.2 (2026-09-09)
+
+### Bug Fixes
+
+- **cli**: Drop unusable intensities, refuse earlier, name ignored flags
+  ([`bcadbf0`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/bcadbf031bcc8a7d1baf97e2f8974e3b5926fe82))
+
+- **convert**: Keep bound peaks, rebase a 0-based imzML, warn on overrides
+  ([`5b0655c`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/5b0655cf92278704854f441e6bb0454972a48a91))
+
+- **convert**: Per-table average, refuse an empty store, per-axis pitch
+  ([`3b9c833`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/3b9c833ccd2fa92529081a44fde21e8861c32312))
+
+- **convert**: Sum duplicate pixels, refuse a wide axis, clean up on Ctrl-C
+  ([`423da85`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/423da8515aa5759335f16f79028b365ab9c5411e))
+
+- **deps**: Drop the vestigial lxml declaration, close the API argument gaps
+  ([`77b1096`](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/commit/77b1096a7f69447624e25208777d29e2c23eb979))
+
+
 ## v3.23.1 (2026-09-08)
 
 ### Bug Fixes
