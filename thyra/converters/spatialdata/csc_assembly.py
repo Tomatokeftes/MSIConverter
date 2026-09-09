@@ -83,11 +83,12 @@ SORT_CHUNK_ENTRIES = 16_000_000
 #: Process memory one m/z bin of the summed table costs, everything the
 #: conversion builds per bin included. :data:`MAX_COUNT_BYTES` sizes the
 #: 4 B/bin count array alone, and that is 2 percent of the real figure:
-#: around it sit the axis itself and ``total_intensity`` and
-#: ``avg_spectrum`` (8 B/bin each), the ``var`` frame with its index, the
-#: ``indptr`` and the write cursor, and anndata's own copies during the
-#: write. Measured 2026-09-09 with a six-pixel conversion at a forced bin
-#: count, peak working set above the pre-conversion baseline:
+#: around it sit the axis itself, each table's ``average_spectrum`` and
+#: the column sums it is divided out of (8 B/bin each), the ``var`` frame
+#: with its index, the ``indptr`` and the write cursor, and anndata's own
+#: copies during the write. Measured 2026-09-09 with a six-pixel
+#: conversion at a forced bin count, peak working set above the
+#: pre-conversion baseline:
 #:
 #: =============  ==================  ==========
 #: bins           peak above baseline bytes/bin
@@ -110,6 +111,14 @@ SORT_CHUNK_ENTRIES = 16_000_000
 #: either way and the peak is the conversion, not the labels. So the cost
 #: is real, it is inherent to a string ``var`` index, and the answer is to
 #: refuse an axis that cannot afford it rather than to shave the index.
+#:
+#: The figure is per bin of *one* table. A multi-slice source converted as
+#: 2D writes one table per plane and each carries its own ``var`` copy and
+#: its own mean spectrum, so its real per-bin cost is a multiple of this
+#: and the guard under-projects it. That predates the per-table mean
+#: (#243), which is close to neutral here: it dropped one dataset-wide
+#: accumulator and one dataset-wide mean (8 B/bin each) and added 8 B/bin
+#: per table.
 AXIS_BYTES_PER_BIN = 200
 
 #: Fractions of the machine's free memory the projected mass axis may

@@ -1061,3 +1061,73 @@ moot twice over: the only writer of CSR was in-memory.
 string index it carries is built by pandas at about 125 bytes per bin: a
 raw, unresampled axis of millions of bins is the one thing that still
 scales with the source, and it is the case to resample.
+
+---
+
+## D12. An anisotropic raster is carried, not refused
+
+**Status:** Implemented (2026-09-09), issue #228.
+
+**Decision.** When a source declares a different pitch on each axis, the
+store carries both — root attrs, `coordinate_systems.global` and its
+`raster_to_global_affine`, the image and shapes transforms, the pixel
+footprints, `obs["spatial_x"]`/`["spatial_y"]` and the `msi_metadata`
+block. Thyra does not refuse the acquisition, and `--pixel-size` keeps its
+meaning of one number applied to both axes.
+
+**The defect this replaces.** The converter carried a single float. Pixel
+size detection kept the source's x pitch (`# Use X size`), the root attrs
+wrote that same value as `pixel_size_y_um`, and it went on into the affine
+and the footprints; only `msi_metadata.ms_analysis.pixel_size_um` read the
+true pair back out of the detection info. A raster acquired at 30 x 50 um
+was stored as 30 x 30 in one block and (30, 50) in another. So the store
+contradicted itself and rendered squashed by y/x.
+
+**Why not refuse.** Refusing was the alternative the issue named, and it
+loses on both counts that decide it:
+
+- *The format is already per-axis.* `pixel_size_um` is `{x, y}` and
+  **required** by the metadata schema, mapped to `IMS:1000046` and
+  `IMS:1000047`. Nothing needed adding and no schema version moves; the
+  converter was the only thing carrying one number where the format
+  carries two. Refusing would have been declining to write a store the
+  format already describes.
+- *The only escape would be a false statement.* `--pixel-size` overrides
+  detection with one number on both axes, so the way out of a refusal
+  would be to declare a 30 x 50 um raster square. That is a worse store
+  than the one the refusal was protecting against, because nothing in it
+  records that a number was invented.
+
+**What it cost.** `self.pixel_size_um` had 31 call sites across
+`base_spatialdata_converter.py`, `streaming_converter.py` and
+`core/base_converter.py`, and each had to be read to decide which axis it
+meant. Most are x, or a single number that is written twice. Eleven meant
+y and now take `pixel_size_y_um`: the root attrs, `pixel_size_um_y` and
+the `raster_to_global_affine`, `stage_offset_um`, the optical-to-micrometre
+scale matrix, the half-pixel footprint, `obs["spatial_y"]` on all three obs
+builders, and the TIC image's `Scale` on the plane and volume paths. Two
+provenance echoes gained a `pixel_size_y_um` key beside the x one. Two were
+judgement calls:
+
+- *`_resolve_z_spacing`'s fallback* ("nobody said, so reuse the in-plane
+  pitch") takes x. There is no single in-plane pitch on an anisotropic
+  raster and the choice is arbitrary — which is the point, since nothing
+  about the raster predicts the section thickness either way, and
+  `z_spacing_source` already marks the number as assumed rather than
+  measured.
+- *`stage_offset_um`* multiplies the source's raw acquisition-index
+  offsets by the pitch, so each offset takes its own axis.
+
+**The tolerance.** The anisotropy is reported in the log only when the two
+pitches differ by more than float noise (`rel_tol=1e-9`). Nothing is
+refused, so the tolerance decides a log line rather than whether a file
+converts. It is deliberately tight: a real anisotropy is a percent or
+more, and the near-misses a detector used to produce were not noise but a
+bug — until issue #217 the Waters extractor returned 29.66 x 28.93 for
+every square raster, which this code would have carried faithfully into
+the affine. That is fixed at the extractor, which is where it belonged.
+
+**Known limit.** No dataset in the registry is anisotropic, so this is
+tested synthetically: a reader is asked for a 30 x 50 um pitch and the
+written store is read back. A DESI method with `DesiXStep != DesiYStep`
+would be the first real case, and nothing here has been run against one.

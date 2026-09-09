@@ -131,14 +131,19 @@ settable with `--dataset-id`, and `_z0` marking the first z-slice):
 Confirm the pixel size survived the round trip:
 
 ```python
-print(sdata.attrs["pixel_size_x_um"], sdata.attrs["pixel_size_units"])
+print(sdata.attrs["pixel_size_x_um"], sdata.attrs["pixel_size_y_um"])
+print(sdata.attrs["pixel_size_units"])
 print(sdata.attrs["pixel_size_detection_info"]["method"])
 ```
 
 ```
-25.0 micrometers
+25.0 25.0
+micrometers
 automatic
 ```
+
+The two are equal here because this raster is square. They are stored
+separately because not every raster is.
 
 ### Step 4: The intensity matrix
 

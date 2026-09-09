@@ -9,6 +9,7 @@ destination path where it can be mistaken for a finished conversion.
 from __future__ import annotations
 
 import importlib
+import logging
 
 import pytest
 from click.testing import CliRunner
@@ -73,6 +74,123 @@ class TestExitStatus:
         result = _invoke(runner, unknown_input, output_path)
 
         assert result.exit_code == 1, result.output
+
+
+#: The logger the base workflow reports a refusal on. Named rather than
+#: reached through ``thyra``, because ``setup_logging`` clears that
+#: logger's handlers and the CLI calls it on every invocation -- a
+#: collector attached to ``thyra`` before ``runner.invoke`` is gone by
+#: the time anything is logged.
+_REFUSAL_LOGGER = "thyra.core.base_converter"
+
+
+@pytest.fixture
+def all_zero_imzml(temp_dir):
+    """A 2x2 processed imzML whose every intensity is zero.
+
+    Every peak is dropped as a zero, so no position carries a spectrum
+    and there is no table to write -- the input the conversion used to
+    report success on (issue #242).
+    """
+    import numpy as np
+    from pyimzml.ImzMLWriter import ImzMLWriter
+
+    path = temp_dir / "all_zero.imzML"
+    mzs = np.linspace(100.0, 1000.0, 20)
+    with ImzMLWriter(str(path), mode="processed") as writer:
+        for x, y in ((1, 1), (1, 2), (2, 1), (2, 2)):
+            writer.addSpectrum(mzs, np.zeros_like(mzs), (x, y, 1))
+    return path
+
+
+class TestAConversionThatStoresNothing:
+    """An empty conversion is a failed one (issue #242).
+
+    It used to return ``True``, exit 0 and leave a store with no table,
+    no image and no shapes at the output path -- while logging both "No
+    non-zero entries found!" and, per plane, "no position carries a
+    spectrum". A calling script saw a finished conversion; opening the
+    store found nothing to read. These go through the CLI because the
+    exit status and what is left at the path are the observable part.
+    """
+
+    def test_an_all_zero_source_exits_one(self, all_zero_imzml, temp_dir, runner):
+        output_path = temp_dir / "out.zarr"
+
+        result = _invoke(runner, all_zero_imzml, output_path)
+
+        assert result.exit_code == 1, result.output
+        assert not output_path.exists(), (
+            "an empty conversion must not leave a store where a finished " "one belongs"
+        )
+        assert not (temp_dir / "out.zarr.failed").exists()
+
+    def test_the_refusal_names_the_cause(
+        self, all_zero_imzml, temp_dir, runner, thyra_logs
+    ):
+        """Not just "nothing was stored" -- which nothing, and why.
+
+        The source here has peaks at every position and every one of them
+        is zero. A resampled axis lands a few tenths of a mDa inside the
+        source's own range, so two of this source's twenty peaks fall off
+        its ends on every spectrum; the refusal must not read that as the
+        range being the problem.
+        """
+        output_path = temp_dir / "out.zarr"
+
+        with thyra_logs(_REFUSAL_LOGGER, logging.ERROR) as records:
+            _invoke(runner, all_zero_imzml, output_path)
+
+        messages = [r.getMessage() for r in records]
+        assert any(
+            "no pixel carries a spectrum" in m
+            and "every intensity in the source is zero" in m
+            for m in messages
+        ), messages
+
+    def test_a_range_that_excludes_every_peak_exits_one(
+        self, create_minimal_imzml, temp_dir, runner, thyra_logs
+    ):
+        """The narrowed-range route into the same empty store.
+
+        The source's peaks are between 100 and 1000 m/z; resampling onto
+        2000-3000 keeps none of them. That is a different thing to tell
+        the user than "every spectrum was empty", so the message has to
+        say which one happened.
+        """
+        imzml_path, _, _, _ = create_minimal_imzml
+        output_path = temp_dir / "out.zarr"
+
+        with thyra_logs(_REFUSAL_LOGGER, logging.ERROR) as records:
+            result = _invoke(
+                runner,
+                imzml_path,
+                output_path,
+                "--resample-min-mz",
+                "2000",
+                "--resample-max-mz",
+                "3000",
+            )
+
+        assert result.exit_code == 1, result.output
+        assert not output_path.exists()
+        messages = [r.getMessage() for r in records]
+        assert any(
+            "outside the target mass axis" in m and "--resample-min-mz" in m
+            for m in messages
+        ), messages
+
+    def test_a_source_with_spectra_still_converts(
+        self, create_minimal_imzml, temp_dir, runner
+    ):
+        """The guard must not fire on an ordinary conversion."""
+        imzml_path, _, _, _ = create_minimal_imzml
+        output_path = temp_dir / "out.zarr"
+
+        result = _invoke(runner, imzml_path, output_path)
+
+        assert result.exit_code == 0, result.output
+        assert output_path.is_dir()
 
 
 class TestPartialOutputQuarantine:

@@ -146,6 +146,11 @@ def _pixel_size_um(pixel_size: Optional[Tuple[float, float]]) -> Optional[float]
     Real MSI rasters are essentially always isotropic.  A debug log
     fires if ``|x - y| > 0.01 um`` so anomalies are visible without
     surfacing a UX-confusing flag in the preview.
+
+    Deliberately unlike the converter, which carries both pitches into
+    every block of the store that states one (issue #228). This is a
+    one-line summary of a folder someone is deciding whether to convert,
+    not a coordinate system; the conversion it precedes reads the pair.
     """
     if pixel_size is None:
         return None

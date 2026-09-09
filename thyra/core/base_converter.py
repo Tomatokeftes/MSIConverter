@@ -1,4 +1,5 @@
 import logging
+import math
 from abc import ABC, abstractmethod
 from enum import Enum
 from os import PathLike
@@ -74,7 +75,10 @@ class BaseMSIConverter(ABC):
             reader: MSI data reader instance
             output_path: Path for output file
             dataset_id: Identifier for the dataset
-            pixel_size_um: In-plane pixel pitch in micrometers
+            pixel_size_um: In-plane pixel pitch in micrometers **along
+                x**. The y pitch starts equal to it and is replaced by
+                the detected one when the source declares an anisotropic
+                raster -- see :attr:`pixel_size_y_um`.
             pixel_size_source: How pixel size was determined
             compression_level: Compression level for output
             handle_3d: Whether to process as 3D data
@@ -99,6 +103,19 @@ class BaseMSIConverter(ABC):
         self.output_path = Path(output_path)
         self.dataset_id = dataset_id
         self.pixel_size_um = pixel_size_um
+        #: The pitch along y, in micrometers. A raster is usually square
+        #: and then this is :attr:`pixel_size_um`; a DESI method with
+        #: ``DesiXStep != DesiYStep`` is not, and until issue #228 only
+        #: the ``msi_metadata`` block recorded the difference while the
+        #: root attrs, the affines, the pixel footprints and
+        #: ``obs["spatial_y"]`` all carried the x pitch on both axes --
+        #: so an anisotropic raster rendered squashed by y/x and the
+        #: store contradicted itself. Settled from the detected pair (see
+        #: ``BaseSpatialDataConverter.__init__`` and
+        #: :meth:`_initialize_conversion`); a pitch the caller states with
+        #: ``--pixel-size`` applies to both axes, which is how someone
+        #: declares a raster square whatever the file says.
+        self.pixel_size_y_um: float = float(pixel_size_um)
         self.pixel_size_source = pixel_size_source
         self.compression_level = compression_level
         self.handle_3d = handle_3d
@@ -212,19 +229,7 @@ class BaseMSIConverter(ABC):
 
             # Override pixel size only if using default value and metadata
             # is available
-            if (
-                self.pixel_size_source == PixelSizeSource.DEFAULT
-                and essential.pixel_size
-            ):
-                old_size = self.pixel_size_um
-                self.pixel_size_um = essential.pixel_size[0]
-                self.pixel_size_source = PixelSizeSource.AUTO_DETECTED
-                logger.info(
-                    f"Auto-detected pixel size: {self.pixel_size_um} um "
-                    f"(was default: {old_size} um)"
-                )
-            elif self.pixel_size_source == PixelSizeSource.USER_PROVIDED:
-                logger.info(f"Using user-specified pixel size: {self.pixel_size_um} um")
+            self._adopt_detected_pixel_size(essential)
 
             # After pixel size, because the fallback is the pixel size.
             self._resolve_z_spacing(essential)
@@ -264,6 +269,50 @@ class BaseMSIConverter(ABC):
         """
         return bool(self.handle_3d and self._dimensions and self._dimensions[2] > 1)
 
+    def _adopt_detected_pixel_size(self, essential: "EssentialMetadata") -> None:
+        """Take the source's pitch when nobody supplied one, on both axes.
+
+        ``essential.pixel_size`` is an ``(x, y)`` pair and both halves are
+        kept: taking only ``[0]`` is how an anisotropic raster came to be
+        rendered square (issue #228). A pitch the caller stated applies to
+        both axes and is not overridden here.
+        """
+        if self.pixel_size_source == PixelSizeSource.DEFAULT and essential.pixel_size:
+            old_size = self.pixel_size_um
+            self.pixel_size_um = essential.pixel_size[0]
+            self.pixel_size_y_um = float(essential.pixel_size[1])
+            self.pixel_size_source = PixelSizeSource.AUTO_DETECTED
+            logger.info(
+                f"Auto-detected pixel size: {self.pixel_size_um} um "
+                f"(was default: {old_size} um)"
+            )
+        elif self.pixel_size_source == PixelSizeSource.USER_PROVIDED:
+            logger.info(f"Using user-specified pixel size: {self.pixel_size_um} um")
+        self._log_anisotropic_raster()
+
+    def _log_anisotropic_raster(self) -> None:
+        """Say so, once, when the two in-plane pitches differ.
+
+        Only a genuine difference: the comparison is exact up to float
+        noise, because a detector that computes the pitch by dividing an
+        extent by a position count can land a few ULP apart on two axes
+        of a square raster and that is not news. A real anisotropy is a
+        percent or more -- a DESI method with ``DesiXStep != DesiYStep``.
+        """
+        if math.isclose(
+            float(self.pixel_size_um), float(self.pixel_size_y_um), rel_tol=1e-9
+        ):
+            return
+        logger.info(
+            "Anisotropic raster: %g um in x, %g um in y. Both pitches are "
+            "carried through the store -- the root attrs, the element "
+            "transforms, the pixel footprints, obs['spatial_x']/['spatial_y'] "
+            "and the msi_metadata block. Pass --pixel-size to declare the "
+            "raster square instead.",
+            self.pixel_size_um,
+            self.pixel_size_y_um,
+        )
+
     def _resolve_z_spacing(self, essential: "EssentialMetadata") -> None:
         """Settle the slice-to-slice spacing, and record where it came from.
 
@@ -282,6 +331,13 @@ class BaseMSIConverter(ABC):
         coincidence -- for 3D MSI usually not at all, and often by an
         order of magnitude. A consumer reading the volume in micrometres
         renders the stack at the wrong depth.
+
+        On an anisotropic raster there is no single in-plane pitch to
+        reuse, and the x one is taken. That choice is arbitrary, which is
+        the point: nothing about the raster predicts the section
+        thickness either way, and ``z_spacing_source`` already marks the
+        number as assumed rather than measured. Supply ``--z-spacing``
+        and the question does not arise.
 
         Args:
             essential: Metadata for the dataset being converted.
@@ -519,6 +575,7 @@ class BaseMSIConverter(ABC):
             "conversion_info": {
                 "dataset_id": self.dataset_id,
                 "pixel_size_um": self.pixel_size_um,
+                "pixel_size_y_um": self.pixel_size_y_um,
                 "handle_3d": self.handle_3d,
                 "compression_level": self.compression_level,
                 "converter_class": self.__class__.__name__,
@@ -620,7 +677,7 @@ class BaseMSIConverter(ABC):
 
         # Add spatial coordinates
         coords_df["spatial_x"] = coords_df["x"] * self.pixel_size_um
-        coords_df["spatial_y"] = coords_df["y"] * self.pixel_size_um
+        coords_df["spatial_y"] = coords_df["y"] * self.pixel_size_y_um
         coords_df["spatial_z"] = coords_df["z"] * self.z_spacing_um
 
         return coords_df

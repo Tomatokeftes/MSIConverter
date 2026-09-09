@@ -897,6 +897,24 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         self._unusable_intensities: int = 0
         self._unusable_intensities_warned: bool = False
         self._pixel_size_detection_info = pixel_size_detection_info
+        # ``convert.py`` detects an (x, y) pair, hands the converter the x
+        # half as ``pixel_size_um`` and puts both in the detection info.
+        # Reading the y half back here is what stops the store describing
+        # an anisotropic raster as square (issue #228); everything the
+        # converter writes takes its y pitch from this attribute.
+        #
+        # Only for a pitch that was actually detected. A caller who states
+        # one gets it on both axes -- that is what stating it means -- and
+        # a source ``convert.py`` could not detect leaves the placeholder,
+        # which :meth:`_adopt_detected_pixel_size` settles from the reader
+        # once its metadata is loaded.
+        detected_y = (pixel_size_detection_info or {}).get("detected_y_um")
+        if (
+            detected_y is not None
+            and pixel_size_source is PixelSizeSource.AUTO_DETECTED
+        ):
+            self.pixel_size_y_um = float(detected_y)
+            self._log_anisotropic_raster()
         self._resampling_config = (
             _normalize_resampling_config(resampling_config)
             if resampling_config is not None
@@ -1890,16 +1908,20 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
     def _resolved_pixel_size_xy(self) -> Tuple[float, float]:
         """The in-plane pixel pitch as ``(x_um, y_um)``.
 
-        The converter itself carries a single float (auto-detection
-        keeps the source's x pitch), but the detection info still has
-        the true per-axis values for anisotropic rasters -- the
-        metadata block records those, since it describes the
-        acquisition rather than the rendering.
+        One pair, and every block of the store is written from it: the
+        root attrs, ``coordinate_systems.global`` and its affine, the
+        image and shapes transformations, the pixel footprints,
+        ``obs["spatial_x"]``/``["spatial_y"]`` and the ``msi_metadata``
+        block.
+
+        It used to be only the last of those. The converter carried a
+        single float -- detection kept the source's x pitch and discarded
+        the y one -- while this method read the true pair back out of the
+        detection info for the metadata block alone. A raster acquired at
+        30 x 50 um was then rendered at 30 x 30 and the store's own blocks
+        contradicted each other (issue #228).
         """
-        info = self._pixel_size_detection_info or {}
-        if "detected_x_um" in info and "detected_y_um" in info:
-            return (float(info["detected_x_um"]), float(info["detected_y_um"]))
-        return (float(self.pixel_size_um), float(self.pixel_size_um))
+        return (float(self.pixel_size_um), float(self.pixel_size_y_um))
 
     def _collect_msi_metadata_block(self, uns: Dict[str, Any], comp_meta: Any) -> None:
         """Add the versioned ``msi_metadata`` schema block.
@@ -2397,19 +2419,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             self._estimated_memory_gb = essential.estimated_memory_gb
 
             # Override pixel size only if using default and metadata is available
-            if (
-                self.pixel_size_source == PixelSizeSource.DEFAULT
-                and essential.pixel_size
-            ):
-                old_size = self.pixel_size_um
-                self.pixel_size_um = essential.pixel_size[0]
-                self.pixel_size_source = PixelSizeSource.AUTO_DETECTED
-                logger.info(
-                    f"Auto-detected pixel size: {self.pixel_size_um} um "
-                    f"(was default: {old_size} um)"
-                )
-            elif self.pixel_size_source == PixelSizeSource.USER_PROVIDED:
-                logger.info(f"Using user-specified pixel size: {self.pixel_size_um} um")
+            self._adopt_detected_pixel_size(essential)
 
             # After pixel size, because the fallback is the pixel size.
             self._resolve_z_spacing(essential)
@@ -3182,7 +3192,8 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
 
             x_coords: NDArray[np.float64] = adata.obs["spatial_x"].values
             y_coords: NDArray[np.float64] = adata.obs["spatial_y"].values
-            half_pixel_um = self.pixel_size_um / 2
+            half_x_um = self.pixel_size_um / 2
+            half_y_um = self.pixel_size_y_um / 2
 
             # Footprints are flat, on every route including volumes. A
             # slice's depth lives on the TIC image's Scale and in
@@ -3191,10 +3202,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             # constructor -- one C call for the whole table instead of one
             # Python-level geometry per pixel.
             geometries = shapely_box_vectorized(
-                x_coords - half_pixel_um,
-                y_coords - half_pixel_um,
-                x_coords + half_pixel_um,
-                y_coords + half_pixel_um,
+                x_coords - half_x_um,
+                y_coords - half_y_um,
+                x_coords + half_x_um,
+                y_coords + half_y_um,
             )
 
         # Create GeoDataFrame with appropriate index
@@ -3441,10 +3452,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 "a tic_to_image_matrix; check call-site guard."
             )
         inv = np.linalg.inv(self._tic_to_image_matrix)
-        # Scale matrix: [[ps, 0, 0], [0, ps, 0], [0, 0, 1]]
-        ps = float(self.pixel_size_um)
+        # Scale matrix: [[ps_x, 0, 0], [0, ps_y, 0], [0, 0, 1]]
+        ps_x, ps_y = self._resolved_pixel_size_xy()
         scale_mat = np.array(
-            [[ps, 0.0, 0.0], [0.0, ps, 0.0], [0.0, 0.0, 1.0]],
+            [[ps_x, 0.0, 0.0], [0.0, ps_y, 0.0], [0.0, 0.0, 1.0]],
             dtype=np.float64,
         )
         matrix = scale_mat @ inv
@@ -3768,7 +3779,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         # Base pixel size metadata
         pixel_size_attrs = {
             "pixel_size_x_um": float(self.pixel_size_um),
-            "pixel_size_y_um": float(self.pixel_size_um),
+            "pixel_size_y_um": float(self.pixel_size_y_um),
             "pixel_size_units": "micrometers",
             "coordinate_system": "physical_micrometers",
             "msi_converter_version": version,
@@ -3864,7 +3875,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         else:
             unit = "micrometer"
             pixel_size_um_x = float(self.pixel_size_um)
-            pixel_size_um_y = float(self.pixel_size_um)
+            pixel_size_um_y = float(self.pixel_size_y_um)
             reference_element = None
 
         global_cs: Dict[str, Any] = {
@@ -3892,10 +3903,10 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 [float(v) for v in row] for row in self._tic_to_image_matrix
             ]
         else:
-            in_plane = float(self.pixel_size_um)
+            px, py = self._resolved_pixel_size_xy()
             global_cs["raster_to_global_affine"] = [
-                [in_plane, 0.0, 0.0],
-                [0.0, in_plane, 0.0],
+                [px, 0.0, 0.0],
+                [0.0, py, 0.0],
                 [0.0, 0.0, 1.0],
             ]
         offsets = self._source_coordinate_offsets()
@@ -3904,7 +3915,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             if unit == "micrometer":
                 global_cs["stage_offset_um"] = [
                     float(offsets[0]) * float(self.pixel_size_um),
-                    float(offsets[1]) * float(self.pixel_size_um),
+                    float(offsets[1]) * float(self.pixel_size_y_um),
                 ]
 
         if self._is_volume:
@@ -3974,6 +3985,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         metadata_dict["conversion_options"] = {
             "handle_3d": self.handle_3d,
             "pixel_size_um": self.pixel_size_um,
+            "pixel_size_y_um": self.pixel_size_y_um,
             "z_spacing_um": self.z_spacing_um,
             "z_spacing_source": self.z_spacing_source.value,
             "dataset_id": self.dataset_id,
