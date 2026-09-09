@@ -119,14 +119,19 @@ When there is no optical photo to align against, the only naturally
 meaningful frame is **physical micrometers of the imaged tissue**.
 
 - TIC / ion images: stored intrinsically in raster pixel indices,
-  with a transform ``Scale([pixel_size_um, pixel_size_um])`` to
+  with a transform ``Scale([pixel_size_x_um, pixel_size_y_um])`` to
   ``"global"``.
 - Pixel-polygon shapes: stored intrinsically in micrometers
-  (``spatial_x = x * pixel_size_um``), with ``Identity`` to
-  ``"global"``.
+  (``spatial_x = x * pixel_size_x_um``, ``spatial_y = y *
+  pixel_size_y_um``), with ``Identity`` to ``"global"``.
 - ``zarr.attrs["coordinate_systems"]["global"]`` declares
   ``unit="micrometer"`` and fills ``pixel_size_um_x/y`` with the
   MSI grid pixel size.
+
+The two pitches are equal on a square raster and are *not* assumed to be:
+an anisotropic acquisition (a DESI method with ``DesiXStep !=
+DesiYStep``) scales each axis by its own, here and in every other block
+of the store that states a pitch.
 
 Both elements resolve to the same micrometer extent at ``"global"``.
 
@@ -140,7 +145,7 @@ So a volume's elements agree like this:
 
 | Element | x, y at ``"global"`` | z at ``"global"`` |
 |---------|---------------------|-------------------|
-| TIC volume | ``Scale([pixel_size_um, pixel_size_um])`` | ``Scale([z_spacing_um])`` |
+| TIC volume | ``Scale([pixel_size_x_um, pixel_size_y_um])`` | ``Scale([z_spacing_um])`` |
 | Table | ``spatial_x``, ``spatial_y`` | ``spatial_z`` |
 | Pixel shapes | micrometres, ``Identity`` | **absent** — join via ``spatial_z`` |
 

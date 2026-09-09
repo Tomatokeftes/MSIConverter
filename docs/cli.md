@@ -28,10 +28,20 @@ thyra [OPTIONS] INPUT OUTPUT
 | `2` | Invalid command-line arguments (click usage error) |
 
 A refusal Thyra planned for -- a `.d` directory with no analysis files, a
-Waters raster whose stage never moved, a mass range with no extent -- prints
-its message once at `ERROR` and nothing else. The traceback behind it is kept
-for `-v DEBUG`, and a traceback at `ERROR` now means an exception nobody
-planned for, which is worth reporting as a bug.
+Waters raster whose stage never moved, a mass range with no extent, a source
+in which no pixel carries a spectrum -- prints its message once at `ERROR` and
+nothing else. The traceback behind it is kept for `-v DEBUG`, and a traceback
+at `ERROR` now means an exception nobody planned for, which is worth reporting
+as a bug.
+
+A conversion that would store **nothing** is one of those failures. If no
+position carries a spectrum -- an all-zero source, every spectrum empty,
+every peak outside a narrowed `--resample-min-mz`/`--resample-max-mz` range,
+every coordinate off the declared grid -- the conversion exits `1` and
+leaves no store, rather than exiting `0` with a zarr holding no table. The
+message names which of those happened. A multi-slice source with *some*
+empty planes is not affected: those planes are dropped with a warning and
+the rest of the store is written.
 
 A failed conversion renames any partially written store to
 `<output>.zarr.failed`, so the output path stays free for a retry and an
@@ -53,7 +63,7 @@ thyra input.imzML output.zarr && python analyse.py output.zarr
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--format [spatialdata]` | `spatialdata` | Output format |
-| `--pixel-size FLOAT` | auto-detect | Pixel size in micrometers |
+| `--pixel-size FLOAT` | auto-detect | Pixel size in micrometers, applied to **both** axes. Auto-detection keeps the source's own x and y pitch separately, so an anisotropic raster stays anisotropic; passing this declares it square |
 | `--region TEXT` | all | Convert one region, by `.mis` Area Name or by DB RegionNumber. Checked against the dataset's own region list whether it has one region or several; a value that matches no Area Name is read as a RegionNumber, and says so |
 | `--resample / --no-resample` | enabled | Mass axis resampling |
 | `--include-optical / --no-optical` | enabled | Include optical images in output |
@@ -474,7 +484,7 @@ thyra synapt_run.raw output.zarr --waters-spectrum profile
 |--------|---------|-------------|
 | `--dataset-id TEXT` | `msi_dataset` | Dataset identifier used in element keys. Letters, digits, underscores, dots and hyphens only, and not `.`, `..` or a leading `__`: it names every element in the store, so SpatialData's naming rule applies to it. Checked before any pass over the source |
 | `--handle-3d` | off | Process as 3D volume instead of 2D slices |
-| `--z-spacing FLOAT` | in-plane pixel size | Distance between consecutive slices, in um. Only used with `--handle-3d` |
+| `--z-spacing FLOAT` | in-plane pixel size (x) | Distance between consecutive slices, in um. Only used with `--handle-3d` |
 
 ### Examples
 
@@ -497,10 +507,11 @@ apart consecutive slices are: that distance is set by the microtome that cut the
 sections, not by the stage that rastered them, and the two match only by
 coincidence.
 
-With no `--z-spacing`, Thyra reuses the in-plane pitch, warns, and records
-`z_spacing_source: "assumed_isotropic"` in the store so the guess stays
-distinguishable from a measurement. The volume's voxel values are unaffected
-either way — what is wrong is its depth, so a viewer reading it in micrometres
+With no `--z-spacing`, Thyra reuses the in-plane pitch (the x one, when the
+raster is anisotropic and there is no single in-plane pitch to reuse), warns,
+and records `z_spacing_source: "assumed_isotropic"` in the store so the guess
+stays distinguishable from a measurement. The volume's voxel values are
+unaffected either way — what is wrong is its depth, so a viewer reading it in micrometres
 renders the stack squashed or stretched along z.
 
 There is no way to detect this from the data. imzML has no term for slice

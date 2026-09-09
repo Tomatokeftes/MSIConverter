@@ -483,19 +483,21 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             "shapes": {},
             "images": {},
             "var_df": self._create_mass_dataframe(),
-            "total_intensity": np.zeros(n_cols, dtype=np.float64),
             "pixel_count": 0,
-            "avg_spectrum": None,
             "avg_spectrum_per_region": None,
         }
 
-        # Per-region accumulators for multi-region datasets
+        # Per-region accumulators for multi-region datasets. Unlike the
+        # per-table average these stay dataset-wide, because a region is:
+        # ``get_region_map`` is keyed on ``(x, y)`` with no z, so one
+        # region is one in-plane footprint sampled on every plane. See
+        # _finalize_table for what that means for a multi-plane store.
         if self._region_map is not None:
             unique_regions = sorted(set(self._region_map.values()))
             data_structures["region_total_intensity"] = {
                 r: np.zeros(n_cols, dtype=np.float64) for r in unique_regions
             }
-            data_structures["region_pixel_count"] = {r: 0 for r in unique_regions}
+            data_structures["region_row_count"] = {r: 0 for r in unique_regions}
 
         return data_structures
 
@@ -560,11 +562,6 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         logger.info("Step 2/3: Allocating memory-mapped CSC arrays...")
         for unit in units:
             unit.finish_counting()
-            unit.assembly.allocate(
-                self._register_table_scratch("summed", unit.assembly)
-            )
-
-        self._matrix_size_gb(units)
 
         # The rows that are written, not the spectra that were read: a
         # position measured twice is one row, and an empty or out-of-grid
@@ -572,6 +569,19 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         # ``non_empty_pixels``, where it used to be the reader's spectrum
         # count and so disagreed with the table it described (#241).
         self._non_empty_pixel_count = sum(unit.n_rows for unit in units)
+
+        # Before anything is allocated and before the source is read a
+        # second time: a conversion with no row has nothing left to do
+        # and no store to write (#242).
+        self._refuse_an_empty_conversion(data_structures)
+        self._finish_region_averages(data_structures)
+
+        for unit in units:
+            unit.assembly.allocate(
+                self._register_table_scratch("summed", unit.assembly)
+            )
+
+        self._matrix_size_gb(units)
 
         if passes is not None:
             passes.finish_counting(units[0].n_rows, self._register_table_scratch)
@@ -586,20 +596,152 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             passes.finish_scattering()
             self._take_fused_results(passes)
 
+    def _kept_in_plane_xy(
+        self, unit: _TableUnit
+    ) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+        """The in-plane ``(x, y)`` of one table's rows, in row order."""
+        if unit.kept_grid is None or self._dimensions is None:
+            raise RuntimeError("The row layout is not decided yet")
+        n_x, n_y, _ = self._dimensions
+        kept = unit.kept_grid
+        in_plane = kept % (n_x * n_y) if unit.plane is None else kept
+        return in_plane % n_x, in_plane // n_x
+
+    def _refuse_an_empty_conversion(self, data_structures: Dict[str, Any]) -> None:
+        """Refuse a conversion in which no position carries a spectrum.
+
+        Such a run used to report success: ``convert_msi`` returned
+        ``True``, the CLI exited 0, and a store was written with no table,
+        no image and no shapes -- while the log said "No non-zero entries
+        found!" and, per plane, "no position carries a spectrum". A
+        calling script saw a finished conversion and a zarr it could not
+        read a spectrum out of (issue #242).
+
+        Checked here, on the row count, rather than on the empty
+        ``tables`` mapping in ``_save_output``: the pre-scan has just
+        settled every table's rows, a full second read of the source is
+        still ahead, and the same count covers every route into the empty
+        store -- an all-zero source, every spectrum empty, every peak
+        outside a narrowed resampling range, every coordinate off the
+        grid.
+
+        A **multi-plane** source with some empty planes is not refused.
+        Those planes are dropped with a warning and the rest are written,
+        which is the #88 behaviour: an acquisition is polygon-shaped and
+        its bounding box has empty corners. Only a conversion with no row
+        anywhere is refused.
+
+        Raises:
+            ConversionRefused: When no table would have a single row.
+        """
+        if self._non_empty_pixel_count > 0:
+            return
+
+        raise ConversionRefused(
+            f"{self.dataset_id}: no pixel carries a spectrum, so there is no "
+            f"table to write -- {self._why_nothing_survived(data_structures)}. "
+            f"Nothing was written to {self.output_path}."
+        )
+
+    def _why_nothing_survived(self, data_structures: Dict[str, Any]) -> str:
+        """Which of the routes into an empty store this conversion took.
+
+        "Every spectrum was empty" and "every peak fell outside
+        250-1200 m/z" send a user to different places, so the refusal has
+        to tell them apart rather than name the possibilities. Each test
+        is on a total rather than on a counter being non-zero: a
+        resampled axis lands a few tenths of a mDa inside the source's
+        own range, so two of a spectrum's twenty peaks falling off its
+        ends is routine and says nothing about why the store is empty.
+
+        Both peak counters are read after pass 1 and before pass 2, so
+        they hold that one pass's totals -- they count resample calls,
+        and an ordinary conversion resamples every spectrum twice.
+        """
+        pixel_count = int(data_structures.get("pixel_count", 0))
+        off_grid = int(data_structures.get("out_of_grid_spectra", 0))
+        peaks_in = int(data_structures.get("input_peaks", 0))
+
+        if pixel_count == 0:
+            return "the reader yielded no spectra at all"
+        if off_grid == pixel_count:
+            n_x, n_y, n_z = self._dimensions
+            return (
+                f"all {pixel_count} spectra sat outside the declared "
+                f"{n_x}x{n_y}x{n_z} grid"
+            )
+        if peaks_in == 0:
+            return "every spectrum the reader yielded was empty"
+        if self._unusable_intensities >= peaks_in:
+            return (
+                "every intensity was dropped as not a measurement "
+                "(non-finite, or negative)"
+            )
+        usable = peaks_in - self._unusable_intensities
+        if self._out_of_range_peaks >= usable and self._common_mass_axis is not None:
+            return (
+                "every peak fell outside the target mass axis "
+                f"[{float(self._common_mass_axis[0]):.4f}, "
+                f"{float(self._common_mass_axis[-1]):.4f}] m/z -- widen the "
+                "resampling range (--resample-min-mz / --resample-max-mz) to "
+                "keep them"
+            )
+        return "every intensity in the source is zero"
+
+    def _finish_region_averages(self, data_structures: Dict[str, Any]) -> None:
+        """Divide each region's summed intensity by the rows it covers.
+
+        The numerator is every spectrum that got a row in the region, so
+        the denominator has to be rows too, exactly as for the per-table
+        average (#243): counting the spectra fed in instead made a region
+        holding a position the source measured twice come out low by that
+        position's share.
+
+        Regions stay dataset-wide, spanning z. That is what a region *is*
+        here -- ``get_region_map`` is keyed on ``(x, y)`` and has no z
+        component, so one region is one in-plane footprint sampled on
+        every plane, and splitting it per plane would answer a question
+        the source never asked.
+        """
+        region_total = data_structures.get("region_total_intensity")
+        if region_total is None:
+            return
+
+        rows: Dict[int, int] = data_structures["region_row_count"]
+        for unit in data_structures["units"]:
+            x_idx, y_idx = self._kept_in_plane_xy(unit)
+            numbers, counts = np.unique(
+                self.build_region_numbers(x_idx, y_idx), return_counts=True
+            )
+            for region, count in zip(numbers.tolist(), counts.tolist()):
+                if region in rows:
+                    rows[region] += int(count)
+
+        data_structures["avg_spectrum_per_region"] = {
+            str(region): total / max(rows.get(region, 0), 1)
+            for region, total in region_total.items()
+        }
+
     def _count_pass(self, data_structures: Dict[str, Any]) -> None:
-        """Pass 1: count entries per column, TIC, occupancy, average spectrum.
+        """Pass 1: count entries per column, TIC, occupancy, region totals.
+
+        The mean spectrum is *not* accumulated here. It is each table's
+        own column sums divided by its own rows, and both are read off the
+        finished matrix in :meth:`_finalize_table` (#243).
 
         Also feeds the sibling tables' pass-1 sinks, when ``passes`` is
         set, from the same frame read (see ``fused_passes.py``).
         """
         units: List[_TableUnit] = data_structures["units"]
         passes = data_structures["passes"]
-        total_intensity: NDArray[np.float64] = data_structures["total_intensity"]
         region_total = data_structures.get("region_total_intensity")
-        region_count = data_structures.get("region_pixel_count")
 
         pixel_count = 0
         n_out_of_bounds = 0
+        # Peaks handed in, before anything is dropped. The empty-store
+        # refusal tells its causes apart by comparing the dropped totals
+        # with this one (see _why_nothing_survived).
+        n_input_peaks = 0
         self._suppress_reader_progress()
 
         with tqdm(
@@ -611,6 +753,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 passes, "count"
             ):
                 x, y, z = coords
+                n_input_peaks += int(np.size(mzs))
                 mz_indices, values = self._process_spectrum(mzs, intensities)
                 nnz = int(mz_indices.size)
                 unit, grid = self._locate(units, x, y, z)
@@ -626,12 +769,6 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                     passes.count(frame, grid if gets_row else None)
 
                 if nnz > 0:
-                    # The average is over every spectrum read rather than
-                    # every spectrum stored, so it sits outside the bounds
-                    # check. Indices are unique within a spectrum, so the
-                    # fancy-indexed add is exact.
-                    total_intensity[mz_indices] += values
-
                     # Column counts, TIC and occupancy all describe a
                     # spectrum that is going to get a row, so all three sit
                     # behind the bounds check: a reader yielding a
@@ -642,14 +779,20 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                     # scipy reports as a non-canonical matrix.
                     if unit is not None:
                         unit.count(grid, mz_indices, values)
+
+                        # Behind the same check, and for the same reason
+                        # the per-table average is taken over rows: the
+                        # numerator has to be the current the store
+                        # actually holds. A spectrum off the grid is
+                        # written nowhere, so it belongs in no mean
+                        # (#243). Indices are unique within a spectrum,
+                        # so the fancy-indexed add is exact.
+                        if region_total is not None:
+                            region = self._region_map.get((x, y), -1)
+                            if region in region_total:
+                                region_total[region][mz_indices] += values
                     else:
                         n_out_of_bounds += 1
-
-                    if region_total is not None:
-                        region = self._region_map.get((x, y), -1)
-                        if region in region_total:
-                            region_total[region][mz_indices] += values
-                            region_count[region] += 1
 
                 pixel_count += 1
                 pbar.update(1)
@@ -660,7 +803,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         logger.info(
             "  Pre-scan complete: %s entries across %s columns",
             f"{total_nnz:,}",
-            f"{total_intensity.size:,}",
+            f"{len(self._common_mass_axis):,}",
         )
         if n_out_of_bounds:
             n_x, n_y, n_z = self._dimensions
@@ -674,18 +817,16 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 n_z,
             )
 
-        # ``pixel_count`` is every spectrum the reader yielded, which is what
-        # the average is over. It is not the table's row count -- an empty
-        # spectrum gets no row, an out-of-grid one gets no row, and a
-        # position measured twice gets one -- so ``non_empty_pixels`` is
-        # set from the rows in _process_spectra rather than from here (#241).
+        # ``pixel_count`` is every spectrum the reader yielded. It is not
+        # the table's row count -- an empty spectrum gets no row, an
+        # out-of-grid one gets no row, and a position measured twice gets
+        # one -- so ``non_empty_pixels`` is set from the rows in
+        # _process_spectra rather than from here (#241), and no average is
+        # taken over it any more (#243). All it sizes now is pass 2's
+        # progress bar, which counts the same spectra pass 1 walked.
         data_structures["pixel_count"] = pixel_count
-        data_structures["avg_spectrum"] = total_intensity / max(pixel_count, 1)
-        if region_total is not None:
-            data_structures["avg_spectrum_per_region"] = {
-                str(r): total / max(region_count.get(r, 0), 1)
-                for r, total in region_total.items()
-            }
+        data_structures["out_of_grid_spectra"] = n_out_of_bounds
+        data_structures["input_peaks"] = n_input_peaks
 
     def _scatter_pass(self, data_structures: Dict[str, Any]) -> None:
         """Pass 2: resample every spectrum again and scatter it into its table.
@@ -796,10 +937,22 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             var=data_structures["var_df"].copy(),
         )
 
-        # Add average spectrum to .uns. The dataset-wide mean, the same
-        # on every table: it is the per-pixel mean everywhere, including
-        # the per-region block below.
-        adata.uns["average_spectrum"] = data_structures["avg_spectrum"]
+        # This table's own mean spectrum, taken from this table's own
+        # matrix: the column sums over the rows that were written. Until
+        # #243 a multi-slice source converted as 2D put one dataset-wide
+        # vector in every plane's table, and the ratio to the plane's real
+        # mean was measured at 1.96 / 0.996 / 0.67 across three planes of
+        # a source scaled by z. Read off the matrix rather than
+        # accumulated alongside it so it *is* ``X.mean(axis=0)``, which is
+        # what docs/output-format.md promises and what Ousia reads, rather
+        # than a second number that has to be kept in step with it.
+        adata.uns["average_spectrum"] = np.asarray(
+            matrix.sum(axis=0), dtype=np.float64
+        ).ravel() / max(unit.n_rows, 1)
+        # The per-region means stay dataset-wide, because a region has no
+        # z: see _finish_region_averages. On a multi-plane store they
+        # therefore describe a wider population than the key above, which
+        # docs/output-format.md says out loud.
         per_region = data_structures.get("avg_spectrum_per_region")
         if per_region is not None:
             adata.uns["average_spectrum_per_region"] = per_region
@@ -862,7 +1015,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                     "instance_id": kept.astype(str),
                     "region": pd.Categorical(np.full(kept.size, unit.region_key)),
                     "spatial_x": x_idx * self.pixel_size_um,
-                    "spatial_y": y_idx * self.pixel_size_um,
+                    "spatial_y": y_idx * self.pixel_size_y_um,
                     "spatial_z": (
                         z_idx * self.z_spacing_um
                         if n_z > 1
@@ -880,7 +1033,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                     "instance_id": kept.astype(str),
                     "region": pd.Categorical(np.full(kept.size, unit.region_key)),
                     "spatial_x": x_idx * self.pixel_size_um,
-                    "spatial_y": y_idx * self.pixel_size_um,
+                    "spatial_y": y_idx * self.pixel_size_y_um,
                 }
             )
         obs.set_index("instance_id", inplace=True)
@@ -906,7 +1059,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             # pairs values with axis *names*, so ("x", "y", "z") against
             # a (c, z, y, x) image is deliberate.
             transform: Any = Scale(
-                [self.pixel_size_um, self.pixel_size_um, self.z_spacing_um],
+                [self.pixel_size_um, self.pixel_size_y_um, self.z_spacing_um],
                 axes=("x", "y", "z"),
             )
             return Image3DModel.parse(
@@ -926,7 +1079,9 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 output_axes=("x", "y"),
             )
         else:
-            transform = Scale([self.pixel_size_um, self.pixel_size_um], axes=("x", "y"))
+            transform = Scale(
+                [self.pixel_size_um, self.pixel_size_y_um], axes=("x", "y")
+            )
         return Image2DModel.parse(
             xr.DataArray(plane[np.newaxis, ...], dims=("c", "y", "x")),
             transformations={self.dataset_id: transform, "global": transform},

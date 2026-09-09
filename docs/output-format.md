@@ -144,10 +144,28 @@ plt.title("Average Mass Spectrum")
 plt.show()
 ```
 
-It is the **mean over the acquired spectra** -- the intensity summed down the
-m/z axis and divided by the number of pixels that carry a spectrum, not by the
-number of grid positions. Every write path stores it on that scale, including
-the 3D volume path, which previously stored the undivided sum here.
+It is **that table's own `X.mean(axis=0)`** -- the intensity summed down the
+m/z axis and divided by the rows the table holds, not by the grid positions it
+covers and not by the spectra the reader handed in. Read it off the matrix and
+you get the same numbers back:
+
+```python
+import numpy as np
+
+X = msi_table.X.toarray() if hasattr(msi_table.X, "toarray") else msi_table.X
+np.allclose(msi_table.uns["average_spectrum"], X.mean(axis=0))   # True
+```
+
+Two consequences of "rows, not spectra". A grid position the acquisition never
+reached has no row and so is in neither the sum nor the count. A position the
+source measured **twice** has one row holding the sum of both spectra, so it
+contributes two spectra of ion current over one row -- which is what that row
+really holds.
+
+On a multi-slice source converted as 2D each plane's table carries **its own**
+mean. They used to all carry one dataset-wide vector, so a plane brighter or
+dimmer than the average was described by a spectrum that was not its own; the
+3D volume path had the same key fixed a release earlier.
 
 ### Per-Region Average Spectrum
 
@@ -167,9 +185,20 @@ if "average_spectrum_per_region" in msi_table.uns:
     plt.show()
 ```
 
+Each region's vector is the mean of the rows in that region, on the same
+"rows, not spectra" rule as `average_spectrum`.
+
 !!! note
     This key is only present when the dataset contains multiple acquisition
     regions. Single-region datasets only have the global `average_spectrum`.
+
+!!! note "Regions span the slices"
+    A region is an in-plane footprint: `get_region_map()` is keyed on `(x, y)`
+    and has no z component, so on a multi-slice store one region covers the
+    same area on every plane. `average_spectrum_per_region` is therefore
+    **dataset-wide** and identical in every plane's table, while
+    `average_spectrum` beside it is that plane's alone. On the single-table
+    stores that regions actually occur on, the two are over the same rows.
 
 ### Intensity Matrix
 
@@ -915,7 +944,10 @@ Stored in `sdata.attrs`:
 
 ```python
 if "pixel_size_x_um" in sdata.attrs:
-    print(f"Pixel size: {sdata.attrs['pixel_size_x_um']} um")
+    print(
+        f"Pixel size: {sdata.attrs['pixel_size_x_um']} x "
+        f"{sdata.attrs['pixel_size_y_um']} um"
+    )
 
 if "msi_dataset_info" in sdata.attrs:
     info = sdata.attrs["msi_dataset_info"]
@@ -1078,5 +1110,20 @@ print(f"  m/z bins: {msi_table.n_vars:,}")
 print(f"  m/z range: {mz_values.min():.2f} -- {mz_values.max():.2f}")
 print(f"  Sparsity: {(1 - X.nnz / (X.shape[0] * X.shape[1])) * 100:.1f}%")
 if "pixel_size_x_um" in sdata.attrs:
-    print(f"  Pixel size: {sdata.attrs['pixel_size_x_um']} um")
+    print(
+        f"  Pixel size: {sdata.attrs['pixel_size_x_um']} x "
+        f"{sdata.attrs['pixel_size_y_um']} um"
+    )
 ```
+
+!!! note "Read both axes"
+    `pixel_size_x_um` and `pixel_size_y_um` are equal on a square raster,
+    which is nearly every acquisition -- but a DESI method with
+    `DesiXStep != DesiYStep` is not square, and the store carries the real
+    pitch on each axis in every block that states one: these attrs,
+    `coordinate_systems.global` and its `raster_to_global_affine`, the image
+    and shapes transforms, `obs["spatial_x"]`/`["spatial_y"]`, the pixel
+    footprints and `msi_metadata.ms_analysis.pixel_size_um`. Reading only
+    `pixel_size_x_um` as *the* pixel size renders such a raster squashed by
+    y/x. Pass `--pixel-size` to declare the raster square instead, which
+    applies one number to both axes.
