@@ -117,6 +117,33 @@ def _validate_numeric_parameters(
     return True
 
 
+def _validate_streaming(streaming: Any) -> bool:
+    """Validate the ``streaming`` argument, which selects nothing.
+
+    A no-op argument still has to say when it was misspelled. ``"yes"``,
+    ``None`` and ``1`` were all accepted in silence, and so was ``0`` --
+    which a caller writes meaning ``False``, and which the ``is False``
+    test in ``_create_converter`` misses, because ``0`` and ``False`` are
+    equal but not identical. The one value the code answers was the one a
+    plausible spelling could hide (issue #261).
+
+    Checked here rather than in ``_create_converter`` so it fails while the
+    caller is still looking at their own arguments, before the source is
+    opened -- the same reason ``spectrum_type`` is normalised in
+    ``ImzMLReader.__init__``.
+    """
+    if streaming is True or streaming is False or streaming == "auto":
+        return True
+
+    logger.error(
+        "streaming must be True, False or 'auto', got %r. It selects nothing "
+        "either way -- every conversion streams since v3.23 -- so the "
+        "argument can simply be dropped.",
+        streaming,
+    )
+    return False
+
+
 def _validate_input_parameters(
     input_path: Union[str, Path],
     output_path: Union[str, Path],
@@ -124,12 +151,14 @@ def _validate_input_parameters(
     dataset_id: str,
     pixel_size_um: Optional[float],
     z_spacing_um: Optional[float] = None,
+    streaming: Any = "auto",
 ) -> bool:
     """Validate all input parameters for convert_msi function."""
     return (
         _validate_paths_parameters(input_path, output_path)
         and _validate_string_parameters(format_type, dataset_id)
         and _validate_numeric_parameters(pixel_size_um, z_spacing_um)
+        and _validate_streaming(streaming)
     )
 
 
@@ -295,7 +324,8 @@ def _create_converter(
     streaming one, on request or on an estimated size. There is one
     converter now and it streams (design decision D11), so the argument
     selects nothing; it is accepted so existing calls keep working, and
-    ``False`` is answered with a note rather than silently.
+    ``False`` is answered with a note rather than silently. The value is
+    checked by ``_validate_streaming`` before the reader is opened.
     """
     if streaming is False:
         logger.warning(
@@ -465,17 +495,24 @@ def convert_msi(
             conversion streams -- two passes over the source into
             memory-mapped arrays, the matrix never held in RAM -- since
             the in-memory converter was folded in (v3.23). ``False`` is
-            accepted with a warning.
+            accepted with a warning. Only ``True``, ``False`` and
+            ``"auto"`` are accepted at all: a no-op argument still has to
+            say when it was misspelled, and ``0`` -- which reads as
+            ``False`` but is not it -- used to convert in silence.
         region: For multi-region datasets (e.g. Bruker timsTOF),
             select a specific region. Accepts an int (DB
             RegionNumber) or a str (matched against .mis Area
             Name, falling back to integer parse). None (default)
             converts all regions. Passed to the reader as
             reader_options["region"].
-        **kwargs: Additional keyword arguments
 
     Returns:
-        True if conversion was successful, False otherwise
+        True if the conversion completed and the store was written, False
+        otherwise. Every failure comes back this way, refusals included:
+        a refusal Thyra planned for is logged once at ``ERROR`` with the
+        whole explanation and its traceback kept for ``DEBUG`` (issue
+        #234), so a caller that wants the exception itself has to use the
+        converter classes directly.
     """
     # Validate input parameters
     if not _validate_input_parameters(
@@ -485,6 +522,7 @@ def convert_msi(
         dataset_id,
         pixel_size_um,
         z_spacing_um,
+        streaming,
     ):
         return False
 

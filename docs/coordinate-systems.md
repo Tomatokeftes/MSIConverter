@@ -301,16 +301,17 @@ Two kinds of Thyra output lack the ``coordinate_systems`` attr, and
 the second is more recent than it looks:
 
 - **Anything written before v1.22.0**, which introduced the schema.
-- **Any store written by the streaming path with ``use_csc=True``,
-  up to and including v2.3.1.** That path hand-writes its Zarr root
-  attributes and its copy was short: 7 attrs against the 10 the
-  other three paths produce, missing ``coordinate_systems``,
-  ``format_specific_metadata`` and ``msi_dataset_info``. Fixed in
-  v3.0.0. This is the awkward one, because in those versions the
-  route was chosen by estimated size -- so the biggest datasets are
-  exactly the ones that lost it. (Since v3.1.1 that threshold is
-  gone and PCS is the streaming default, but by then the attr was
-  already being written.)
+- **Anything written between v1.22.0 and v2.3.1 by the streaming
+  route**, which in those releases was one of four converters and
+  hand-wrote its own Zarr root attributes. Its copy was short: 7
+  attrs against the 10 the other three produced, missing
+  ``coordinate_systems``, ``format_specific_metadata`` and
+  ``msi_dataset_info``. Fixed in v3.0.0. This is the awkward one,
+  because that route was chosen by estimated size -- so the biggest
+  datasets are exactly the ones that lost it, and nothing in the
+  store records which route wrote it. There is no live setting to
+  check: the four converters became one in v3.23 (design decision
+  D11) and every store written since v3.0.0 carries the attr.
 
 Either way the store is still readable, but you have to infer the
 convention from element layouts and accept some risk that two

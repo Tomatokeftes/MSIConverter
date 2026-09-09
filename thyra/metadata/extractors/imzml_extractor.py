@@ -777,6 +777,13 @@ class ImzMLMetadataExtractor(MetadataExtractor):
         braces (IONTOF writes ``{...}``, SCiLS does not); they are stripped
         so the stored field is one shape whatever wrote the file.
 
+        What is stored is what the *XML* declares, which is not always what
+        the ``.ibd`` header carries -- ``ImzMLReader._check_ibd_uuid``
+        compares the two and warns when they disagree (design decision D17).
+        This value is not corrected against the binary: the store records the
+        file's own declaration, and the warning is where the disagreement is
+        reported.
+
         Returns:
             The UUID string, or ``None`` if the file declares none.
         """

@@ -879,8 +879,22 @@ decided below: D10 (#219) and D11 (#218).
 
 **Decision.** Every converter writes CSC. `--sparse-format` and the
 `sparse_format` keyword on `convert_msi` and the converters are removed,
-and passing the keyword raises rather than being ignored. A caller who
+and passing the keyword is answered rather than ignored. A caller who
 wants row-major access calls `.tocsr()` on the matrix they read back.
+
+**How it is answered, exactly.** The converter class raises
+`ConversionRefused`. `convert_msi` does not re-raise it: its
+`except ConversionRefused` logs the message once at `ERROR` and returns
+`False`, which is what it does for *every* refusal since issue #234, and
+what the CLI turns into exit 1. This paragraph used to say the keyword
+"raises", full stop, which was true of the class and not of the front
+door most callers use -- the discrepancy is issue #261's first item.
+Both behaviours are pinned by tests
+(`tests/unit/test_api_argument_gaps.py`,
+`tests/unit/converters/test_spatialdata_converter.py`). What the decision
+requires is that the removal is not *silent*; whether the caller learns
+it from an exception or from `False` plus a logged reason is
+`convert_msi`'s convention, not this decision's.
 
 **Why.** After D9 the flag was honoured by the in-memory converters only.
 That made it a flag whose effect depended on a second flag: `csr` did
@@ -900,9 +914,9 @@ half of every parity test, carried for a layout with no requester. The
 conversion it replaces costs one `.tocsr()` in memory on data the caller
 has already read.
 
-**Why the keyword raises instead of being accepted as a no-op.** Unknown
-keyword arguments fall through `**kwargs` into `BaseMSIConverter.options`
-without a word. Dropping `sparse_format` from the signature and stopping
+**Why the keyword is answered instead of being accepted as a no-op.**
+Unknown keyword arguments fall through `**kwargs` into
+`BaseMSIConverter.options` without a word. Dropping `sparse_format` from the signature and stopping
 there would mean `sparse_format="csr"` silently producing CSC -- which is
 exactly the failure D9 found and this decision is meant to end. So the
 base converter names it: the message says the keyword is gone, that CSC is
@@ -1037,7 +1051,10 @@ micrometres while putting its shapes in optical pixels, so the two
 disagreed at `"global"`.
 
 **What went with them.** `--streaming` is a hidden no-op and `streaming=`
-selects nothing: with one route the `auto` estimate has nothing to decide,
+selects nothing (though it is still checked: only `True`, `False` and
+`"auto"` are accepted, because an argument that selects nothing still has
+to say when it was misspelled -- issue #261): with one route the `auto`
+estimate has nothing to decide,
 so the sizing PR #216 landed the day before (`_values_per_spectrum`, the
 profile-versus-centroid rule, `Thresholds.STREAMING_SIZE_GB`) is gone with
 the gate it served. The refusal of a broken file still happens at the
@@ -1345,3 +1362,149 @@ range, pixel size and both detector verdicts, all from the header and the
 block chain. `PhiToFSIMSDetector` matches on the format flag rather than
 on peak density, so zeroing the counts does not cost the preview its
 nearest-neighbour verdict — which would have been a regression of #168.
+
+---
+
+## D17. The docs deploy builds `main`, and the `.ibd` UUID warns rather than refuses
+
+**Status:** Implemented (2026-09-09), issues #223 and #261.
+
+Two independent calls, both of the same shape: a check that could be made
+stricter, and the measurement that says how strict it should be.
+
+### The docs deploy pins its ref
+
+`docs.yml` ends every run in `mkdocs gh-deploy --force`, which force-pushes
+the whole built site over `gh-pages`. Two runs overlapping is a lost-update
+race. #154 removed the duration-dependent half of it with a `pages-deploy`
+concurrency group, and deliberately left a narrower half: GitHub's
+workflow-syntax documentation says runs in a group are processed by the time
+each started waiting, and then adds, verbatim, that **"ordering is not
+guaranteed"**. An older run admitted second builds its own older checkout and
+force-pushes it over newer docs -- both runs green, nothing in either log.
+
+**Decision.** The deploy checks out
+`${{ github.event_name == 'push' && 'main' || github.ref }}`. Whichever run
+executes last then builds current `main`, so the published site is right
+regardless of admission order.
+
+**Why this rather than tighter serialisation.** There is nothing tighter
+available: the group is already unkeyed (one `gh-pages` branch, so a
+`workflow_dispatch` and a push must contend), and `cancel-in-progress: true`
+would reintroduce the race it was added to remove, because cancellation is not
+synchronous and the older run's force-push can still be in flight. The
+ordering guarantee simply is not offered. Not depending on it is the only fix
+that does not depend on it.
+
+**The cost, accepted.** Re-running an old docs run now publishes today's docs
+rather than reproducing that run's build, and `gh-deploy`'s `Deployed <sha>`
+message stops matching the run's trigger. For a workflow whose only job is
+"deploy the site" that is the behaviour wanted; it would be wrong for a
+workflow meant to reproduce a historical build, and this is not one.
+
+**Why conditional rather than a hardcoded `main`.** A hardcoded ref makes a
+deliberate `workflow_dispatch` against another branch silently deploy `main`
+instead -- a dispatch that does the opposite of what it says. The conditional
+keeps that path honest and changes nothing about the release path:
+`release.yml`'s `deploy-docs` job dispatches with `--ref main` already.
+
+**Known limit.** The race is narrowed to nothing for *content*, not for
+*attribution*: if two runs overlap, the gh-pages commit message names
+whichever ref the surviving run checked out, which is now always `main`'s tip
+rather than the merge that triggered it.
+
+### An `.ibd` UUID that disagrees warns
+
+The imzML specification puts the binary file's UUID in the first 16 bytes of
+the `.ibd` and the same value in the XML as `IMS:1000080`. Thyra read the XML
+term for the metadata store and never compared the two (issue #261, item 5).
+Comparing them is the only check that can tell an `.imzML` apart from a
+*different* acquisition's `.ibd` sitting beside it under the right name: every
+other check in `_validate_parser_state` reads the XML's own offsets and
+lengths against the binary's size, which a wrong-but-plausible pairing
+satisfies.
+
+**Decision.** Compare them, and **warn** on a disagreement. Do not refuse.
+
+**Why not refuse, measured on 2026-09-09.** Of the three real files in the
+corpus, two match byte for byte:
+
+| file | writer | declared `IMS:1000080` | first 16 bytes of `.ibd` |
+|---|---|---|---|
+| `pea` | SCiLS | `9069a51f-11a8-4f15-aabb-43624def10d0` | same |
+| Xenium export | SCiLS | `6c176aa6-5cf8-4027-8661-657695f2d400` | same |
+| `bellini` | IONTOF SurfaceLab 7.5 | `{FC37F303-A9C0-4CD3-A28E-1D18E523C269}` | `3ad1bacd-dcc3-4f7b-aea7-f9b375dbf731` |
+
+`bellini`'s first spectrum starts at byte 16, so the header slot is there and
+populated -- the writer simply put two different values in the two places.
+That file passes every other check and converts correctly. A refusal would
+therefore reject data Thyra reads right today, over a disagreement between two
+copies of an identifier that is never used to locate a byte. One real file in
+three is not a rare shape.
+
+**What the warning has to say, then.** Both values and both filenames, and
+that reading continues -- because the likeliest reading is "this vendor fills
+the two fields independently", and the person needs to be able to dismiss it
+without reading the source. The second reading, a genuinely mispaired `.ibd`,
+is the one worth the noise.
+
+**Comparison rule.** The 32 hex digits only. Vendors differ on the registry
+braces (IONTOF writes them, SCiLS does not) and on case, and the hyphens are
+positional rather than data, so a file re-spelling its own UUID in the other
+convention must not read as a disagreement with itself.
+
+**Silent when either side is absent.** A file that declares no UUID, or an
+`.ibd` shorter than its header, has nothing to compare; the extent checks
+already speak for the truncated case.
+
+---
+
+## D18. `main` stays unprotected until a release credential exists
+
+**Status:** Deferred (2026-09-09), issue #224.
+
+**Decision.** Do not turn on required status checks for `main`. Keep the
+existing ruleset, which forbids deletion and non-fast-forward pushes and costs
+nothing.
+
+**Why.** Required status checks and this repository's release flow cannot both
+work with the credentials available. Measured on 2026-08-01 against a
+throwaway branch, and re-confirmed on 2026-09-09:
+
+| configuration | result |
+|---|---|
+| no protection (baseline) | `github-actions[bot]` push **allowed** |
+| ruleset, required checks, bypass = admin role | push **blocked** (`GH013`) |
+| ruleset + GitHub Actions app (id 15368) as bypass actor | **refused by the API**, `HTTP 422` |
+| classic protection, `enforce_admins: false` | push **blocked** (`GH006`) |
+
+`release.yml` runs `semantic-release version`, which pushes the version commit
+to `main` with `secrets.GITHUB_TOKEN`. That push cannot bypass required
+checks, and the Actions app cannot be added as a repo-level bypass actor --
+"must be part of the ruleset source or owner organization". Turning the rule
+on would leave the repository tagged-but-not-bumped on the first releasable
+merge. **A repository that cannot cut a release is worse than one without
+required checks.**
+
+**The obvious wrong assumption, named.** Moving the release trigger off `push`
+(the batched-release change) did **not** fix this. It changes *when*
+semantic-release pushes the version commit, not *what* that push is.
+
+**What has changed since the measurement, and what it means.** The check list
+has grown from seven contexts to eleven -- four `integration (os, py)` jobs
+joined the seven the issue lists -- which makes the rule stricter, not more
+reachable. More to the point, the risk the issue was opened for is already
+closed by a different mechanism: `release.yml` waits for the **Tests**
+workflow on the exact commit it is about to release, and refuses to release
+when that run is absent, incomplete, or not successful. Required checks would
+add "a red PR cannot be merged"; they would not add "a red commit cannot reach
+PyPI", because that is already true. This is why the issue is deferred rather
+than escalated.
+
+**What would reopen it.** Any one of: a repo-admin PAT or GitHub App token in
+`release.yml`'s checkout `token:` (note Ousia went deliberately no-PAT for its
+own release flow, so this is a reversal, not a detail); a deploy key as a
+`DeployKey` bypass actor, pushing over SSH; or an organization-level ruleset,
+where the 422's wording hints the Actions app may be an acceptable actor --
+untested, because it needs `gh auth refresh -s admin:org`, which is
+interactive.

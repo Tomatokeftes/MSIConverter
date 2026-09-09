@@ -12,10 +12,14 @@ thyra [OPTIONS] INPUT OUTPUT
 `thyra export-metaspace` -- see [Metadata subcommands](#metadata-subcommands).
 
 !!! tip "Grouped help"
-    `thyra --help` lists every option under a category heading -- Conversion,
-    Logging, Resampling (advanced), Performance, imzML-specific,
-    Bruker-specific, Waters-specific, Other, and a General section holding
-    `--version` and `--help` -- in the same order as the sections on this page.
+    `thyra --help` lists every option under a category heading, in this order:
+    Conversion, Logging, Ion mobility grid (advanced), Resampling (advanced),
+    imzML-specific, Bruker-specific, Waters-specific, Other, and a General
+    section holding `--version` and `--help`. The sections on this page follow
+    the same order. The one page section with no matching help group is
+    [Performance](#performance), which now records only options that were
+    removed or that select nothing -- there is nothing left there for `--help`
+    to list.
 
 ---
 

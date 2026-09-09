@@ -20,7 +20,7 @@ from ...core.mobility import MobilityAxis, classify_mobility_array
 from ...core.registry import register_reader
 from ...errors import ConversionRefused
 from ...metadata.extractors.imzml_extractor import ImzMLMetadataExtractor
-from ...resampling.constants import normalize_spectrum_type
+from ...resampling.constants import ImzMLAccessions, normalize_spectrum_type
 from ...utils.imzml_coordinate_base import coordinate_bases
 from ...utils.pyimzml_direct import read_spectrum_mzs_only
 from ._pyimzml_compat import ensure_lenient_cv_param_values
@@ -491,6 +491,42 @@ class _MassAxisAccumulator:
         )
 
 
+def _validate_max_mass_axis_length(value: Any) -> Optional[int]:
+    """Check the raw-axis cap, which is a count of unique m/z values.
+
+    Refused here rather than at extraction time, so a bad value fails while
+    the caller is still looking at their own arguments -- the same reason
+    ``spectrum_type`` is normalised in the constructor. Until then ``-1``,
+    ``0`` and ``2.5`` were all accepted and then compared against a growing
+    axis, so every file was refused for "exceeding" a cap it could not
+    possibly satisfy, in a message that named the nonsense value back at the
+    person who set it (issue #261).
+
+    ``bool`` is rejected explicitly: it is an ``int`` subclass, so
+    ``max_mass_axis_length=True`` would otherwise mean a cap of one.
+
+    Args:
+        value: What the caller passed, or the default.
+
+    Returns:
+        The value unchanged, once it is ``None`` or a positive int.
+
+    Raises:
+        ConversionRefused: On anything else.
+    """
+    if value is None or (
+        isinstance(value, int) and not isinstance(value, bool) and value > 0
+    ):
+        return value
+
+    raise ConversionRefused(
+        f"max_mass_axis_length must be a positive integer or None (no limit), "
+        f"got {value!r}. It caps how many unique m/z values a processed-mode "
+        f"raw axis may reach before the build gives up; the default is "
+        f"{DEFAULT_MAX_MASS_AXIS_LENGTH:,}."
+    )
+
+
 @register_reader("imzml")
 class ImzMLReader(BaseMSIReader):
     """Reader for imzML format files with optimizations for performance."""
@@ -529,8 +565,8 @@ class ImzMLReader(BaseMSIReader):
         self.cache_coordinates: bool = cache_coordinates
         # Absent means "use the default"; an explicit None means "unlimited",
         # so this cannot be a bare ``.get(...)`` with a None fallback.
-        self.max_mass_axis_length: Optional[int] = kwargs.get(
-            "max_mass_axis_length", DEFAULT_MAX_MASS_AXIS_LENGTH
+        self.max_mass_axis_length: Optional[int] = _validate_max_mass_axis_length(
+            kwargs.get("max_mass_axis_length", DEFAULT_MAX_MASS_AXIS_LENGTH)
         )
         # Validated here rather than at extraction time, so a bad value fails
         # while the caller is still looking at its own arguments.
@@ -754,12 +790,18 @@ class ImzMLReader(BaseMSIReader):
            arrays declare different numbers of values.
         5. A spectrum whose array ends past the end of the ``.ibd``.
 
-        Warned about but allowed: non-monotonic offsets, a maximum end byte
-        short of the file size, and more than one ``<scanSettings>`` block.
-        All three are legal; the last is mishandled downstream (pyimzml
-        resolves each scan-settings accession by first match anywhere in the
-        list, so a two-block file yields a per-accession chimera), but refusing
-        it belongs with the pixel-size unit work rather than here.
+        Warned about but allowed:
+
+        - non-monotonic offsets, and a maximum end byte short of the file
+          size. Both are legal.
+        - more than one ``<scanSettings>`` block. Also legal, and mishandled
+          downstream -- pyimzml resolves each scan-settings accession by first
+          match anywhere in the list, so a two-block file yields a
+          per-accession chimera -- but refusing it belongs with the pixel-size
+          unit work rather than here.
+        - an ``IMS:1000080`` UUID the ``.ibd`` header does not carry. A
+          warning rather than a refusal on measured evidence; see
+          ``_check_ibd_uuid``.
 
         Limitation: this runs *after* ``ImzMLParser.__fix_offsets``, which
         silently adds 2**32 to every offset from the first positive-to-negative
@@ -784,6 +826,7 @@ class ImzMLReader(BaseMSIReader):
         arrays = _offset_arrays(parser)
         self._validate_offset_arrays(arrays)
         self._validate_ibd_extent(parser, arrays)
+        self._check_ibd_uuid(parser)
 
         # Does every spectrum point at one shared m/z block? True for a
         # well-formed continuous file, and the licence for the fast read in
@@ -1054,6 +1097,80 @@ class ImzMLReader(BaseMSIReader):
                 "document order matches byte order and silently rewrites every "
                 "offset after a sign flip when it does not."
             )
+
+    def _check_ibd_uuid(self, parser: ImzMLParser) -> None:
+        """Say so when the ``.ibd`` header does not carry the declared UUID.
+
+        The imzML specification puts the binary file's UUID in the first 16
+        bytes of the ``.ibd`` and the same value in the XML as
+        ``IMS:1000080``. Matching them is the only check that tells an
+        ``.imzML`` apart from a *different* acquisition's ``.ibd`` sitting
+        beside it under the right name -- every other check here reads the
+        XML's own numbers against the ``.ibd``'s size, which a wrong-but-
+        plausible pairing can satisfy. Thyra read the term for the metadata
+        store and never compared it (issue #261).
+
+        **A warning, not a refusal**, and that is measured rather than
+        cautious. Of the three real files in the corpus, ``pea`` and the
+        Xenium export match byte for byte; ``bellini``, an IONTOF SurfaceLab
+        export, declares ``{FC37F303-A9C0-4CD3-A28E-1D18E523C269}`` while its
+        ``.ibd`` header reads ``3ad1bacd-dcc3-4f7b-aea7-f9b375dbf731``. Its
+        first spectrum starts at byte 16, so the header slot is there and
+        populated -- the writer simply put two different values in the two
+        places. That file converts correctly under every other check, so a
+        refusal here would reject data Thyra reads right today, for a
+        disagreement between two copies of an identifier neither of which is
+        used to locate a byte.
+
+        Silent when either side is absent: a file that declares no UUID, or
+        an ``.ibd`` shorter than its header, has nothing to compare and the
+        extent checks above already speak for the truncated case.
+        """
+        if self.ibd_file is None:
+            return
+
+        declared = None
+        try:
+            param_by_name = parser.metadata.file_description.param_by_name
+            value = param_by_name.get(ImzMLAccessions.UUID_NAME)
+            if isinstance(value, str):
+                # Vendors differ on the registry-format braces (IONTOF writes
+                # them, SCiLS does not) and on case; the hyphens are
+                # positional, not data. Compare the 32 hex digits alone.
+                declared = value.strip().strip("{}").replace("-", "").lower()
+        except AttributeError:
+            return
+        if not declared:
+            return
+
+        try:
+            here = self.ibd_file.tell()
+            self.ibd_file.seek(0)
+            header = self.ibd_file.read(16)
+            self.ibd_file.seek(here)
+        except OSError as e:
+            logger.debug("Could not read the .ibd UUID header: %s", str(e))
+            return
+        if len(header) != 16:
+            return
+
+        found = header.hex()
+        if found == declared:
+            return
+
+        name = self.ibd_path.name if self.ibd_path else ".ibd"
+        logger.warning(
+            "imzML declares binary-file UUID %s (IMS:1000080) but %s begins "
+            "with %s. The two are meant to be the same value, so either the "
+            "writer filled the two places independently, or %s is paired "
+            "with another acquisition's binary file. Reading continues -- the "
+            "offsets, not the UUID, locate the data -- but check the pair if "
+            "the spectra look wrong.",
+            declared,
+            name,
+            found,
+            self.imzml_path.name if self.imzml_path else "this .imzML",
+        )
 
     def _cache_all_coordinates(self) -> None:
         """Cache all coordinates for faster access.
