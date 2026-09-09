@@ -261,11 +261,14 @@ class BaseMSIConverter(ABC):
     def _is_volume(self) -> bool:
         """True when this conversion writes a real multi-slice volume.
 
-        ``handle_3d`` alone is not enough: it is forced on by
-        ``SpatialData3DConverter.__init__`` regardless of the data, and a
-        single-slice acquisition converted through that class still takes
-        the 2D branch of ``_create_tic_image``. Only the combination has
-        a z axis to space out.
+        ``handle_3d`` alone is not enough: it says the caller asked for a
+        volume, not that the source has one, and a single-slice
+        acquisition converted with ``handle_3d=True`` still takes the 2D
+        branch of ``_create_tic_image``. Only the combination has a z axis
+        to space out. (The flag used to be forced on by
+        ``SpatialData3DConverter.__init__``; that class went when the
+        converters were folded into one, design decision D11, and the
+        caller's own argument is now the only thing that sets it.)
         """
         return bool(self.handle_3d and self._dimensions and self._dimensions[2] > 1)
 

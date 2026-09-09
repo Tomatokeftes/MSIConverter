@@ -813,8 +813,8 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             n_x, n_y, n_z = self._dimensions
             logger.warning(
                 "%d spectra sat outside the declared %dx%dx%d grid and were "
-                "skipped. Previously they were written to a wrapped-round "
-                "row index, silently overwriting an unrelated pixel.",
+                "skipped: their coordinates fall beyond the raster the source "
+                "declares, so there is no pixel to write them to.",
                 n_out_of_bounds,
                 n_x,
                 n_y,

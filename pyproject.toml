@@ -73,7 +73,22 @@ dependencies = [
     "click>=8.1, <9",                 # tested 8.1.8 and 8.4.2
     "defusedxml>=0.7.1",  # Secure XML parsing for the Bruker Rapiflex reader
     "geopandas>=0.9.0",
-    "lxml>=4.6.0",
+    # No `lxml` here, deliberately, and it is the inverse of the `click` case
+    # above rather than an oversight. Nothing under `thyra/` imports it at any
+    # depth, and the one dependency that could -- pyimzML -- imports it inside
+    # `choose_iterparse()` and only when the caller asks for `parse_lib="lxml"`.
+    # Thyra's single ImzMLParser call site passes `parse_lib="ElementTree"` on
+    # purpose (`readers/imzml/imzml_reader.py`, pinned by a test): the
+    # unmaintained upstream prunes each <spectrum> out of the tree under lxml
+    # and misreports the resulting `ERR_NO_MEMORY` as an `xmlSAX2Characters`
+    # failure. pyimzML does not declare lxml either -- its Requires-Dist is
+    # `numpy, wheezy.template` on both 1.4.0 (the floor) and 1.5.5 -- so Thyra
+    # was not covering for a missing upstream declaration; the import is
+    # guarded by ImportError on 1.4.0 and gone from the default path on 1.5.5.
+    # Every other requirer in the resolved set asks for it behind an extra
+    # Thyra does not request (pandas[xml], tifffile[xml], fonttools[lxml], ...),
+    # so this line was the only unconditional one and removing it drops lxml
+    # from the closure.
     "numpy>=2.0.0, <3",
     # pandas 3.0 makes `future.infer_string` the default, which gives the table
     # indices and string columns pandas' `str` dtype. anndata >= 0.13 serializes

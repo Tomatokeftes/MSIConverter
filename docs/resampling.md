@@ -565,6 +565,12 @@ convert_msi(
 It has no effect when resampling is on, which is the default: a resampled axis
 has the bin count you asked for.
 
+The value is a count, so it must be a positive integer or `None`. Anything
+else is refused before the file is opened. It used to be accepted and then
+used: a cap of `-1` or `0` turned every file into a refusal for "exceeding"
+a limit it could not satisfy, in a message that named the caller's own value
+back at them as if the data were at fault.
+
 ---
 
 ## Overriding the automatic choice

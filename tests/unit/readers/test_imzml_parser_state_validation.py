@@ -15,6 +15,7 @@ hand-authored corpus exists separately.
 import logging
 import os
 import re
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, List
@@ -546,6 +547,86 @@ class TestPreviewReportsARefusedFile:
         assert preview.n_pixels == 6
 
 
+class TestIbdUuid:
+    """``IMS:1000080`` against the first 16 bytes of the ``.ibd``.
+
+    The pair is the only thing that tells an ``.imzML`` apart from a
+    *different* acquisition's ``.ibd`` renamed to sit beside it: every other
+    check reads the XML's own offsets and lengths against the binary's size,
+    which a wrong-but-similar file satisfies. It warns rather than refuses --
+    see ``ImzMLReader._check_ibd_uuid`` and design decision D17.
+    """
+
+    @staticmethod
+    def _set_declared_uuid(imzml_path: Path, value: str) -> None:
+        """Rewrite the ``IMS:1000080`` value in the file description."""
+        text = imzml_path.read_text(encoding="utf-8")
+        edited, n = re.subn(
+            r'(accession="IMS:1000080"[^>]*?value=")[^"]*(")',
+            rf"\g<1>{value}\g<2>",
+            text,
+        )
+        assert n == 1, f"expected one IMS:1000080 cvParam, rewrote {n}"
+        imzml_path.write_text(edited, encoding="utf-8")
+
+    @staticmethod
+    def _read_warnings(path: Path) -> List[str]:
+        with _capture_module_logs() as records:
+            reader = ImzMLReader(path)
+            reader._ensure_parser_initialized()
+            reader.close()
+        return [r for r in records if "binary-file UUID" in r]
+
+    def test_matching_uuid_is_silent(self, temp_dir):
+        """pyimzml's own writer puts the same UUID in both places."""
+        path = write_imzml(temp_dir)
+        assert self._read_warnings(path) == []
+
+    def test_mismatched_uuid_warns_and_still_reads(self, temp_dir):
+        """The bellini case: two different values, a readable file."""
+        path = write_imzml(temp_dir)
+        self._set_declared_uuid(path, "{FC37F303-A9C0-4CD3-A28E-1D18E523C269}")
+
+        with _capture_module_logs() as records:
+            reader = ImzMLReader(path)
+            reader._ensure_parser_initialized()
+            n = reader.n_spectra
+            reader.close()
+
+        assert n == 6, "the warning must not cost the file its spectra"
+        said = [r for r in records if "binary-file UUID" in r]
+        assert len(said) == 1
+        assert "fc37f303a9c04cd3a28e1d18e523c269" in said[0]
+
+    def test_braces_and_case_are_not_a_mismatch(self, temp_dir):
+        """IONTOF writes the registry braces, SCiLS does not; neither is data.
+
+        The hyphens are positional too. Only the 32 hex digits are compared,
+        so re-spelling the file's own UUID in the other convention must stay
+        silent rather than reporting a disagreement with itself.
+        """
+        path = write_imzml(temp_dir)
+        header = path.with_suffix(".ibd").read_bytes()[:16].hex()
+        plain = uuid.UUID(hex=header)
+        for spelling in (
+            str(plain),
+            str(plain).upper(),
+            "{" + str(plain).upper() + "}",
+            "  {" + str(plain) + "}  ",
+        ):
+            self._set_declared_uuid(path, spelling)
+            assert self._read_warnings(path) == [], f"warned on {spelling!r}"
+
+    def test_a_file_declaring_no_uuid_is_silent(self, temp_dir):
+        """Nothing to compare is not a disagreement."""
+        path = write_imzml(temp_dir)
+        text = path.read_text(encoding="utf-8")
+        edited, n = re.subn(r"\s*<cvParam[^>]*IMS:1000080[^>]*/>", "", text)
+        assert n == 1
+        path.write_text(edited, encoding="utf-8")
+        assert self._read_warnings(path) == []
+
+
 @pytest.mark.skipif(
     not (_REAL_DATA_DIR / "bellini.imzML").exists(),
     reason=f"real MSI corpus not present at {_REAL_DATA_DIR} (test_data/ is gitignored)",
@@ -563,6 +644,21 @@ class TestRealFilesAreStillAccepted:
     here.
     """
 
+    #: What each real file is allowed to say, and nothing else. ``bellini``
+    #: is an IONTOF SurfaceLab export whose ``IMS:1000080`` and ``.ibd``
+    #: header hold two different UUIDs -- measured, not hypothetical: the XML
+    #: says ``{FC37F303-...C269}`` and the binary begins
+    #: ``3ad1bacd...f731``, with the first spectrum at byte 16 so the header
+    #: slot is genuinely populated. Every other check passes and the file
+    #: converts correctly, which is exactly why that check warns instead of
+    #: refusing (issue #261, design decision D17). Listing the warning here
+    #: rather than dropping the assertion keeps the rest of the guarantee:
+    #: any *other* message from these files still fails the test.
+    _ALLOWED_WARNINGS = {
+        "bellini.imzML": ("imzML declares binary-file UUID",),
+        "pea.imzML": (),
+    }
+
     @pytest.mark.parametrize("name", ["bellini.imzML", "pea.imzML"])
     def test_real_file_initialises_with_no_errors_and_no_warnings(self, name):
         path = _REAL_DATA_DIR / name
@@ -575,5 +671,12 @@ class TestRealFilesAreStillAccepted:
             n = reader.n_spectra
             reader.close()
 
+        allowed = self._ALLOWED_WARNINGS[name]
+        unexpected = [r for r in records if not any(r.startswith(a) for a in allowed)]
+
         assert n > 0
-        assert records == [], f"{name} tripped the validator: {records}"
+        assert unexpected == [], f"{name} tripped the validator: {unexpected}"
+        for prefix in allowed:
+            assert any(
+                r.startswith(prefix) for r in records
+            ), f"{name} no longer warns {prefix!r}; the check or the file changed"

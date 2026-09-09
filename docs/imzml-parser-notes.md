@@ -255,6 +255,34 @@ The behaviour is pinned by
 assertions now state the correct conversion — including the refusal — rather
 than characterise the error.
 
+### `IMS:1000080` is never checked against the `.ibd` header
+
+The imzML specification puts the binary file's UUID in the first 16 bytes of
+the `.ibd` and the same value in the XML as `IMS:1000080`. pyimzml reads
+neither against the other -- it never touches the header bytes at all -- and
+Thyra used to read only the XML term, for the metadata store.
+
+That pair is the only thing that can tell an `.imzML` apart from a *different*
+acquisition's `.ibd` renamed to sit beside it. Every other check Thyra makes
+(`ImzMLReader._validate_parser_state`) reads the XML's own offsets and lengths
+against the binary's size, which a wrong-but-similarly-shaped file satisfies.
+
+Thyra now compares them and **warns**, naming both values and both filenames,
+rather than refusing. That is measured, not cautious: of the three real files
+in the corpus, `pea` and the Xenium export match byte for byte, while
+`bellini` -- an IONTOF SurfaceLab 7.5 export -- declares
+`{FC37F303-A9C0-4CD3-A28E-1D18E523C269}` and begins its `.ibd` with
+`3ad1bacd-dcc3-4f7b-aea7-f9b375dbf731`. Its first spectrum starts at byte 16,
+so the header slot is genuinely populated; the writer just filled the two
+places independently. That file converts correctly, so refusing would reject
+data Thyra reads right today. See design decision D17.
+
+Only the 32 hex digits are compared. IONTOF writes the registry braces and
+SCiLS does not, case varies, and the hyphens are positional rather than data,
+so a file re-spelling its own UUID in the other convention must not read as a
+disagreement with itself. Pinned by
+`tests/unit/readers/test_imzml_parser_state_validation.py::TestIbdUuid`.
+
 ### A typed cvParam with no `value` aborts the metadata parse
 
 `pyimzml.ontology.ontology.convert_xml_value` converts each cvParam value to
