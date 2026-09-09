@@ -47,7 +47,30 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      # Build what is on main, not what this run was triggered by. The
+      # concurrency group above serialises runs; it does not order them --
+      # GitHub's workflow-syntax documentation says runs are processed by the
+      # time each started waiting and then adds, verbatim, that "ordering is
+      # not guaranteed". An older run admitted second would build its own
+      # older checkout and force-push it over newer docs, with both runs green
+      # and neither log mentioning the other. Pinning the ref makes whichever
+      # run executes last publish current main, so the final gh-pages state is
+      # right regardless of admission order: correct by construction rather
+      # than by timing (issue #223, design decision D17).
+      #
+      # The cost, accepted deliberately: re-running an old docs run now
+      # publishes today's docs instead of reproducing that run's build, and
+      # gh-deploy's "Deployed <sha>" message no longer matches the run's
+      # trigger. For a workflow whose only job is "deploy the site", that is
+      # the behaviour wanted.
+      #
+      # Conditional rather than a hardcoded `main` so a deliberate
+      # workflow_dispatch against another ref still deploys that ref instead
+      # of silently deploying main. release.yml's deploy-docs job dispatches
+      # with `--ref main`, so the release path is identical either way.
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'push' && 'main' || github.ref }}
 
       - uses: actions/setup-python@v6
         with:
