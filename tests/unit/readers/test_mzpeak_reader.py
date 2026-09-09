@@ -189,6 +189,30 @@ class TestNullPairPadding:
             assert not np.isnan(mzs).any()
             assert not np.isnan(intensities).any()
 
+    def test_the_dropped_count_is_per_iteration(self, tmp_path):
+        """Every conversion iterates twice, and the count must not accumulate.
+
+        ``_dropped_points`` was set once in ``__init__`` and only ever
+        incremented, so the second pass logged the sum of both passes --
+        12 dropped points, then 24, then 36 on a third iteration of the
+        same file (issue #238). Cleared as ``iter_spectra`` starts, which
+        also covers a caller that iterates again without ``reset()``.
+        """
+        spectra = grid_spectra(3, 2, n_points=6)
+        archive = build_mzpeak(tmp_path / "counted.mzpeak", spectra, null_pair_after=3)
+
+        counts = []
+        with MzPeakReader(archive) as reader:
+            for _ in range(3):
+                reader.reset()
+                list(reader.iter_spectra())
+                counts.append(reader._dropped_points)
+            list(reader.iter_spectra())  # no reset() at all
+            counts.append(reader._dropped_points)
+
+        assert counts[0] > 0
+        assert counts == [counts[0]] * 4
+
     def test_padding_is_excluded_from_the_mass_axis(self, tmp_path):
         """The axis holds only channels that can take a value."""
         spectra = grid_spectra(2, 1, n_points=6)

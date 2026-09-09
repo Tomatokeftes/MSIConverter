@@ -758,7 +758,12 @@ class WatersReader(BaseMSIReader):
 
         total = sum(ml.get_number_of_scans_in_function(handle, f) for f in ms_functions)
 
-        with tqdm(total=total, desc="Reading spectra", unit="spectrum") as pbar:
+        with tqdm(
+            total=total,
+            desc="Reading spectra",
+            unit="spectrum",
+            disable=getattr(self, "_quiet_mode", False),
+        ) as pbar:
             for func in ms_functions:
                 n_scans = ml.get_number_of_scans_in_function(handle, func)
                 for scan in range(n_scans):

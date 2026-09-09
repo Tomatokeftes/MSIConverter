@@ -14,6 +14,7 @@
 """
 
 import logging
+import math
 from typing import Any, Dict, Generator, List, Literal, Optional, Tuple, Union
 
 import numpy as np
@@ -24,7 +25,7 @@ from tqdm import tqdm
 from ...errors import ConversionRefused
 from ...resampling import ResamplingMethod
 from .base_spatialdata_converter import SPATIALDATA_AVAILABLE, BaseSpatialDataConverter
-from .csc_assembly import CscAssembly
+from .csc_assembly import CscAssembly, index_dtype
 
 if SPATIALDATA_AVAILABLE:
     import xarray as xr
@@ -73,6 +74,14 @@ class _TableUnit:
         # var is the mass axis, and an empty column is still a bin.
         self.assembly = CscAssembly(n_cols, n_rows=0, keep_empty_columns=True)
         self.occupancy = np.zeros(self.n_grid, dtype=bool)
+        #: Positions the source gave more than one spectrum for. Their
+        #: entries are summed into the one row the position gets, so both
+        #: the row's TIC and pass 2's per-row check have to accumulate
+        #: rather than compare a single spectrum (#241, #247).
+        self.repeats = np.zeros(self.n_grid, dtype=bool)
+        #: Pass 2's running total per repeated position, with the
+        #: coordinate to name if it does not come out as pass 1's.
+        self.observed: Dict[int, Tuple[float, Tuple[int, int, int]]] = {}
         self.tic = np.zeros(tic_shape, dtype=np.float64)
         self.kept_grid: Optional[NDArray[np.int64]] = None
         self.row_of_grid: Optional[NDArray[np.int64]] = None
@@ -83,8 +92,15 @@ class _TableUnit:
     ) -> None:
         """Pass 1: one spectrum at grid position ``grid``."""
         self.assembly.count(grid, mz_indices)
+        if self.occupancy[grid]:
+            # A pixel the source measured twice. One position is one row,
+            # so the two spectra are summed into it -- what the COO route
+            # got from ``coo.tocsc()`` before this engine replaced it --
+            # and the assembly is told the repeats are coming.
+            self.repeats[grid] = True
+            self.assembly.merge_duplicates = True
         self.occupancy[grid] = True
-        self.tic.reshape(-1)[grid] = values.sum()
+        self.tic.reshape(-1)[grid] += values.sum()
 
     def finish_counting(self) -> None:
         """Decide which grid positions become rows, and in what order.
@@ -115,6 +131,87 @@ class _TableUnit:
                 n_dropped,
                 self.n_rows,
             )
+        self.observed = {}
+        n_repeats = int(np.count_nonzero(self.repeats))
+        if n_repeats:
+            logger.warning(
+                "%s: %d pixel position(s) carry more than one spectrum. Their "
+                "spectra are summed into the one row the position has, which "
+                "is what the COO route stored before this one replaced it; "
+                "the TIC image and the row agree on the sum.",
+                self.key,
+                n_repeats,
+            )
+
+    def check_against_pass_one(
+        self,
+        grid: int,
+        coords: Tuple[int, int, int],
+        values: NDArray[np.float64],
+    ) -> None:
+        """Pass 2: refuse unless this position's total is the one pass 1 saw.
+
+        A position the source gives one spectrum for is settled here. One
+        it gives several for cannot be: pass 1 recorded the sum, so the
+        running total is accumulated and
+        :meth:`check_repeated_positions` compares it once the pass is
+        over.
+
+        Raises:
+            ConversionRefused: When the two passes disagree.
+        """
+        total = float(np.sum(values))
+        expected = float(self.tic.reshape(-1)[grid])
+        if self.repeats[grid]:
+            running = self.observed.get(grid, (0.0, coords))[0] + total
+            self.observed[grid] = (running, coords)
+            return
+        if not _passes_agree(total, expected):
+            raise ConversionRefused(_disagreement(self.key, coords, expected, total))
+
+    def check_repeated_positions(self) -> None:
+        """The same check for the positions whose spectra had to be summed.
+
+        Raises:
+            ConversionRefused: When the two passes disagree.
+        """
+        flat = self.tic.reshape(-1)
+        for grid, (total, coords) in self.observed.items():
+            expected = float(flat[grid])
+            if not _passes_agree(total, expected):
+                raise ConversionRefused(
+                    _disagreement(self.key, coords, expected, total)
+                )
+
+
+#: How far pass 2's total for a pixel may sit from pass 1's before the
+#: conversion is refused. The two passes run the same deterministic code
+#: over the same spectrum, so the difference is normally exactly zero;
+#: the tolerance is only there so a reader whose arithmetic is merely
+#: re-associated between iterations is not refused for it. The divergence
+#: this exists to catch was a factor of two.
+PASS_AGREEMENT_RTOL = 1e-9
+
+
+def _passes_agree(observed: float, expected: float) -> bool:
+    """Whether pass 2's total for a pixel is pass 1's."""
+    return math.isclose(observed, expected, rel_tol=PASS_AGREEMENT_RTOL, abs_tol=0.0)
+
+
+def _disagreement(
+    key: str, coords: Tuple[int, int, int], expected: float, observed: float
+) -> str:
+    """What to tell someone whose reader did not repeat itself."""
+    x, y, z = coords
+    return (
+        f"{key}: the two passes over the source disagree at pixel "
+        f"(x={x}, y={y}, z={z}). The pre-scan totalled {expected:.6g} for it "
+        f"and the second pass totalled {observed:.6g}. Every conversion reads "
+        "the source twice and the second read has to reproduce the first "
+        "exactly; a reader whose iteration is not repeatable would otherwise "
+        "write a store whose TIC image and average spectrum describe "
+        "different data from its matrix."
+    )
 
 
 class StreamingSpatialDataConverter(BaseSpatialDataConverter):
@@ -214,59 +311,47 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         """Suppress progress output from reader during the passes."""
         setattr(self.reader, "_quiet_mode", True)
 
-    def _estimate_output_size_gb(self) -> float:
-        """Estimate the output dataset size in GB, for the log line.
+    def _matrix_size_gb(self, units: List[_TableUnit]) -> float:
+        """What the counted matrices come to, uncompressed, in GB.
 
-        Dense size, ``n_pixels * n_mz_bins * 4`` bytes (float32).
+        Not an estimate: the pre-scan has counted every entry by the time
+        this is called, and the matrix is those entries -- eight bytes of
+        value and four or eight of row index each. The store itself is
+        smaller, because zarr compresses it, and a source with repeated
+        coordinates ends with fewer entries than were counted because
+        those are summed into one. Measured on
+        ``TIMS-test-data/02_tiny_longramp_1465px``, converted with the
+        defaults: 9,149,840 non-zeros, 0.10 GB here, 27 MB on disk. So
+        the number is an upper bound, and it is on the right side to be
+        one.
 
-        **Diagnostic only.** Nothing routes on this: there is one route. It
-        is kept because the number is genuinely useful in a support log and
-        because getting it right was not free: the fallback below is wrong
-        in both directions (see the comment in the body), and deleting the
-        function would delete that finding along with the tests that pin
-        it.
+        It replaces an "Estimated output size" line that multiplied the
+        *bounding box* by the bin count as though the matrix were dense
+        and logged 40.3 GB for that dataset -- 2.5 GB for a 7.6 MB store,
+        240.7 GB for a 329 MB one (issue #254). Since the route stopped
+        being chosen by size (design decision D11) that number selected
+        nothing, so the only thing left for it to do was talk somebody out
+        of a conversion they had room for.
+
+        Args:
+            units: The tables, after their pre-scan.
 
         Returns:
-            Estimated size in gigabytes
+            Size in gigabytes.
         """
-        metadata = self.reader.get_essential_metadata()
-
-        # Get dimensions
-        n_x, n_y, n_z = metadata.dimensions
-        n_pixels = n_x * n_y * n_z
-
-        # Prefer the axis that was actually built. ``convert()`` runs
-        # ``_initialize_conversion()`` -- and so ``_setup_mass_axis()`` --
-        # before this is reached, so the real bin count is known and there
-        # is nothing to estimate. That matters most on the raw-axis path,
-        # where the fallback below assumes a 10 mDa spacing that the data
-        # need not have: a continuous file carrying 4,000 points over
-        # 250-1200 m/z was scored as though it had 95,000, and a processed
-        # file whose spectra share no m/z values was scored far too low.
-        # While this drove the routing (issue #87) that mis-sent the
-        # largest datasets to the method that holds the most in memory; it
-        # now only makes the logged number honest.
-        if self._common_mass_axis is not None:
-            n_mz_bins = len(self._common_mass_axis)
-        elif self._resampling_config:
-            # Same resolution path the axis builder will use, so the
-            # reported bin count is the real one.
-            _, _, _, n_mz_bins = self._resolve_resampling_plan()
-        else:
-            min_mass, max_mass = metadata.mass_range
-            n_mz_bins = int((max_mass - min_mass) / 0.01)
-
-        # Dense matrix size in bytes (float32 = 4 bytes)
-        dense_bytes = n_pixels * n_mz_bins * 4
-
-        # Convert to GB
-        size_gb = dense_bytes / (1024**3)
-
+        entry_bytes = 0
+        n_entries = 0
+        for unit in units:
+            nnz = int(unit.assembly.n_nonzeros)
+            n_entries += nnz
+            entry_bytes += nnz * (8 + np.dtype(index_dtype(nnz, unit.n_rows)).itemsize)
+        size_gb = entry_bytes / (1024**3)
         logger.info(
-            f"Estimated output size: {size_gb:.1f} GB "
-            f"({n_pixels:,} pixels x {n_mz_bins:,} m/z bins)"
+            "Matrix: %s non-zero entries over %s rows, %.2f GB uncompressed",
+            f"{n_entries:,}",
+            f"{sum(unit.n_rows for unit in units):,}",
+            size_gb,
         )
-
         return size_gb
 
     # ------------------------------------------------------------------
@@ -373,10 +458,6 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         if self._common_mass_axis is None:
             raise ValueError("Common mass axis is not initialized")
 
-        # Diagnostic only -- nothing below depends on it. After
-        # _initialize_conversion() so it reports the built axis.
-        self._estimate_output_size_gb()
-
         units = self._plan_tables()
         n_cols = len(self._common_mass_axis)
         logger.info(
@@ -482,8 +563,22 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             unit.assembly.allocate(
                 self._register_table_scratch("summed", unit.assembly)
             )
+
+        self._matrix_size_gb(units)
+
+        # The rows that are written, not the spectra that were read: a
+        # position measured twice is one row, and an empty or out-of-grid
+        # spectrum is none. The root attrs report this as
+        # ``non_empty_pixels``, where it used to be the reader's spectrum
+        # count and so disagreed with the table it described (#241).
+        self._non_empty_pixel_count = sum(unit.n_rows for unit in units)
+
         if passes is not None:
             passes.finish_counting(units[0].n_rows, self._register_table_scratch)
+            if units[0].repeats.any():
+                # A position measured twice is scattered twice into every
+                # table fed from these passes, not just the summed one.
+                passes.merge_duplicate_rows()
 
         logger.info("Step 3/3: Processing spectra and scattering to CSC...")
         self._scatter_pass(data_structures)
@@ -579,9 +674,11 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 n_z,
             )
 
-        # The other write paths used to set this in their finalize step;
-        # the root attrs builder reads it for msi_dataset_info.
-        self._non_empty_pixel_count = pixel_count
+        # ``pixel_count`` is every spectrum the reader yielded, which is what
+        # the average is over. It is not the table's row count -- an empty
+        # spectrum gets no row, an out-of-grid one gets no row, and a
+        # position measured twice gets one -- so ``non_empty_pixels`` is
+        # set from the rows in _process_spectra rather than from here (#241).
         data_structures["pixel_count"] = pixel_count
         data_structures["avg_spectrum"] = total_intensity / max(pixel_count, 1)
         if region_total is not None:
@@ -598,6 +695,17 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         checks that agreement before it hands the matrix out. With
         ``passes`` it also scatters the sibling tables from the same
         frame read.
+
+        The assembly's check is on *counts*, and counts are not enough. A
+        reader whose second iteration hands back the same number of
+        entries with different values wrote a store in which ``X`` came
+        from pass 2 while the TIC image and ``average_spectrum`` came from
+        pass 1 -- measured, on a probe reader that scaled its values:
+        ``TIC sum=147066`` against ``X.sum=294132``, and nothing said so
+        (issue #247). Pass 1 already recorded each position's total in
+        ``unit.tic``, so pass 2 compares the row it is about to scatter
+        with it and refuses on the first disagreement. That also catches
+        two pixels exchanging spectra, which no count can.
         """
         units: List[_TableUnit] = data_structures["units"]
         passes = data_structures["passes"]
@@ -629,6 +737,7 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 # the grid, both skipped there) comes back as -1.
                 row = -1
                 if mz_indices.size > 0 and unit is not None:
+                    unit.check_against_pass_one(grid, coords, values)
                     row = int(unit.row_of_grid[grid])
 
                 if frame is not None:
@@ -637,6 +746,9 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                     unit.assembly.scatter(row, mz_indices, values)
 
                 pbar.update(1)
+
+        for unit in units:
+            unit.check_repeated_positions()
 
         logger.info("  Scatter complete")
 

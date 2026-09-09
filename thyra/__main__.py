@@ -1116,31 +1116,39 @@ def main(
         waters_spectrum,
     )
 
-    # Perform conversion
-    success = convert_msi(
-        str(input),
-        str(output),
-        format_type=format,
-        dataset_id=dataset_id,
-        pixel_size_um=pixel_size,
-        handle_3d=handle_3d,
-        z_spacing_um=z_spacing,
-        resampling_config=resampling_config,
-        reader_options=reader_options,
-        include_optical=include_optical,
-        streaming=_parse_streaming_option(streaming),
-        region=region,
-        write_mobility_table=mobility_table,
-        mobility_heatmap=mobility_heatmap,
-        mobility_grid=mobility_grid,
-        mobility_bins=mobility_bins,
-        mobility_min=mobility_min,
-        mobility_max=mobility_max,
-        # Passed only when given: the converter's own default applies
-        # otherwise, and an explicit request is what the lossless-spectrum
-        # check in convert.py reacts to.
-        **({} if msms_table is None else {"msms_table": msms_table}),
-    )
+    # Perform conversion. ``convert_msi`` catches its own interrupt, but
+    # this catches one that lands anywhere else between here and the
+    # quarantine below -- so however the run is stopped, the exit status
+    # and the partial store are the ones the "Exit status" section of
+    # docs/cli.md describes (issue #245).
+    try:
+        success = convert_msi(
+            str(input),
+            str(output),
+            format_type=format,
+            dataset_id=dataset_id,
+            pixel_size_um=pixel_size,
+            handle_3d=handle_3d,
+            z_spacing_um=z_spacing,
+            resampling_config=resampling_config,
+            reader_options=reader_options,
+            include_optical=include_optical,
+            streaming=_parse_streaming_option(streaming),
+            region=region,
+            write_mobility_table=mobility_table,
+            mobility_heatmap=mobility_heatmap,
+            mobility_grid=mobility_grid,
+            mobility_bins=mobility_bins,
+            mobility_min=mobility_min,
+            mobility_max=mobility_max,
+            # Passed only when given: the converter's own default applies
+            # otherwise, and an explicit request is what the lossless-spectrum
+            # check in convert.py reacts to.
+            **({} if msms_table is None else {"msms_table": msms_table}),
+        )
+    except KeyboardInterrupt:
+        logger.error("Interrupted.")
+        success = False
 
     ok = _handle_post_conversion(success, output)
 

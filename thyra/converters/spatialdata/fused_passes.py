@@ -176,6 +176,18 @@ class SiblingPasses:
                 self.msms.scratch = self.msms_scratch
                 self.msms.allocate(self.msms_scratch)
 
+    def merge_duplicate_rows(self) -> None:
+        """Tell every sink a row may be scattered into more than once.
+
+        The summed table's converter knows which grid positions the
+        source gave two spectra for; those frames reach these sinks
+        twice under the same row as well, so their matrices need the
+        same summation the summed table's does (issue #241).
+        """
+        for sink in (self.discovery, self.msms):
+            if sink is not None:
+                sink.assembly.merge_duplicates = True
+
     # -- pass 2 ----------------------------------------------------------
 
     def scatter(self, frame: FrameScans, row: Optional[int]) -> None:

@@ -190,10 +190,20 @@ print(f"Non-zero: {X.nnz:,} ({X.nnz / (X.shape[0] * X.shape[1]) * 100:.2f}%)")
     write time.
 
     The stored matrix is canonical: within every column the row indices are in
-    ascending order, whatever order the source delivered its pixels in (a
-    multi-area Bruker acquisition comes back area by area, for instance). A
-    consumer can binary-search a column's indices directly, and scipy reports
-    `has_sorted_indices` as true without a `sort_indices()` pass.
+    ascending order and each appears once, whatever order the source delivered
+    its pixels in (a multi-area Bruker acquisition comes back area by area,
+    for instance). A consumer can binary-search a column's indices directly,
+    and scipy reports `has_sorted_indices` as true without a `sort_indices()`
+    pass.
+
+    One pixel is one row. A source that measures the same coordinate twice --
+    a processed imzML with a repeated coordinate -- has both spectra **summed**
+    into that row, which is what the pixel's TIC image and its
+    `non_empty_pixels` count then describe as well. The conversion says so in
+    the log, naming how many positions it applied to. Reading the store is not
+    how you would find out otherwise: scipy and dask both merge repeated
+    entries as they read, so `read_zarr` would show the sum whether or not the
+    stored arrays held one entry or two.
 
 !!! note "Every stored intensity is a real, non-negative number"
     Non-finite and negative intensities are dropped from a spectrum before it

@@ -149,7 +149,7 @@ def _window_mobility(reader: BaseMSIReader) -> Callable[[Any], float]:
         if axis is not None:
             values = axis.values
     except Exception as e:  # pragma: no cover - reader-defined
-        logger.debug("No mobility axis for the precursor axis: %s", e)
+        logger.debug("No mobility axis for the precursor axis: %s", str(e))
 
     def mobility_of(window: Any) -> float:
         if values is None or not window.is_mobility_resolved:

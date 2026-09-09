@@ -35,8 +35,12 @@ planned for, which is worth reporting as a bug.
 
 A failed conversion renames any partially written store to
 `<output>.zarr.failed`, so the output path stays free for a retry and an
-incomplete store is never left where a finished one is expected. This makes
-`thyra` safe to chain in a shell script or CI job:
+incomplete store is never left where a finished one is expected. An
+interrupted conversion is a failed one: `Ctrl-C` exits `1` and takes the
+same path, so the partial store is moved aside and the scratch directories
+the conversion built (`.thyra_summed_*` and its siblings, next to the
+output) are removed rather than left behind. This makes `thyra` safe to
+chain in a shell script or CI job:
 
 ```bash
 thyra input.imzML output.zarr && python analyse.py output.zarr
@@ -236,6 +240,18 @@ default), so there is no separate flag for that quantity.
       the two axis laws match. See
       [Resampling](resampling.md#which-detector-wins) for the full decision
       table.
+
+!!! warning "A very fine axis is refused before it is built"
+    Everything a conversion holds per m/z bin -- the axis, the `var` frame
+    with its index, the running intensity totals, the pre-scan's count array
+    and anndata's copies during the write -- comes to about 200 bytes,
+    measured. So the bin count is checked against the machine's free memory
+    before the axis is materialised: past half of it the conversion is
+    refused with the projection and the free memory printed, and past a
+    quarter it is attempted with a `WARNING`. On an 8 GB machine that is
+    around 21 million bins. `--resample-bins` and a small
+    `--resample-width-at-mz` are the two ways to ask for more than that; a
+    wide-range source at a fine width reaches it without either.
 
 !!! info "Choosing a mass axis type"
     The axis type determines how bin widths scale with m/z:

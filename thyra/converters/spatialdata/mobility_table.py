@@ -56,6 +56,7 @@ from ...errors import ConversionRefused
 from ...resampling.mobility_grid import MobilityGrid
 from .csc_assembly import (
     CscAssembly,
+    available_memory_gb,
     count_refusal,
     release_when_collected,
     remove_scratch,
@@ -428,25 +429,10 @@ VAR_BYTES_PER_FEATURE = 330
 #: Fractions of the machine's free memory the projected ``var`` frame may
 #: take before the conversion warns, and before it refuses. Fractions and
 #: not sizes: a table that is routine on a workstation is fatal on a
-#: laptop, and the same number cannot be right for both.
+#: laptop, and the same number cannot be right for both. The mass axis's
+#: own guard (``csc_assembly.mass_axis_refusal``) uses the same pair.
 GRID_VAR_WARN_FRACTION = 0.25
 GRID_VAR_REFUSE_FRACTION = 0.5
-
-#: What to assume is free when the machine will not say. Generous on
-#: purpose: a guess must never be the thing that refuses a conversion
-#: that would have fitted.
-ASSUMED_FREE_GB = 8.0
-
-
-def available_memory_gb() -> float:
-    """The machine's free memory in GB, or :data:`ASSUMED_FREE_GB`."""
-    try:
-        import psutil
-
-        return float(psutil.virtual_memory().available) / 1024**3
-    except Exception as e:  # pragma: no cover - platform-dependent
-        logger.debug("Could not read available memory: %s", e)
-        return ASSUMED_FREE_GB
 
 
 def projected_var_gb(n_features: int) -> float:

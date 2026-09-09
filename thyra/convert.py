@@ -571,6 +571,15 @@ def convert_msi(
         logger.debug("Refusal raised at:\n%s", traceback.format_exc())
         return False
 
+    except KeyboardInterrupt:
+        # The converter catches its own interrupt (BaseMSIConverter.convert);
+        # this covers the steps before it -- opening the reader, detecting
+        # the pixel size -- so wherever Ctrl-C lands the caller gets False
+        # and the CLI's post-conversion step runs. Without it click printed
+        # ``Aborted!`` and no partial store was ever moved aside (#245).
+        logger.error("Conversion interrupted before it started reading.")
+        return False
+
     except Exception as e:
         logger.error(f"Error during conversion: {e}")
         logger.error(f"Detailed traceback:\n{traceback.format_exc()}")

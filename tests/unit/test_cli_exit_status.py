@@ -102,6 +102,35 @@ class TestPartialOutputQuarantine:
         )
         assert (temp_dir / "out.zarr.failed").is_dir()
 
+    def test_an_interrupt_is_quarantined_like_any_other_failure(
+        self, create_minimal_imzml, temp_dir, monkeypatch, runner
+    ):
+        """Ctrl-C is a failed conversion, not a separate kind of exit.
+
+        ``KeyboardInterrupt`` used to propagate past every handler: click
+        printed ``Aborted!``, the partial store stayed where a finished one
+        belongs, the retry was refused with "Output path already exists",
+        and the CSC scratch memmaps -- 330 MB on a small TIMS set with
+        ``--mobility-grid``, 18 GB on a whole slide -- were left behind
+        (issue #245). Verified with a real CTRL_BREAK as well; this pins
+        the exit path it has to reach.
+        """
+        imzml_path, _, _, _ = create_minimal_imzml
+        output_path = temp_dir / "out.zarr"
+
+        def interrupted(*_args, **_kwargs):
+            output_path.mkdir(parents=True)
+            (output_path / "zarr.json").write_text("{}")
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr("thyra.__main__.convert_msi", interrupted)
+
+        result = _invoke(runner, imzml_path, output_path)
+
+        assert result.exit_code == 1, result.output
+        assert not output_path.exists()
+        assert (temp_dir / "out.zarr.failed").is_dir()
+
     def test_quarantine_does_not_overwrite_an_earlier_failure(
         self, create_minimal_imzml, temp_dir, monkeypatch, runner
     ):
