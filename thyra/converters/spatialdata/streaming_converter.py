@@ -24,7 +24,11 @@ from tqdm import tqdm
 
 from ...errors import ConversionRefused
 from ...resampling import ResamplingMethod
-from .base_spatialdata_converter import SPATIALDATA_AVAILABLE, BaseSpatialDataConverter
+from .base_spatialdata_converter import (
+    SPATIALDATA_AVAILABLE,
+    BaseSpatialDataConverter,
+    _kept_mz_range,
+)
 from .csc_assembly import CscAssembly, index_dtype
 
 if SPATIALDATA_AVAILABLE:
@@ -679,10 +683,10 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
             )
         usable = peaks_in - self._unusable_intensities
         if self._out_of_range_peaks >= usable and self._common_mass_axis is not None:
+            lo_mz, hi_mz = _kept_mz_range(self._common_mass_axis, self._axis_range)
             return (
-                "every peak fell outside the target mass axis "
-                f"[{float(self._common_mass_axis[0]):.4f}, "
-                f"{float(self._common_mass_axis[-1]):.4f}] m/z -- widen the "
+                "every peak fell outside the target mass range "
+                f"[{lo_mz:.4f}, {hi_mz:.4f}] m/z -- widen the "
                 "resampling range (--resample-min-mz / --resample-max-mz) to "
                 "keep them"
             )

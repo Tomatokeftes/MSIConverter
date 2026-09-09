@@ -83,6 +83,17 @@ The open interchange format, read through
 An `.imzML` without its `.ibd` beside it is rejected up front, because the XML
 holds only offsets and the binary holds the data.
 
+**Pixel numbering.** The specification numbers x and y from 1, and Thyra
+subtracts that to reach the 0-based indices the store uses. Exports numbered
+from **0** exist, and on those the subtraction used to produce `x = -1` for the
+first column, which the grid guard then dropped -- a 3x3 acquisition stored as
+4 pixels, with a warning naming a 2x2 grid the file never declared. Since
+v3.24.0 the base is measured: a file whose smallest coordinate is 0 is rebased
+on 0, and a file starting at 1 -- or at 5, because it is a crop of a larger
+slide -- keeps the base of 1 and does not move. z is separate and rebases on
+the smallest plane present, because z has no origin to preserve. Whatever was
+subtracted is recorded in `coordinate_systems.global.coordinate_offsets_px`.
+
 **Ion mobility.** imzML defines two binary arrays, but TIMSCONVERT and
 TIMSImaging add a third for mobility, declared through a param group bound to
 `MS:1003006` (mean inverse reduced ion mobility array, unit `MS:1002814`).
@@ -400,6 +411,15 @@ reconstructed bit-exactly, and the exported peak images to 99.7%. Mosaic,
 MS/MS and depth-profiling acquisitions are implemented but have only been
 tested against synthetic files -- if you have real data in one of those modes,
 please [open an issue](https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/issues).
+
+**Previewing costs nothing.** Recording events rather than spectra means the
+header cannot say which pixels carry one; counting them means decoding the
+whole stream, which `preview_msi` used to do despite promising otherwise --
+linear in file size, so a multi-gigabyte acquisition previewed as slowly as it
+converted. Since v3.24.0 a preview answers from the header and the block chain
+alone, and reports `n_pixels` as `None`: unknown, rather than quietly filled in
+with the raster size that `grid_dims` already carries. A conversion is
+unaffected and still counts every pixel exactly.
 
 See [PHI ToF-SIMS Notes](phi-tofsims-notes.md) for the file layout, the
 calibration behaviour, and why the time axis is binned the way it is.

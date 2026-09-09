@@ -222,6 +222,21 @@ sitting at 44% of the base peak. Use `nearest_neighbor`, or if the method is
 forced, set `ResamplingConfig.gap_tolerance_da` (see
 [Resampling](resampling.md) and `thyra.resampling.gaps`).
 
+Forcing it no longer happens silently: since v3.24.0 an explicit
+`--resample-method` that contradicts the detector is warned about, and the
+warning names `--resample-gap-tolerance`. The detector alone was never enough,
+because a detector only steers `auto`.
+
+**The first and last channel.** `mass_range` here is literally
+`(axis.mz[0], axis.mz[-1])` -- the first and last detector channel, not an
+acquisition setting. A physics axis stores bin centres, which stop half a bin
+short of the range they were built across, so testing membership against the
+axis points discarded both channels in every pixel: the mock fixture stored 12
+counts against the source's 14, on all six resampled variants, where
+`--no-resample` stored all 14. Since v3.24.0 the test is the declared range, so
+a peak on either bound lands in the edge bin. See
+[What "in range" means](resampling.md#what-in-range-means).
+
 ### Choosing a bin width
 
 The instrument's measured resolving power on the reference file is **R ~ 4,000**
@@ -245,6 +260,30 @@ C₂H₂⁻ -- 12.6 mDa apart, or 1.94 FWHM, genuinely resolved by this instrume
     It is roughly 19x the peak width at m/z 26, so CN⁻ and C₂H₂⁻ land in the
     same bin along with everything else between them. Constant-width axes suit
     profile MALDI-TOF; they do not suit ToF-SIMS.
+
+## Previewing without decoding events
+
+`preview_msi` promises that no spectra are decoded, and passes
+`metadata_only=True` to the reader to keep that promise. `PhiReader` used to
+swallow the kwarg, and the extractor called `get_peak_counts_per_pixel()`,
+which walks every 8-byte event in the file: 0.16 s for a 16 MB acquisition with
+2.02 M events, 0.14 s for a 14 MB one -- linear, so previewing a multi-gigabyte
+SmartSoft file cost what converting it costs.
+
+`PhiReader(path, metadata_only=True)` now answers from the acquisition header
+and the block chain alone. Everything header-derived is still exact --
+dimensions, coordinate bounds, m/z range, pixel size, and both detector
+verdicts. What it cannot answer is which pixels carry an event, because that is
+a property of the stream rather than the header, so `n_spectra` comes back as 0
+with `n_spectra_counted=False` and `preview_msi` reports `n_pixels` as `None`.
+
+It is reported as unknown rather than as `n_x * n_y` on purpose. Every other
+reader's `n_spectra` counts spectra *present*, cheaply -- imzML the length of
+its coordinate list, Bruker a SQL count -- and filling this one in with the
+raster size would make the same field mean two different things. The raster is
+already reported, as `grid_dims`.
+
+A reader built for conversion is unaffected and still counts every pixel.
 
 ## Pixel size
 

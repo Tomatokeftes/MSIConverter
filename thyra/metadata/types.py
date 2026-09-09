@@ -17,7 +17,17 @@ class EssentialMetadata:
         pixel_size: In-plane pixel dimensions as ``(x_um, y_um)`` in
             micrometres, or ``None`` when not detected.  This is the
             raster pitch and says nothing about z; see ``z_spacing_um``.
-        n_spectra: Total number of spectra in the dataset.
+        n_spectra: Total number of spectra in the dataset -- the ones
+            actually present, not the positions the raster covers.
+            Meaningless unless ``n_spectra_counted`` is True.
+        n_spectra_counted: Whether ``n_spectra`` was counted at all. False
+            only on the metadata-only path of a format that cannot count
+            spectra without decoding them: PHI stores a stream of ion
+            events rather than a list of spectra, so which pixels carry one
+            is a property of the data, not of the header (issue #240). When
+            False, ``n_spectra`` and ``total_peaks`` are 0 meaning "not
+            counted", which is not the same as "none present" -- callers
+            that display a count must say so rather than print the zero.
         total_peaks: Total number of peaks across all spectra (used for
             sparse matrix pre-allocation).
         estimated_memory_gb: Estimated dense memory footprint in GB.
@@ -54,6 +64,7 @@ class EssentialMetadata:
     spectrum_type: Optional[str] = None
     peak_counts_per_pixel: Optional[NDArray[np.int32]] = None
     z_spacing_um: Optional[float] = None
+    n_spectra_counted: bool = True
 
     @property
     def has_pixel_size(self) -> bool:

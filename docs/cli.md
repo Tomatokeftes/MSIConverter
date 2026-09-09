@@ -203,12 +203,12 @@ the table after this one says when each option is actually needed.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--resample-method METHOD` | `auto` | `auto`, `nearest_neighbor`, or `tic_preserving` |
+| `--resample-method METHOD` | `auto` | `auto`, `nearest_neighbor`, or `tic_preserving`. A value that contradicts the detector's own choice is applied, and warned about |
 | `--mass-axis-type TYPE` | `auto` | `auto`, `constant`, `linear_tof`, `reflector_tof`, `tof`, `orbitrap`, `fticr` |
 | `--tof-law A B` | auto | Coefficients of the `tof` width law `sqrt(A m + B m^2)` mDa (`A` in mDa<sup>2</sup>/Da, `B` dimensionless). Only for an instrument Thyra has no pair for; an MRT centroid run or a timsTOF supplies its own |
 | `--resample-bins INTEGER` | auto | Number of bins (mutually exclusive with `--resample-width-at-mz`) |
-| `--resample-min-mz FLOAT` | auto | Minimum m/z value |
-| `--resample-max-mz FLOAT` | auto | Maximum m/z value |
+| `--resample-min-mz FLOAT` | auto | Minimum m/z value. Inclusive: a peak sitting exactly on it lands in the first bin |
+| `--resample-max-mz FLOAT` | auto | Maximum m/z value. Inclusive, as above; peaks outside the range are dropped, never folded into the edge bins |
 | `--resample-width-at-mz FLOAT` | auto | Mass width in Da at reference m/z for physics-based binning |
 | `--resample-reference-mz FLOAT` | `1000.0` | Reference m/z for width specification |
 | `--resample-gap-tolerance FLOAT` | none | `tic_preserving` only: discard target bins farther than this many Da from any measured m/z, instead of interpolating across the gap |
@@ -228,7 +228,7 @@ cases the defaults cannot know about.
 | A narrower mass window | `--resample-min-mz` / `--resample-max-mz` | |
 | An axis law for an instrument Thyra could not identify | `--mass-axis-type` | Note that a manual axis type also resets the width to the axis type's own default (5 mDa at m/z 1000; 17 mDa at 300 for `linear_tof`), since a width tuned for one law is not a default for another |
 | The measured `tof` law on a timsTOF, or on a new TOF you have fitted | `--mass-axis-type tof`, plus `--tof-law A B` only when Thyra has no pair for the instrument | |
-| Force interpolation on data Thyra would bin | `--resample-method tic_preserving`, and `--resample-gap-tolerance` if the m/z arrays are sparse | |
+| Force interpolation on data Thyra would bin | `--resample-method tic_preserving`, and `--resample-gap-tolerance` if the m/z arrays are sparse | The conversion warns when the method contradicts the detector, and names the tolerance flag. Take it seriously: on a sparse source, interpolation without a tolerance filled the axis and stored 1,400x the non-zeros |
 | The raw m/z values, no common axis | `--no-resample` | |
 
 The bin width of a `tof` axis is set the same way as any other: the width at

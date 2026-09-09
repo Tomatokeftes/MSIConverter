@@ -1131,3 +1131,217 @@ the affine. That is fixed at the extractor, which is where it belonged.
 tested synthetically: a reader is asked for a 30 x 50 um pitch and the
 written store is read back. A DESI method with `DesiXStep != DesiYStep`
 would be the first real case, and nothing here has been run against one.
+
+---
+
+## D13. A peak on a declared mass-range bound lands in the edge bin
+
+**Status:** Implemented (2026-09-09), issue #239.
+
+**Decision.** A peak is in range when it is inside the **declared**
+`[min_mz, max_mz]`, not when it is inside `[axis[0], axis[-1]]`. Both
+resampling methods use that range: nearest-neighbour keeps the peak and
+maps it to its nearest bin, TIC-preserving measures the preserved share
+against it. Peaks outside the declared range are still dropped, not
+clamped.
+
+**The defect this replaces.** Every physics generator lays
+`target_bins + 1` bin *edges* across the requested range and returns the
+midpoints, so the first and last axis point sit half a bin inside what was
+asked for. A source declaring 50-1000 m/z built the axis
+`[50.0001, 999.9975]`, and a peak sitting exactly on a declared bound was
+below `axis[0]` and discarded. It costs most where a source declares its
+range *as* its first and last sample: `phi_extractor` takes `mass_range`
+from the first and last detector channel, so both were dropped in every
+pixel — the mock fixture stored 12 counts against 14 in the source, where
+`--no-resample` stored all 14.
+
+**Why not widen the axis.** Widening so that
+`axis[0] <= min_mz <= max_mz <= axis[-1]` was the other candidate the
+issue named. It changes the axis itself, so `var["mz"]` and the bin count
+move on **every** resampled store, and two stores of the same acquisition
+written either side of the change no longer share a feature axis. Edge
+bins change only which bin a boundary peak lands in — nothing else about
+any store moves, and a store with no peak on a bound is byte-identical.
+
+**Why it cannot become the clamp again.** `_nearest_neighbor_resample`
+used to clip every out-of-range index into the axis and accumulate, so
+narrowing the range piled the discarded part of the spectrum onto two
+bins: on real `pea.imzML` resampled to 400-800 m/z, bin 0 held 654,158
+counts where a real peak there is around 80, with the total conserved
+exactly so no TIC check could see it. The new rule reaches at most half a
+bin beyond the first and last centre, because the declared range *is* the
+outer bin edges. A peak further out is still dropped.
+
+**Where nothing changes.** A uniform axis is
+`np.linspace(min_mz, max_mz, n)`, whose end points already are the
+declared bounds, so `constant` stores are untouched. `--no-resample` is
+untouched too: no axis is built, and the range falls back to the axis's
+own span, which is what the rule was before.
+
+**What it is worth, measured.** On `tims_msms_pos_brain1` (713 PASEF
+frames, 302,107 peaks, declared 50-1000 m/z) **zero** peaks lie in the
+half-bin skirt; the one peak the warning reports is genuinely above 1000
+and is still dropped. So on data whose peaks are interior this is a
+correctness fix that recovers nothing. The sources it pays on are the ones
+whose declared range is a detector channel rather than an acquisition
+setting.
+
+---
+
+## D14. A 0-based imzML folds its base down; a cropped one does not move
+
+**Status:** Implemented (2026-09-09), issue #244.
+
+**Decision.** x and y are rebased on `min(observed_minimum, 1)`. A file
+whose smallest coordinate is 0 is 0-based and is rebased on 0; a file
+starting at 1, or at 5, keeps the specification's base of 1. z keeps its
+own rule — the smallest value present. What was subtracted is reported as
+`EssentialMetadata.coordinate_offsets` and written to
+`coordinate_systems.global.coordinate_offsets_px`.
+
+**The defect this replaces.** Three sites subtracted a constant 1 (the
+reader's cached coordinate array, its per-spectrum fallback, and the
+extractor's grid sizing). On a file written 0-based that produced
+`x = -1` and `y = -1` for the first row and column, which the converter's
+`_locate` guard dropped. A 3x3 file at coordinates 0..2 previewed as
+`grid (2, 2)`, warned that "5 spectra sat outside the declared 2x2x1
+grid", stored 4 rows, and exited 0.
+
+**Why not rebase on the observed minimum, as z does.** `_z_base` measures
+its base off the file and its docstring argues the case well — imzML
+guarantees nothing about the base and pyimzml is inconsistent about it.
+The argument does not carry over, because **z has no physical origin and
+x and y do.** An acquisition cropped to a region of the slide legitimately
+starts at `x = 5`; rebasing on the observed minimum would slide it to
+`x = 0`, changing the grid width, every `obs["spatial_x"]`, the TIC image
+extent and the pixel footprint — on a file that converts correctly today.
+Nothing in the file distinguishes that acquisition from a 0-based export
+whose first column happens to be empty. Folding only a 0 down fixes the
+reported defect and moves nothing else, which is the whole point: the only
+files whose stored coordinates change are the ones that were losing a row
+and a column.
+
+**Why not the declared pixel counts.** `IMS:1000042` / `IMS:1000043` were
+the third option. Nothing in Thyra reads them today except
+`mzpeak_extractor`, which carries a comment about a declared extent
+disagreeing with the coordinates it ships with. Trusting a declared extent
+over the coordinates is a larger change with a wider blast radius than the
+defect it would fix.
+
+**What the warning says now.** Nothing, on this path: a 0-based file is no
+longer off-grid, so the out-of-grid warning does not fire for it and keeps
+its meaning for a reader whose coordinates genuinely disagree with the
+grid it declares. The base itself is reported once, at INFO, naming the
+smallest coordinate found.
+
+**Known limit.** No 0-based imzML is in the registry, so this is tested
+against a written fixture (`zero_based_imzml`), alongside a 1-based one
+and a cropped 1-based one — the last being the file the rejected
+alternative would have moved.
+
+---
+
+## D15. An override that contradicts the detector warns; it does not refuse or self-correct
+
+**Status:** Implemented (2026-09-09), issue #246.
+
+**Decision.** When `--resample-method` is given explicitly, the detector
+is asked what it would have chosen and a WARNING is logged if the two
+differ. Nothing stored changes. For a `tic_preserving` override the
+warning names `--resample-gap-tolerance`, or reports the tolerance already
+in force.
+
+**The defect this replaces.** The detector has a verdict for every source
+and only the `auto` path ever asked for it, so an explicit method was
+applied with nothing checked and nothing said.
+`--resample-method tic_preserving` on a Bruker TDF — for which the
+detector chooses nearest-neighbour — interpolates across the gaps of a
+sparse centroid list and fills the axis. Measured on
+`tims_msms_pos_brain1`:
+
+| | nearest_neighbor (default) | tic_preserving |
+|---|---|---|
+| stored non-zeros | 302,106 | **423,386,757** |
+| table | 7.6 MB | 583 MB |
+| peak RSS | 0.5 GB | 5.9 GB |
+| wall | 26 s | 57 s |
+
+Per-pixel TIC is identical either way, so the TIC identity cannot see it.
+What breaks is the siblings, quietly: MS/MS blocks against the summed TIC
+come to 0.998711 per pixel, and the heatmap marginal against the stored
+mean spectrum to rel 68 with nothing recorded at all.
+
+This is the same bug class as #168 on PHI ToF-SIMS, which was fixed *by*
+adding a detector — and that is precisely why a detector is not enough on
+its own. A detector only ever steers `auto`.
+
+**Why not refuse.** A refusal would have to fire on "points per spectrum
+is a small fraction of the axis", which is true of *any* centroid source
+against a fine axis, including the ones where `tic_preserving` with a gap
+tolerance is exactly what the user wants. The threshold would be arbitrary
+and the refusal would break working commands.
+
+**Why not an automatic gap tolerance.** It changes stored values on every
+sparse `tic_preserving` conversion, including ones somebody is relying on,
+and there is no principled value to choose: half the widest source gap is
+per-spectrum and data-dependent, so the stored numbers would depend on a
+heuristic no flag records. The remedy already has a flag, and one flag per
+concept is the rule.
+
+**That the remedy works, measured.** The same conversion with
+`--resample-gap-tolerance 0.01`: **4,801,946** stored non-zeros, an 88x
+reduction against the unguarded override.
+
+**Where the size is already reported.** Batch 3's `_matrix_size_gb` logs
+the counted non-zeros after pass 1 — 423,386,757 entries, before pass 2
+writes anything. The axis guard (`AXIS_BYTES_PER_BIN`) does not fire and
+should not: 599,146 columns is an ordinary axis. What exploded is the
+matrix.
+
+---
+
+## D16. A preview that cannot count spectra says so rather than reporting the raster
+
+**Status:** Implemented (2026-09-09), issue #240.
+
+**Decision.** `MsiPreview.n_pixels` is `Optional[int]`, and is `None` when
+the format cannot count spectra without decoding them.
+`EssentialMetadata` gains `n_spectra_counted`, false only on that path,
+where `n_spectra` and `total_peaks` are 0 meaning "not counted". PHI is
+the only format that takes it, and only under `metadata_only=True`.
+
+**The defect this replaces.** `preview_msi` promises "No spectra are
+decoded" and passes `metadata_only=True` for that purpose.
+`PhiReader.__init__` swallowed the kwarg through `**kwargs`, and
+`PhiMetadataExtractor` called `get_peak_counts_per_pixel()`, which
+aggregates every 8-byte event in the stream. Measured at 0.16 s for a
+16 MB file with 2.02 M events and 0.14 s for a 14 MB one — linear, so a
+multi-gigabyte SmartSoft acquisition previewed as slowly as it converted.
+
+**Why not report the raster size.** From the header alone PHI knows the
+tile geometry (`n_x * n_y`) but not which pixels carry events: it stores a
+stream of ion arrivals, not a list of spectra. Every other reader reports
+spectra *present*, and cheaply — imzML `len(coords)`, Bruker a SQL count —
+so putting `n_x * n_y` in `n_pixels` would make that field mean "positions
+the raster covers" for one format and "spectra present" for every other.
+The raster extent is already reported, in `grid_dims`, so nothing is lost
+by declining to answer twice.
+
+**Why a flag rather than `Optional[int]` on `n_spectra`.** `n_spectra` is
+read on the conversion path in half a dozen places where it is always a
+real count; widening its type would push a `None` check into all of them
+to describe a state none of them can reach. A default-true boolean beside
+it says the same thing and is inert everywhere else.
+
+**Precedent.** Bruker already does this for the other half:
+`skip_total_peaks=self._metadata_only` reports `total_peaks` as 0 without
+scanning the Frames table. `skip_event_aggregate` is the same idea, and
+`n_spectra_counted` retro-fits the missing part — a way to tell
+0-not-counted from 0-none-present.
+
+**What the preview still answers.** Dimensions, coordinate bounds, m/z
+range, pixel size and both detector verdicts, all from the header and the
+block chain. `PhiToFSIMSDetector` matches on the format flag rather than
+on peak density, so zeroing the counts does not cost the preview its
+nearest-neighbour verdict — which would have been a regression of #168.

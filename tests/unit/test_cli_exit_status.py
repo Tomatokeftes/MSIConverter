@@ -176,7 +176,7 @@ class TestAConversionThatStoresNothing:
         assert not output_path.exists()
         messages = [r.getMessage() for r in records]
         assert any(
-            "outside the target mass axis" in m and "--resample-min-mz" in m
+            "outside the target mass range" in m and "--resample-min-mz" in m
             for m in messages
         ), messages
 

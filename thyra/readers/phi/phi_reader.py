@@ -46,6 +46,7 @@ class PhiReader(BaseMSIReader):
         pixel_size_um: Optional[float] = None,
         use_appended_calibration: bool = True,
         intensity_threshold: Optional[float] = None,
+        metadata_only: bool = False,
         **kwargs: object,
     ) -> None:
         """Initialise a PHI reader.
@@ -61,6 +62,15 @@ class PhiReader(BaseMSIReader):
                 values describe the flight times actually stored, so this
                 should only be disabled to reproduce a legacy conversion.
             intensity_threshold: Minimum intensity to retain.
+            metadata_only: Answer metadata from the header and the block
+                chain alone, without aggregating the event stream. Used by
+                ``preview_msi``, which promises no spectra are decoded and
+                was until #240 paying a pass over every 8-byte event to
+                learn how many pixels carry one -- 0.16 s for a 16 MB file
+                and linear in file size, so a multi-gigabyte SmartSoft
+                acquisition previewed as slowly as it converted. A reader
+                built this way cannot be used for a conversion: the counts
+                it reports are the "not counted" sentinel, not zero.
             **kwargs: Passed to :class:`BaseMSIReader`.
         """
         super().__init__(data_path, intensity_threshold=intensity_threshold, **kwargs)
@@ -73,6 +83,7 @@ class PhiReader(BaseMSIReader):
 
         self._pixel_size_override = pixel_size_um
         self._use_appended_calibration = use_appended_calibration
+        self._metadata_only = bool(metadata_only)
 
         self._header: Optional[PhiHeader] = None
         self._index: Optional[BlockIndex] = None
@@ -269,7 +280,7 @@ class PhiReader(BaseMSIReader):
         from ...metadata.extractors.phi_extractor import PhiMetadataExtractor
 
         self._ensure_initialized()
-        return PhiMetadataExtractor(self)
+        return PhiMetadataExtractor(self, skip_event_aggregate=self._metadata_only)
 
     @property
     def has_shared_mass_axis(self) -> bool:

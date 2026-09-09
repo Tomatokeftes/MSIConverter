@@ -44,7 +44,7 @@ The common case, where the axis spans the whole spectrum, is short-circuited
 so it returns the input TIC exactly rather than to within rounding.
 """
 
-from typing import Any, TypeVar
+from typing import Any, Optional, Tuple, TypeVar
 
 import numpy as np
 import numpy.typing as npt
@@ -116,6 +116,7 @@ def rescale_to_preserved_tic(
     axis: npt.NDArray[np.floating[Any]],
     mzs: npt.NDArray[np.floating[Any]],
     intensities: npt.NDArray[np.floating[Any]],
+    axis_range: Optional[Tuple[float, float]] = None,
 ) -> npt.NDArray[_FloatT]:
     """Scale an interpolated spectrum onto the TIC it is meant to carry.
 
@@ -127,11 +128,24 @@ def rescale_to_preserved_tic(
         axis: The target mass axis, ascending.
         mzs: Source m/z values, ascending.
         intensities: Source intensities, parallel to ``mzs``.
+        axis_range: The m/z range the axis was built to cover, when that is
+            wider than the axis points themselves. A physics axis holds bin
+            *centres*, so it stops half a bin short of the range it was
+            asked for at either end, and measuring the preserved share
+            against the end points alone would forfeit a peak sitting
+            exactly on a declared bound (issue #239). ``None`` -- what
+            ``TICPreservingStrategy`` passes, since it is handed a bare
+            axis and has no declared range -- uses the axis's own span, the
+            behaviour this function has always had.
 
     Returns:
         ``resampled``, scaled so that its sum is the preserved TIC.
     """
-    target = preserved_tic(mzs, intensities, float(axis[0]), float(axis[-1]))
+    if axis_range is None:
+        axis_min, axis_max = float(axis[0]), float(axis[-1])
+    else:
+        axis_min, axis_max = float(axis_range[0]), float(axis_range[1])
+    target = preserved_tic(mzs, intensities, axis_min, axis_max)
     if target <= 0.0:
         resampled.fill(0.0)
         return resampled

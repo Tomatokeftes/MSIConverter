@@ -10,7 +10,7 @@ the guard stored 39,508.05 for pixel (3, 3) against a truth of 47,363.47.
 
 **Reachability.** ``imzml_reader`` subtracts 1 from the 1-based positions
 an imzML declares, so a file that is already 0-based yields ``x = -1``
--- the same base-convention hazard ``_z_base()`` documents for z. That
+-- the same base-convention hazard ``_coordinate_bases()`` settles. That
 route is inferred from the reader source rather than measured against a
 vendor file, so the fixture reproduces the coordinate directly.
 
