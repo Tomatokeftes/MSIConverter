@@ -108,6 +108,45 @@ class TestPrepareZarrReadPath:
         assert text.startswith(EXTENDED_PREFIX)
         assert Path(text[len(EXTENDED_PREFIX) :]).is_absolute()
 
+    def test_a_relative_path_that_fits_still_comes_back_absolute(
+        self, on_windows, monkeypatch, tmp_path
+    ):
+        r"""Regression: a store that fits was still read through the
+        caller's relative spelling.
+
+        Windows measures a relative path as ``<cwd> + "\" + <spelling>``
+        *before* collapsing the ``..`` segments, so a spelling that reaches
+        an absolute path of 252 characters can be refused at 260. Returning
+        ``store_path`` unchanged on this branch handed that spelling to Zarr,
+        which reports the over-long keys as absent and drops them from
+        ``array_keys()`` with only a ``UserWarning``. Observed on a real
+        store: ``mobility_edges`` vanished while its siblings, identical in
+        shape, dtype, codecs and shards, survived.
+        """
+        monkeypatch.setattr(windows_paths.os, "walk", lambda path: [])
+        monkeypatch.chdir(tmp_path)
+
+        result = prepare_zarr_read_path(Path("store.zarr"))
+
+        assert result != Path("store.zarr")
+        assert result.is_absolute()
+        assert result.name == "store.zarr"
+
+    def test_a_relative_path_is_resolved_when_long_paths_are_enabled(
+        self, monkeypatch, tmp_path
+    ):
+        """Long-path support only covers fully qualified paths, so it is no
+        reason to hand a relative spelling back."""
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setattr(windows_paths, "_long_paths_enabled", lambda: True)
+        self._store_with_key_length(monkeypatch, WINDOWS_MAX_PATH + 20)
+        monkeypatch.chdir(tmp_path)
+
+        result = prepare_zarr_read_path(Path("store.zarr"))
+
+        assert result.is_absolute()
+        assert not str(result).startswith(EXTENDED_PREFIX)
+
     def test_already_extended_path_is_returned_without_walking(
         self, on_windows, monkeypatch
     ):
@@ -232,6 +271,34 @@ class TestPrepareZarrOutputPath:
         out = self._long_path()
 
         assert prepare_zarr_output_path(out, "msi_dataset") == out
+
+    def test_a_relative_output_path_comes_back_absolute(
+        self, on_windows, monkeypatch, tmp_path
+    ):
+        monkeypatch.chdir(tmp_path)
+
+        result = prepare_zarr_output_path(Path("out.zarr"), "msi_dataset")
+
+        assert result.is_absolute()
+        assert result.name == "out.zarr"
+
+    def test_a_relative_output_path_is_measured_after_resolving(
+        self, on_windows, monkeypatch, tmp_path
+    ):
+        """``len("out.zarr")`` is the spelling, not the path.
+
+        Projecting from the relative spelling understates the deepest key by
+        the whole working directory, so a location that cannot hold the
+        store is waved through and the write fails part-way with a
+        ``FileNotFoundError`` naming a file the caller never chose.
+        """
+        deep = tmp_path / ("d" * 100)
+        deep.mkdir()
+        monkeypatch.chdir(deep)
+
+        result = prepare_zarr_output_path(Path("out.zarr"), "msi_dataset")
+
+        assert str(result).startswith(EXTENDED_PREFIX)
 
     def test_the_registry_is_only_consulted_when_needed(self, monkeypatch):
         """A short path must not pay for a registry read."""

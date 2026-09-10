@@ -27,6 +27,27 @@ otherwise, so ordinary paths are handled exactly as before. It is not
 applied to the *source data* path: readers reach vendor SDKs that may not
 accept extended-length syntax.
 
+A *relative* store path is a second, sharper trap, so both helpers below
+resolve one before doing anything else and hand back the resolved path.
+Windows measures a relative path as the raw ``<cwd> + "\" + <spelling>``
+concatenation, *before* the ``..`` segments are collapsed, so a path whose
+absolute form sits comfortably inside the limit can still be refused::
+
+    cwd                                                    175
+    ..\out.zarr\tables\<id>\uns\<block>\mobility_edges\zarr.json    +85
+                                                           ---
+                                                           260  refused
+    C:\...\out.zarr\tables\<id>\uns\<block>\mobility_edges\zarr.json
+                                                           252  fine
+
+Measured here on a real store: the sibling key one character shorter
+(``current_ratio``, 259) opened, ``mobility_edges`` at 260 did not, and the
+absolute spelling of the refused one is 252. Nothing about the array was
+different -- same shape, dtype, codecs and shards as its siblings. Windows
+long-path support does not rescue a relative path either, since it applies
+only to fully qualified paths, so the resolution is unconditional rather
+than gated on the registry check.
+
 Reading a converted store back is subject to the same limit, and a read
 past it does not fail. Windows reports an over-long key as missing, and
 Zarr treats a missing key as one that was never written: a whole-store
@@ -38,6 +59,7 @@ which Thyra's own read paths go through.
 """
 
 import logging
+import ntpath
 import os
 import sys
 from pathlib import Path
@@ -98,6 +120,21 @@ def _long_paths_enabled() -> bool:
         return False
 
 
+def _absolute(path: Path) -> Path:
+    r"""The absolute spelling of ``path``.
+
+    Absoluteness is judged by :mod:`ntpath` *or* ``Path.is_absolute``, and
+    the two disagree only when the platform is faked. ``ntpath`` catches a
+    Windows-shaped path such as ``C:\...\out.zarr`` while the suite is
+    running on Linux; ``Path.is_absolute`` catches the POSIX path a
+    ``tmp_path`` fixture hands back there, which ``ntpath`` reads as merely
+    drive-relative. On Windows both agree and either alone would do.
+    """
+    if ntpath.isabs(str(path)) or path.is_absolute():
+        return path
+    return path.resolve()
+
+
 def to_extended_length_path(path: Path) -> Path:
     r"""Rewrite an absolute Windows path into extended-length form.
 
@@ -148,9 +185,14 @@ def prepare_zarr_read_path(store_path: Path) -> Path:
     exactly the keys this is looking for and could pass a store whose deepest
     keys do not fit.
 
-    A relative path is resolved first, since the length that matters is the
-    absolute one and the prefix needs an absolute path anyway. A path that
-    already carries the prefix is returned as it is.
+    A relative path is resolved first and the resolved path is what comes
+    back, even when the store is shallow enough to need no prefix at all.
+    Handing the caller's own relative spelling back is not safe: Windows
+    measures it as ``<cwd> + "\" + <spelling>`` before collapsing the ``..``
+    segments, so a store whose keys all fit in absolute terms can still lose
+    an array through that spelling, with only a ``UserWarning`` from Zarr
+    about an object it does not recognise. A path that already carries the
+    prefix is returned as it is.
 
     Args:
         store_path: Path to an existing Zarr store.
@@ -164,7 +206,7 @@ def prepare_zarr_read_path(store_path: Path) -> Path:
     if str(store_path).startswith(_EXTENDED_PREFIX):
         return store_path
 
-    absolute = store_path if store_path.is_absolute() else store_path.resolve()
+    absolute = _absolute(store_path)
     extended = to_extended_length_path(absolute)
     # Keys are measured as the plain path would spell them.
     prefix_length = len(str(extended)) - len(str(absolute))
@@ -176,11 +218,15 @@ def prepare_zarr_read_path(store_path: Path) -> Path:
         if longest > WINDOWS_MAX_PATH:
             break
 
+    # ``absolute``, never ``store_path``: the caller's relative spelling is
+    # measured against the limit uncollapsed, so it can be refused where the
+    # absolute form fits. Long-path support does not cover it either, which
+    # is why that branch resolves too.
     if longest <= WINDOWS_MAX_PATH:
-        return store_path
+        return absolute
 
     if _long_paths_enabled():
-        return store_path
+        return absolute
 
     logger.info(
         "Store contains a key %d characters long, past the %d character "
@@ -197,12 +243,22 @@ def prepare_zarr_output_path(output_path: Path, dataset_id: str) -> Path:
     A no-op off Windows, and a no-op on Windows when long-path support is
     enabled or the projected deepest key fits inside the normal limit.
 
+    A relative path is resolved first and the resolved path is what comes
+    back. ``len(str(output_path))`` on a relative path measures the spelling
+    rather than the path, which understates the projection and would wave
+    through an output location that cannot hold the store.
+
     Args:
-        output_path: The resolved, absolute output store path.
+        output_path: The output store path. Resolved here if it is relative.
         dataset_id: The dataset identifier, which appears in the deepest key.
     """
     if sys.platform != "win32":
         return output_path
+
+    if str(output_path).startswith(_EXTENDED_PREFIX):
+        return output_path
+
+    output_path = _absolute(output_path)
 
     projected = projected_deepest_key_length(output_path, dataset_id)
     if projected <= WINDOWS_MAX_PATH:
