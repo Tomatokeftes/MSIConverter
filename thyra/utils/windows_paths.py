@@ -123,12 +123,14 @@ def _long_paths_enabled() -> bool:
 def _absolute(path: Path) -> Path:
     r"""The absolute spelling of ``path``.
 
-    Absoluteness is judged with :mod:`ntpath` rather than
-    ``Path.is_absolute`` so that a Windows-shaped path is recognised as
-    absolute even when the caller is not on Windows, which is what the test
-    suite does when it fakes ``sys.platform``. On Windows the two agree.
+    Absoluteness is judged by :mod:`ntpath` *or* ``Path.is_absolute``, and
+    the two disagree only when the platform is faked. ``ntpath`` catches a
+    Windows-shaped path such as ``C:\...\out.zarr`` while the suite is
+    running on Linux; ``Path.is_absolute`` catches the POSIX path a
+    ``tmp_path`` fixture hands back there, which ``ntpath`` reads as merely
+    drive-relative. On Windows both agree and either alone would do.
     """
-    if ntpath.isabs(str(path)):
+    if ntpath.isabs(str(path)) or path.is_absolute():
         return path
     return path.resolve()
 

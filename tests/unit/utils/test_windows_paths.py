@@ -9,7 +9,6 @@ on every platform; the end-to-end conversion is Windows-only.
 
 from __future__ import annotations
 
-import ntpath
 import shutil
 import sys
 import tempfile
@@ -130,7 +129,7 @@ class TestPrepareZarrReadPath:
         result = prepare_zarr_read_path(Path("store.zarr"))
 
         assert result != Path("store.zarr")
-        assert ntpath.isabs(str(result))
+        assert result.is_absolute()
         assert result.name == "store.zarr"
 
     def test_a_relative_path_is_resolved_when_long_paths_are_enabled(
@@ -145,7 +144,7 @@ class TestPrepareZarrReadPath:
 
         result = prepare_zarr_read_path(Path("store.zarr"))
 
-        assert ntpath.isabs(str(result))
+        assert result.is_absolute()
         assert not str(result).startswith(EXTENDED_PREFIX)
 
     def test_already_extended_path_is_returned_without_walking(
@@ -280,7 +279,7 @@ class TestPrepareZarrOutputPath:
 
         result = prepare_zarr_output_path(Path("out.zarr"), "msi_dataset")
 
-        assert ntpath.isabs(str(result))
+        assert result.is_absolute()
         assert result.name == "out.zarr"
 
     def test_a_relative_output_path_is_measured_after_resolving(
