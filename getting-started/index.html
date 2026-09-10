@@ -1,0 +1,1978 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A modern Python library for converting Mass Spectrometry Imaging data into SpatialData/Zarr format">
+      
+      
+      
+        <link rel="canonical" href="https://M4i-Imaging-Mass-Spectrometry.github.io/thyra/getting-started/">
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../tutorial/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Getting Started - Thyra</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#getting-started" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Thyra" class="md-header__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Thyra
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Getting Started
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../explore-the-output/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Explore the Output
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../supported-formats/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Supported Formats
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../cli/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../resampling/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Resampling
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../output-format/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Output Format
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../metadata-schema/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metadata Schema
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../coordinate-systems/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Coordinate Systems
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../imzml-parser-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  imzML Parser Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../phi-tofsims-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PHI ToF-SIMS Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../solarix-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  solariX Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../design-decisions/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Design Decisions
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../api/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../code-of-conduct/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Code of Conduct
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Thyra" class="md-nav__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    Thyra
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#your-first-conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Your First Conversion
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Your First Conversion">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#command-line" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command Line
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python API
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multi-dataset-folders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Dataset Folders
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resampling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resampling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optical-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optical Images
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3d-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3D Data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#winerror-5-access-is-denied" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "WinError 5: Access is denied"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#windows-long-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows: long paths
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#an-imzml-is-refused-before-conversion-starts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        An imzML is refused before conversion starts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-module-named-timsdata-or-bruker-sdk-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "No module named 'timsdata'" or Bruker SDK errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pixel-size-not-detected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pixel size not detected
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memory-errors-on-large-datasets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory errors on large datasets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#verbose-logging-for-debugging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verbose logging for debugging
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Next?
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../explore-the-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Explore the Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resampling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resampling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../output-format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coordinate-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinate Systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imzml-parser-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    imzML Parser Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../phi-tofsims-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PHI ToF-SIMS Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../solarix-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solariX Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-of-conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#your-first-conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Your First Conversion
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Your First Conversion">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#command-line" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command Line
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python API
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multi-dataset-folders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Dataset Folders
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resampling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resampling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optical-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optical Images
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3d-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3D Data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#winerror-5-access-is-denied" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "WinError 5: Access is denied"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#windows-long-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows: long paths
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#an-imzml-is-refused-before-conversion-starts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        An imzML is refused before conversion starts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-module-named-timsdata-or-bruker-sdk-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "No module named 'timsdata'" or Bruker SDK errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pixel-size-not-detected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pixel size not detected
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#memory-errors-on-large-datasets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory errors on large datasets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#verbose-logging-for-debugging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verbose logging for debugging
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Next?
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="getting-started">Getting Started<a class="headerlink" href="#getting-started" title="Permanent link">&para;</a></h1>
+<h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h2>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">pip (recommended)</label><label for="__tabbed_1_2">From source</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>thyra
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/M4i-Imaging-Mass-Spectrometry/thyra.git
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">cd</span><span class="w"> </span>thyra
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>uv<span class="w"> </span>sync
+</code></pre></div>
+</div>
+</div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Requirements</p>
+<p>Python 3.12 or 3.13. Windows, macOS, and Linux are all supported.
+Bruker readers require the vendor SDK DLLs (bundled for Windows).</p>
+</div>
+<hr />
+<h2 id="your-first-conversion">Your First Conversion<a class="headerlink" href="#your-first-conversion" title="Permanent link">&para;</a></h2>
+<h3 id="command-line">Command Line<a class="headerlink" href="#command-line" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># ImzML file</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Bruker .d folder</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>thyra<span class="w"> </span>data.d<span class="w"> </span>output.zarr
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># Waters .raw folder</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>thyra<span class="w"> </span>data.raw<span class="w"> </span>output.zarr
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># PHI SmartSoft-TOF ToF-SIMS .raw file</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>thyra<span class="w"> </span>tofsims_run.raw<span class="w"> </span>output.zarr
+</code></pre></div>
+<p>That's it -- Thyra auto-detects the format, reads the pixel size from metadata,
+resamples onto a common mass axis, and writes a SpatialData/Zarr directory.</p>
+<p>See <a href="../supported-formats/">Supported Formats</a> for the full list, how each one
+is detected, and what metadata each can supply.</p>
+<h3 id="python-api">Python API<a class="headerlink" href="#python-api" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">thyra</span><span class="w"> </span><span class="kn">import</span> <span class="n">convert_msi</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">success</span> <span class="o">=</span> <span class="n">convert_msi</span><span class="p">(</span><span class="s2">"data/sample.imzML"</span><span class="p">,</span> <span class="s2">"output/sample.zarr"</span><span class="p">)</span>
+</code></pre></div>
+<p>You can pass explicit parameters when needed:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">success</span> <span class="o">=</span> <span class="n">convert_msi</span><span class="p">(</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="s2">"data/experiment.d"</span><span class="p">,</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="s2">"output/experiment.zarr"</span><span class="p">,</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">dataset_id</span><span class="o">=</span><span class="s2">"hippocampus"</span><span class="p">,</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">pixel_size_um</span><span class="o">=</span><span class="mf">10.0</span><span class="p">,</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="p">)</span>
+</code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title">Checking the result</p>
+<p>After conversion, load the output and inspect:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">spatialdata</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sd</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">sdata</span> <span class="o">=</span> <span class="n">sd</span><span class="o">.</span><span class="n">read_zarr</span><span class="p">(</span><span class="s2">"output/sample.zarr"</span><span class="p">)</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">tables</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="nb">print</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">images</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+</code></pre></div>
+See <a href="../output-format/">Output Format</a> for the full structure.</p>
+</div>
+<hr />
+<h2 id="multi-dataset-folders">Multi-Dataset Folders<a class="headerlink" href="#multi-dataset-folders" title="Permanent link">&para;</a></h2>
+<p>When you point Thyra at a folder containing multiple <code>.d</code> datasets (e.g., a slide
+with several tissue sections), it prompts you to choose:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>$ thyra "slide_folder/" output.zarr
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>Found 3 datasets in slide_folder:
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>  [1] C1501.d
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>  [2] E2501.d
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>  [3] E2506.d
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>Select dataset to convert: 3
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>  -&gt; E2506.d
+</code></pre></div>
+<p>Each <code>.d</code> dataset is matched to its own <code>.mis</code> file for correct optical alignment,
+so the TIC overlay lands on the right tissue section in the shared optical image.</p>
+<div class="admonition note">
+<p class="admonition-title">Converting a specific region</p>
+<p>If a single dataset contains multiple acquisition regions (e.g., tissue +
+matrix), you can select one with <code>--region</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>thyra<span class="w"> </span>data.d<span class="w"> </span>output.zarr<span class="w"> </span>--region<span class="w"> </span><span class="m">0</span>
+</code></pre></div></p>
+</div>
+<hr />
+<h2 id="resampling">Resampling<a class="headerlink" href="#resampling" title="Permanent link">&para;</a></h2>
+<p>Mass axis resampling is <strong>enabled by default</strong>. This maps all spectra onto a
+common m/z axis, which is required for most downstream analysis tools.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Default -- resampling is on, method and binning auto-detected</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Disable resampling (keeps original m/z values per spectrum)</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span>--no-resample
+</code></pre></div>
+<p>For advanced control you can specify the method and instrument type:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Physics-based resampling for Orbitrap data</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span>--resample-method<span class="w"> </span>nearest_neighbor<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span>--mass-axis-type<span class="w"> </span>orbitrap
+</code></pre></div>
+<p><code>nearest_neighbor</code> is the right pairing for a non-uniform axis:
+<code>tic_preserving</code> applies one scaling factor to the whole spectrum, which
+cannot account for bin widths that vary across the mass range. See
+<a href="../resampling/#methods">Resampling</a> for the measured cost of getting that
+combination wrong.</p>
+<div class="admonition info">
+<p class="admonition-title">When to disable resampling</p>
+<p>Disable resampling (<code>--no-resample</code>) if you need the raw, unmodified spectra
+-- for example, when doing your own peak picking or centroiding downstream.
+Note that without resampling, each pixel may have a different m/z axis.</p>
+</div>
+<p>See <a href="../resampling/">Resampling</a> for how the method, axis type, and bin count are
+chosen, and the <a href="../cli/#resampling-advanced">CLI Reference</a> for all options.</p>
+<hr />
+<h2 id="optical-images">Optical Images<a class="headerlink" href="#optical-images" title="Permanent link">&para;</a></h2>
+<p>For Bruker data, Thyra automatically includes optical (microscopy) images and
+aligns them to the MSI data using teaching point calibration from the <code>.mis</code> file.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Optical images included by default</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>thyra<span class="w"> </span>data.d<span class="w"> </span>output.zarr
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># Skip optical images</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>thyra<span class="w"> </span>data.d<span class="w"> </span>output.zarr<span class="w"> </span>--no-optical
+</code></pre></div>
+<p>The TIC image is stored with an affine transform that maps it into the optical
+image's coordinate space, so overlays work out of the box.</p>
+<hr />
+<h2 id="3d-data">3D Data<a class="headerlink" href="#3d-data" title="Permanent link">&para;</a></h2>
+<p>By default, Thyra treats each z-slice as a separate 2D dataset with <code>_z{i}</code> suffixes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Default: separate 2D slices (msi_dataset_z0, msi_dataset_z1, ...)</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>thyra<span class="w"> </span>volume.imzML<span class="w"> </span>output.zarr
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># Combined 3D volume (single table with x, y, z coordinates)</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>thyra<span class="w"> </span>volume.imzML<span class="w"> </span>output.zarr<span class="w"> </span>--handle-3d
+</code></pre></div>
+<hr />
+<h2 id="memory">Memory<a class="headerlink" href="#memory" title="Permanent link">&para;</a></h2>
+<p>Every conversion streams, whatever the dataset's size: Thyra makes two passes
+over the source -- one to count, one to scatter straight into memory-mapped
+arrays next to the output -- and writes each table from those arrays, so the
+intensity matrix is never held in RAM. There is no mode to switch on; the
+<code>--streaming</code> flag older scripts pass is accepted and ignored.</p>
+<div class="admonition info">
+<p class="admonition-title">What does take memory</p>
+<p>The <code>var</code> frame (one row per m/z bin) and the transient shard buffers of
+the write. A few hundred megabytes on a default-resampled axis; a raw,
+unresampled axis of millions of bins is what to resample.</p>
+</div>
+<hr />
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<h3 id="winerror-5-access-is-denied">"WinError 5: Access is denied"<a class="headerlink" href="#winerror-5-access-is-denied" title="Permanent link">&para;</a></h3>
+<p>Windows has no atomic file replace, so Zarr's metadata writes have to delete the
+destination before renaming the new copy over it. If any handle is open on that
+file at that instant the rename fails outright instead of waiting.</p>
+<p>Thyra retries these renames a few times, which clears the transient contention
+Zarr's own concurrent writes create. A failure that survives the retries means
+something is holding the store open for longer than that -- typically a Python
+session, napari, or a Jupyter notebook that loaded it.</p>
+<p><strong>Fix:</strong> Close any program that has the zarr open, or write to a different output
+path.</p>
+<h3 id="windows-long-paths">Windows: long paths<a class="headerlink" href="#windows-long-paths" title="Permanent link">&para;</a></h3>
+<p>Windows caps a normal path at 260 characters, and the limit applies to every
+file inside the <code>.zarr</code> directory rather than to the path you typed. Thyra's
+deepest metadata key sits roughly 134 characters below the output path, so an
+output path over about 125 characters would once fail part-way through the
+write with a confusing error naming a file you never asked for:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>Error saving SpatialData: [Errno 2] No such file or directory:
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>  '...\output.zarr\tables\msi_dataset_z0\uns\format_specific\imzml_version\zarr.&lt;hash&gt;.partial'
+</code></pre></div>
+<p>Thyra now detects this before writing and opens the store through an
+extended-length (<code>\\?\</code>) path, which is exempt from the 260-character limit, so
+long output paths convert normally. A log line records when this happens.</p>
+<div class="admonition note">
+<p class="admonition-title">Reading a store at a long path</p>
+<p>The store is written correctly, but reading it is subject to the same
+limit, and a read past it does not fail: Windows reports the deep files as
+missing and Zarr returns its fill value for a missing chunk by design.
+<code>spatialdata.read_zarr</code> then reports a structurally invalid store, and a
+bare <code>zarr.open_group</code> hands back empty metadata (every ontology term as
+<code>{"accession": "", "name": ""}</code>) without any error.</p>
+<p><code>thyra validate</code>, <code>thyra export-metaspace</code> and
+<code>thyra.metadata.schema.read_msi_metadata_blocks</code> detect this and read
+through an extended-length path on their own. For <em>other</em> tools either
+enable long path support system-wide
+(<code>HKLM\SYSTEM\CurrentControlSet\Control\FileSystem</code>, <code>LongPathsEnabled</code> = 1;
+needs administrator rights and a reboot), pass the store through
+<code>thyra.utils.windows_paths.prepare_zarr_read_path</code> or add the <code>\\?\</code>
+prefix yourself:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">spatialdata</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sd</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="n">sdata</span> <span class="o">=</span> <span class="n">sd</span><span class="o">.</span><span class="n">read_zarr</span><span class="p">(</span><span class="sa">r</span><span class="s2">"</span><span class="se">\\</span><span class="s2">?\C:\very\long\path\output.zarr"</span><span class="p">)</span>
+</code></pre></div>
+or simply choose a shorter output path such as <code>C:\msi\out.zarr</code>.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">A relative path is measured differently, and can lose an array</p>
+<p>Windows applies the limit to the working directory, a separator and the
+relative path <strong>as you spelled it</strong>, before the <code>..</code> segments are
+collapsed. A store you can open perfectly well by its absolute path can
+therefore be unreadable through a relative one, and the failure is the
+silent kind described above: the array simply does not appear, with at
+most a <code>UserWarning</code> from Zarr about an object it does not recognise.</p>
+<p>Two arrays sitting side by side in the same group of a real store:</p>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>relative</th>
+<th>absolute</th>
+<th>result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>current_ratio</code></td>
+<td>259</td>
+<td>251</td>
+<td>reads</td>
+</tr>
+<tr>
+<td><code>mobility_edges</code></td>
+<td><strong>260</strong></td>
+<td>252</td>
+<td><strong>missing, no error</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Nothing about the two differed but the length of the name -- same shape,
+dtype, codecs and shards. Enabling long path support does <strong>not</strong> help
+here, because it only applies to fully qualified paths.</p>
+<p>Pass an absolute path, or pass the store through
+<code>thyra.utils.windows_paths.prepare_zarr_read_path</code>, which resolves one for
+you. If something looks missing, compare the two spellings before
+suspecting the data:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">p</span><span class="p">),</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">p</span><span class="p">))</span>
+</code></pre></div>
+<p>A <code>False, True</code> result means the path, not the store.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Failed conversions exit non-zero and move the partial store aside</p>
+<p>Any failed conversion exits with status 1, so a script or CI job wrapping
+<code>thyra</code> sees the failure. The partially written store is renamed to
+<code>&lt;output&gt;.zarr.failed</code> rather than left at the destination, which keeps it
+available for diagnosis and leaves the output path free for a retry.</p>
+</div>
+<h3 id="an-imzml-is-refused-before-conversion-starts">An imzML is refused before conversion starts<a class="headerlink" href="#an-imzml-is-refused-before-conversion-starts" title="Permanent link">&para;</a></h3>
+<p>Thyra checks what the imzML declares against the <code>.ibd</code> on disk before it reads
+a single spectrum, and refuses rather than converting something it cannot decode
+correctly. A truncated <code>.ibd</code> is reported with the spectrum index and both byte
+figures:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>imzML spectrum 3 declares a m/z array ending at byte 236, but sample.ibd is 196
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>bytes (3 spectra are affected; the furthest ends at 356). The .ibd is truncated
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>or its offsets are wrong -- pyimzml would return empty arrays for these spectra
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>without raising, and they would simply be missing from the output.
+</code></pre></div>
+<p>The usual cause is an <strong>incomplete copy of the <code>.ibd</code></strong> -- copy it again and
+compare the byte count.</p>
+<p>The other refusals are declarations Thyra cannot honour:</p>
+<ul>
+<li><code>MS:1000574 zlib compression</code> on either binary array. The underlying parser
+  has no decompression path, so it would read the compressed bytes and decode
+  them as numbers.</li>
+<li>A param group declaring no precision term, two at once, or one that disagrees
+  with the precision the parser resolved. The decode width would be arbitrary.</li>
+<li><code>64-bit integer</code> arrays, whose width differs between Windows and Linux.
+  <code>32-bit integer</code> is spec-legal and is <em>not</em> refused.</li>
+<li>A first spectrum whose <code>IMS:1000104</code> encoded byte length contradicts its value
+  count at the declared precision -- the signature of an array that decodes at
+  the wrong width but exactly the right length.</li>
+<li>A negative offset or length, or a spectrum whose m/z and intensity arrays
+  declare different numbers of values.</li>
+</ul>
+<p>Re-export the file from the vendor software with 64-bit float m/z and no
+compression.</p>
+<p>Not everything unusual is refused. Trailing bytes in the <code>.ibd</code>, offsets that do
+not follow document order, and more than one <code>&lt;scanSettings&gt;</code> block are legal
+and are logged as warnings.</p>
+<p>Before this check these files converted "successfully": a truncated <code>.ibd</code>
+produced a store containing only the pixels before the cut, with no error.</p>
+<h3 id="no-module-named-timsdata-or-bruker-sdk-errors">"No module named 'timsdata'" or Bruker SDK errors<a class="headerlink" href="#no-module-named-timsdata-or-bruker-sdk-errors" title="Permanent link">&para;</a></h3>
+<p>The Bruker SDK DLLs are bundled for Windows. On Linux/macOS, Bruker data requires
+the vendor's <code>libtimsdata.so</code> / <code>libtimsdata.dylib</code> to be installed separately.</p>
+<h3 id="pixel-size-not-detected">Pixel size not detected<a class="headerlink" href="#pixel-size-not-detected" title="Permanent link">&para;</a></h3>
+<p>Thyra never prompts for one. If the source metadata declares no pixel size the
+run fails immediately -- before the converter is built, so nothing is written
+and there is no partial store to clean up -- logging <code>Pixel size not found in
+metadata</code> followed by <code>Use --pixel-size parameter (e.g., --pixel-size 25)</code>, and
+exits 1.</p>
+<p>Pass the value yourself and re-run:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span>--pixel-size<span class="w"> </span><span class="m">50</span>
+</code></pre></div>
+<h3 id="memory-errors-on-large-datasets">Memory errors on large datasets<a class="headerlink" href="#memory-errors-on-large-datasets" title="Permanent link">&para;</a></h3>
+<p>The intensity matrix is never held in memory; what grows with the axis is the
+<code>var</code> frame. Reduce the number of resampling bins:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>thyra<span class="w"> </span>large.d<span class="w"> </span>output.zarr<span class="w"> </span>--resample-bins<span class="w"> </span><span class="m">20000</span>
+</code></pre></div>
+<h3 id="verbose-logging-for-debugging">Verbose logging for debugging<a class="headerlink" href="#verbose-logging-for-debugging" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span>-v<span class="w"> </span>DEBUG<span class="w"> </span>--log-file<span class="w"> </span>conversion.log
+</code></pre></div>
+<hr />
+<h2 id="what-next">What Next?<a class="headerlink" href="#what-next" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong><a href="../tutorial/">Tutorial</a></strong> -- a full walkthrough on real and example data</li>
+<li><strong><a href="../cli/">CLI Reference</a></strong> -- all command-line options</li>
+<li><strong><a href="../resampling/">Resampling</a></strong> -- how the mass axis is chosen, and how to control it</li>
+<li><strong><a href="../output-format/">Output Format</a></strong> -- understanding the zarr output structure</li>
+<li><strong><a href="../api/">API Reference</a></strong> -- Python API documentation</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.instant.progress", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

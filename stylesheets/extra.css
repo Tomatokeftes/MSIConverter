@@ -1,0 +1,317 @@
+/* ==========================================================
+   Thyra -- Brand Theme Override for MkDocs Material
+   Palette: Paper White #FFF | Rich Black #000
+            Vibrant Purple #792074 | Brick #9A4B3D
+   Gradient (minimal use): #792074 -> #9A4B3D
+   Typography: Effra CC -> Verdana fallback
+   ========================================================== */
+
+/* ---- Light mode ---- */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #792074;
+  --md-primary-fg-color--light: #8e3a89;
+  --md-primary-fg-color--dark: #5e1a5a;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: #ffffff;
+  --md-accent-fg-color: #9A4B3D;
+  --md-accent-fg-color--transparent: rgba(154, 75, 61, 0.1);
+  --md-typeset-a-color: #792074;
+  --md-default-bg-color: #ffffff;
+}
+
+/* ---- Dark mode ---- */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #792074;
+  --md-primary-fg-color--light: #9e4899;
+  --md-primary-fg-color--dark: #5e1a5a;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: #ffffffcc;
+  --md-accent-fg-color: #c47a6e;
+  --md-accent-fg-color--transparent: rgba(196, 122, 110, 0.12);
+  --md-typeset-a-color: #c47a6e;
+}
+
+/* ---- Typography ---- */
+:root {
+  --md-text-font: "Effra CC", "Verdana", sans-serif;
+  --md-code-font: "Fira Code", "Consolas", monospace;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Type hierarchy */
+.md-typeset h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #792074;
+}
+
+[data-md-color-scheme="slate"] .md-typeset h1 {
+  color: #c8a0c5;
+}
+
+.md-typeset h2 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.md-typeset h3 {
+  font-weight: 600;
+}
+
+/* ---- Header gradient (minimal brand use) ---- */
+.md-header {
+  background: linear-gradient(135deg, #792074, #9A4B3D);
+}
+
+/* The logomark is filled with this same purple -> brick gradient, so on the
+   bar above it reads as a faint ghost rather than a logo. Knock it out to
+   solid white -- the usual treatment for a brand mark on a coloured field --
+   rather than plating a background behind it: brightness(0) flattens every
+   gradient stop to black while keeping the alpha, invert(1) turns that white.
+   The gradient logotype on the home page is untouched. The second selector is
+   the same mark in the mobile drawer's title bar, which is also primary. */
+.md-header__button.md-logo img,
+.md-nav__button.md-logo img {
+  filter: brightness(0) invert(1);
+}
+
+/* ---- Navigation tabs bar ---- */
+/* Clean white bar beneath the gradient header */
+.md-tabs {
+  background: #ffffff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.md-tabs__link {
+  color: #555 !important;
+  font-weight: 500;
+  opacity: 1 !important;
+}
+
+.md-tabs__link:hover {
+  color: #9A4B3D !important;
+}
+
+.md-tabs__link--active {
+  color: #792074 !important;
+  font-weight: 600;
+}
+
+/* Dark mode tabs */
+[data-md-color-scheme="slate"] .md-tabs {
+  background: #1e1e1e;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+[data-md-color-scheme="slate"] .md-tabs__link {
+  color: #aaa !important;
+}
+
+[data-md-color-scheme="slate"] .md-tabs__link:hover {
+  color: #c47a6e !important;
+}
+
+[data-md-color-scheme="slate"] .md-tabs__link--active {
+  color: #c8a0c5 !important;
+}
+
+/* ---- Hide left sidebar (tabs handle page navigation) ---- */
+/* Only hide on wide screens where tabs are visible; on mobile the
+   sidebar hamburger menu is the only navigation so we keep it. */
+@media screen and (min-width: 76.25em) {
+  .md-sidebar--primary {
+    display: none;
+  }
+
+  /* Let content area use the extra width */
+  .md-content {
+    margin-left: 0;
+  }
+}
+
+/* ---- Navigation active indicator ---- */
+.md-nav__link--active,
+.md-nav__link:is([aria-current]) {
+  color: #792074;
+  font-weight: 600;
+}
+
+[data-md-color-scheme="slate"] .md-nav__link--active,
+[data-md-color-scheme="slate"] .md-nav__link:is([aria-current]) {
+  color: #c47a6e;
+}
+
+/* ---- Tabs / tabbed content ---- */
+.md-typeset .tabbed-labels > label:hover {
+  color: #9A4B3D;
+}
+
+.md-typeset .tabbed-labels > .tabbed-input:checked + label {
+  color: #792074;
+  border-color: #792074;
+}
+
+/* ---- Admonition accents ---- */
+
+/* Note + Info -> Vibrant Purple */
+.md-typeset .admonition.note,
+.md-typeset details.note,
+.md-typeset .admonition.info,
+.md-typeset details.info {
+  border-color: #792074;
+}
+
+.md-typeset .note > .admonition-title,
+.md-typeset .note > summary,
+.md-typeset .info > .admonition-title,
+.md-typeset .info > summary {
+  background-color: rgba(121, 32, 116, 0.1);
+}
+
+.md-typeset .note > .admonition-title::before,
+.md-typeset .note > summary::before,
+.md-typeset .info > .admonition-title::before,
+.md-typeset .info > summary::before {
+  background-color: #792074;
+}
+
+/* Tip -> Brick */
+.md-typeset .admonition.tip,
+.md-typeset details.tip,
+.md-typeset .admonition.hint,
+.md-typeset details.hint {
+  border-color: #9A4B3D;
+}
+
+.md-typeset .tip > .admonition-title,
+.md-typeset .tip > summary,
+.md-typeset .hint > .admonition-title,
+.md-typeset .hint > summary {
+  background-color: rgba(154, 75, 61, 0.1);
+}
+
+.md-typeset .tip > .admonition-title::before,
+.md-typeset .tip > summary::before,
+.md-typeset .hint > .admonition-title::before,
+.md-typeset .hint > summary::before {
+  background-color: #9A4B3D;
+}
+
+/* Warning -> Warm amber */
+.md-typeset .admonition.warning,
+.md-typeset details.warning {
+  border-color: #c67a30;
+}
+
+.md-typeset .warning > .admonition-title,
+.md-typeset .warning > summary {
+  background-color: rgba(198, 122, 48, 0.1);
+}
+
+.md-typeset .warning > .admonition-title::before,
+.md-typeset .warning > summary::before {
+  background-color: #c67a30;
+}
+
+/* ---- Dark mode admonition overrides ---- */
+
+/* Note + Info (dark) -> lighter purple tint */
+[data-md-color-scheme="slate"] .md-typeset .admonition.note,
+[data-md-color-scheme="slate"] .md-typeset details.note,
+[data-md-color-scheme="slate"] .md-typeset .admonition.info,
+[data-md-color-scheme="slate"] .md-typeset details.info {
+  border-color: #9e4899;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .note > .admonition-title,
+[data-md-color-scheme="slate"] .md-typeset .note > summary,
+[data-md-color-scheme="slate"] .md-typeset .info > .admonition-title,
+[data-md-color-scheme="slate"] .md-typeset .info > summary {
+  background-color: rgba(158, 72, 153, 0.15);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .note > .admonition-title::before,
+[data-md-color-scheme="slate"] .md-typeset .note > summary::before,
+[data-md-color-scheme="slate"] .md-typeset .info > .admonition-title::before,
+[data-md-color-scheme="slate"] .md-typeset .info > summary::before {
+  background-color: #b86ab3;
+}
+
+/* Tip (dark) -> lighter brick tint */
+[data-md-color-scheme="slate"] .md-typeset .admonition.tip,
+[data-md-color-scheme="slate"] .md-typeset details.tip,
+[data-md-color-scheme="slate"] .md-typeset .admonition.hint,
+[data-md-color-scheme="slate"] .md-typeset details.hint {
+  border-color: #c47a6e;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .tip > .admonition-title,
+[data-md-color-scheme="slate"] .md-typeset .tip > summary,
+[data-md-color-scheme="slate"] .md-typeset .hint > .admonition-title,
+[data-md-color-scheme="slate"] .md-typeset .hint > summary {
+  background-color: rgba(196, 122, 110, 0.15);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .tip > .admonition-title::before,
+[data-md-color-scheme="slate"] .md-typeset .tip > summary::before,
+[data-md-color-scheme="slate"] .md-typeset .hint > .admonition-title::before,
+[data-md-color-scheme="slate"] .md-typeset .hint > summary::before {
+  background-color: #c47a6e;
+}
+
+/* Warning (dark) -> lighter amber tint */
+[data-md-color-scheme="slate"] .md-typeset .admonition.warning,
+[data-md-color-scheme="slate"] .md-typeset details.warning {
+  border-color: #d4944d;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .warning > .admonition-title,
+[data-md-color-scheme="slate"] .md-typeset .warning > summary {
+  background-color: rgba(212, 148, 77, 0.15);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .warning > .admonition-title::before,
+[data-md-color-scheme="slate"] .md-typeset .warning > summary::before {
+  background-color: #d4944d;
+}
+
+/* ---- Buttons / CTA ---- */
+.md-typeset .md-button--primary {
+  background-color: #792074;
+  border-color: #792074;
+  color: #ffffff;
+}
+
+.md-typeset .md-button--primary:hover {
+  background-color: #9A4B3D;
+  border-color: #9A4B3D;
+}
+
+/* ---- Search highlight ---- */
+.md-search-result mark {
+  background-color: rgba(154, 75, 61, 0.25);
+}
+
+/* ---- Code blocks ---- */
+.md-typeset code {
+  border-radius: 3px;
+}
+
+/* ---- Footer ---- */
+.md-footer {
+  background: linear-gradient(135deg, #792074, #9A4B3D);
+}
+
+/* ---- Scrollbar accent (webkit) ---- */
+::-webkit-scrollbar-thumb {
+  background: #792074;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9A4B3D;
+}

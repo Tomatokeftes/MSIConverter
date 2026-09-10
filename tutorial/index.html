@@ -1,0 +1,2028 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A modern Python library for converting Mass Spectrometry Imaging data into SpatialData/Zarr format">
+      
+      
+      
+        <link rel="canonical" href="https://M4i-Imaging-Mass-Spectrometry.github.io/thyra/tutorial/">
+      
+      
+        <link rel="prev" href="../getting-started/">
+      
+      
+        <link rel="next" href="../explore-the-output/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Tutorial - Thyra</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#tutorial" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Thyra" class="md-header__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Thyra
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Tutorial
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../explore-the-output/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Explore the Output
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../supported-formats/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Supported Formats
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../cli/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../resampling/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Resampling
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../output-format/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Output Format
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../metadata-schema/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metadata Schema
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../coordinate-systems/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Coordinate Systems
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../imzml-parser-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  imzML Parser Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../phi-tofsims-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PHI ToF-SIMS Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../solarix-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  solariX Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../design-decisions/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Design Decisions
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../api/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../code-of-conduct/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Code of Conduct
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Thyra" class="md-nav__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    Thyra
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#before-you-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before you start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-1-a-five-minute-check-with-synthetic-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 1: A five-minute check with synthetic data
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 1: A five-minute check with synthetic data">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-generate-a-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Generate a dataset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-convert-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Convert it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-open-the-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Open the output
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-the-intensity-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: The intensity matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-5-the-tic-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: The TIC image
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-6-the-average-spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 6: The average spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-7-ion-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 7: Ion images
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-2-the-published-example-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 2: The published example dataset
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 2: The published example dataset">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#platform-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Platform requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-1-download" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Download
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-extract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Extract
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-convert" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Convert
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-optical-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: Optical alignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-just-happened" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What just happened
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-to-go-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where to go next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../explore-the-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Explore the Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resampling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resampling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../output-format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coordinate-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinate Systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imzml-parser-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    imzML Parser Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../phi-tofsims-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PHI ToF-SIMS Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../solarix-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solariX Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-of-conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#before-you-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before you start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-1-a-five-minute-check-with-synthetic-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 1: A five-minute check with synthetic data
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 1: A five-minute check with synthetic data">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-generate-a-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Generate a dataset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-convert-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Convert it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-open-the-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Open the output
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-the-intensity-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: The intensity matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-5-the-tic-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: The TIC image
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-6-the-average-spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 6: The average spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-7-ion-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 7: Ion images
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#part-2-the-published-example-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Part 2: The published example dataset
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Part 2: The published example dataset">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#platform-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Platform requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-1-download" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Download
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-extract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Extract
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-convert" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Convert
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-optical-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: Optical alignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-just-happened" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What just happened
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-to-go-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where to go next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="tutorial">Tutorial<a class="headerlink" href="#tutorial" title="Permanent link">&para;</a></h1>
+<p>This is a complete, step-by-step walkthrough of the Thyra pipeline: from a raw
+vendor dataset to a SpatialData/Zarr store you can query, plot, and hand to any
+tool in the scverse ecosystem.</p>
+<p>It comes in two parts, and they are independent:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>What you need</th>
+<th>Time</th>
+<th>Runs on</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><a href="#part-1-a-five-minute-check-with-synthetic-data">Part 1</a></strong> -- synthetic data</td>
+<td>Nothing beyond <code>pip install thyra</code></td>
+<td>~1 minute</td>
+<td>Windows, macOS, Linux</td>
+</tr>
+<tr>
+<td><strong><a href="#part-2-the-published-example-dataset">Part 2</a></strong> -- published example dataset</td>
+<td>19 GB download, Bruker SDK</td>
+<td>Hours</td>
+<td>Windows (see <a href="#platform-requirements">caveat</a>)</td>
+</tr>
+</tbody>
+</table>
+<p>Start with Part 1 to confirm your installation works and to see the shape of the
+output. Move to Part 2 when you want to run the real acquisition from the
+paper.</p>
+<hr />
+<h2 id="before-you-start">Before you start<a class="headerlink" href="#before-you-start" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>thyra
+</code></pre></div>
+<p>Thyra requires Python 3.12 or 3.13. Check what you have:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>thyra<span class="w"> </span>--version
+</code></pre></div>
+<p>Every figure below was last re-verified against <code>thyra</code> 3.0.0 with
+<code>spatialdata</code> 0.8.0, <code>anndata</code> 0.13.2, <code>zarr</code> 3.1.6 and <code>pandas</code> 2.3.2 --
+the set <code>pyproject.toml</code> pins. To check the <code>spatialdata</code> version too:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import spatialdata; print(spatialdata.__version__)"</span>
+</code></pre></div>
+<hr />
+<h2 id="part-1-a-five-minute-check-with-synthetic-data">Part 1: A five-minute check with synthetic data<a class="headerlink" href="#part-1-a-five-minute-check-with-synthetic-data" title="Permanent link">&para;</a></h2>
+<p>No download, no vendor SDK, no configuration. Thyra ships a generator that
+writes a small synthetic imzML dataset, so you can exercise the whole pipeline
+immediately.</p>
+<h3 id="step-1-generate-a-dataset">Step 1: Generate a dataset<a class="headerlink" href="#step-1-generate-a-dataset" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>thyra-example-data<span class="w"> </span>example_data/synthetic_brain.imzML
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Wrote example_data/synthetic_brain.imzML
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>Wrote example_data/synthetic_brain.ibd
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>1728 pixels (48 x 36), 4000 m/z bins, 25.0 um, 30.4 MB total
+</code></pre></div>
+<p>This is a brain-like phantom: an elliptical "section" containing a distinct
+inner structure, over a m/z range of 250-1200. Three groups of peaks are
+written into it -- one shared across the whole section, one confined to the
+outer region, one confined to the inner region, plus low-mass matrix ions
+covering the entire slide. That gives the images below real spatial structure
+to show.</p>
+<p>The output is deterministic: the same <code>--seed</code> always produces byte-identical
+data, so your numbers should match the ones printed in this tutorial exactly.</p>
+<div class="admonition note">
+<p class="admonition-title">This is synthetic data</p>
+<p>The phantom is for verifying the software and learning the output layout.
+The peak positions are in a plausible phospholipid range but the intensities
+are invented. For real data, see <a href="#part-2-the-published-example-dataset">Part 2</a>.</p>
+</div>
+<h3 id="step-2-convert-it">Step 2: Convert it<a class="headerlink" href="#step-2-convert-it" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>thyra<span class="w"> </span>example_data/synthetic_brain.imzML<span class="w"> </span>example_data/synthetic_brain.zarr
+</code></pre></div>
+<p>Nothing else is required -- no format flag, no pixel size. Thyra detects the
+format from the file, reads the pixel size out of the imzML metadata, picks a
+resampling strategy, and writes the store. The interesting lines in the log:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>INFO - Detected format: imzml
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>INFO - Using reader: ImzMLReader
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>INFO - Attempting automatic pixel size detection...
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>INFO - Detected pixel size: 25.0 um
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>INFO - Selected resampling method: NEAREST_NEIGHBOR
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>INFO - Building resampled mass axis: 250.00 - 1200.00 m/z, 190000 bins
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>INFO - Converted sparse matrix for msi_dataset_z0: 6,885,838 non-zero entries (CSC)
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>INFO - Conversion completed successfully
+</code></pre></div>
+<p>Conversion takes a few seconds and produces a roughly 31 MB <code>.zarr</code> directory.</p>
+<div class="admonition info">
+<p class="admonition-title">Why 190,000 m/z bins from 4,000 input points?</p>
+<p>Resampling is on by default and builds a uniform axis with 5 mDa bins
+across the mass range, which is finer than this phantom's 0.24 Da spacing.
+The result is correct and stays compact because it is stored sparsely --
+only 4,000 bins per spectrum are populated. Pass <code>--no-resample</code> to keep
+the original axis instead. See <a href="../resampling/">Resampling</a> for how the axis
+type and bin count are chosen.</p>
+</div>
+<h3 id="step-3-open-the-output">Step 3: Open the output<a class="headerlink" href="#step-3-open-the-output" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">spatialdata</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sd</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">sdata</span> <span class="o">=</span> <span class="n">sd</span><span class="o">.</span><span class="n">read_zarr</span><span class="p">(</span><span class="s2">"example_data/synthetic_brain.zarr"</span><span class="p">)</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="nb">print</span><span class="p">(</span><span class="s2">"Tables:"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">tables</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="nb">print</span><span class="p">(</span><span class="s2">"Images:"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">images</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="nb">print</span><span class="p">(</span><span class="s2">"Shapes:"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">shapes</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>Tables: ['msi_dataset_z0']
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>Images: ['msi_dataset_z0_tic']
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>Shapes: ['msi_dataset_z0_pixels']
+</code></pre></div>
+<p>Three elements, all named after the dataset id (<code>msi_dataset</code> by default,
+settable with <code>--dataset-id</code>, and <code>_z0</code> marking the first z-slice):</p>
+<ul>
+<li>the <strong>table</strong>, an AnnData object holding the intensity matrix</li>
+<li>the <strong>TIC image</strong>, total ion current per pixel</li>
+<li>the <strong>pixel shapes</strong>, one polygon per acquired pixel</li>
+</ul>
+<p>Confirm the pixel size survived the round trip:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">print</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"pixel_size_x_um"</span><span class="p">],</span> <span class="n">sdata</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"pixel_size_y_um"</span><span class="p">])</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"pixel_size_units"</span><span class="p">])</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"pixel_size_detection_info"</span><span class="p">][</span><span class="s2">"method"</span><span class="p">])</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>25.0 25.0
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>micrometers
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>automatic
+</code></pre></div>
+<p>The two are equal here because this raster is square. They are stored
+separately because not every raster is.</p>
+<h3 id="step-4-the-intensity-matrix">Step 4: The intensity matrix<a class="headerlink" href="#step-4-the-intensity-matrix" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">table</span> <span class="o">=</span> <span class="n">sdata</span><span class="o">.</span><span class="n">tables</span><span class="p">[</span><span class="s2">"msi_dataset_z0"</span><span class="p">]</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Shape: </span><span class="si">{</span><span class="n">table</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">  (pixels x m/z bins)"</span><span class="p">)</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"m/z range: </span><span class="si">{</span><span class="n">table</span><span class="o">.</span><span class="n">var</span><span class="p">[</span><span class="s1">'mz'</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">()</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> -- </span><span class="si">{</span><span class="n">table</span><span class="o">.</span><span class="n">var</span><span class="p">[</span><span class="s1">'mz'</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Sparse: </span><span class="si">{</span><span class="n">table</span><span class="o">.</span><span class="n">X</span><span class="o">.</span><span class="n">nnz</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> non-zero of </span><span class="si">{</span><span class="n">table</span><span class="o">.</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">table</span><span class="o">.</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>Shape: (1728, 190000)  (pixels x m/z bins)
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>m/z range: 250.0 -- 1200.0
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>Sparse: 6885838 non-zero of 328320000
+</code></pre></div>
+<p>1728 pixels matches the 48 x 36 grid. The matrix is a <code>csc_matrix</code>; keep it
+sparse and never call <code>.toarray()</code> on the whole thing for a real dataset.</p>
+<h3 id="step-5-the-tic-image">Step 5: The TIC image<a class="headerlink" href="#step-5-the-tic-image" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="n">tic</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">images</span><span class="p">[</span><span class="s2">"msi_dataset_z0_tic"</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># (c, y, x) -&gt; (y, x)</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Shape: </span><span class="si">{</span><span class="n">tic</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">, range </span><span class="si">{</span><span class="n">tic</span><span class="o">.</span><span class="n">min</span><span class="p">()</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2"> -- </span><span class="si">{</span><span class="n">tic</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="n">plt</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">tic</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s2">"viridis"</span><span class="p">)</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="n">plt</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s2">"TIC"</span><span class="p">)</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s2">"Total ion current"</span><span class="p">)</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>Shape: (36, 48), range 16177 -- 146472
+</code></pre></div>
+<p>You should see a bright ellipse -- the phantom "section" -- against a dim
+background of matrix signal.</p>
+<h3 id="step-6-the-average-spectrum">Step 6: The average spectrum<a class="headerlink" href="#step-6-the-average-spectrum" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">mz</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">var</span><span class="p">[</span><span class="s2">"mz"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="n">avg</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">table</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">"average_spectrum"</span><span class="p">])</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">mz</span><span class="p">,</span> <span class="n">avg</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="n">plt</span><span class="o">.</span><span class="n">xlim</span><span class="p">(</span><span class="mi">740</span><span class="p">,</span> <span class="mi">920</span><span class="p">)</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">"m/z"</span><span class="p">)</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">"Average intensity"</span><span class="p">)</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="n">peak_mz</span> <span class="o">=</span> <span class="n">mz</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">avg</span><span class="p">)]</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Most intense average peak: m/z </span><span class="si">{</span><span class="n">peak_mz</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>Most intense average peak: m/z 760.513
+</code></pre></div>
+<p>The average is computed over non-empty pixels only, so empty grid positions do
+not dilute it.</p>
+<h3 id="step-7-ion-images">Step 7: Ion images<a class="headerlink" href="#step-7-ion-images" title="Permanent link">&para;</a></h3>
+<p>To map one ion, sum the matrix columns inside an m/z window and scatter the
+result back onto the pixel grid:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">ion_image</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="n">target_mz</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">0.25</span><span class="p">):</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">    </span><span class="sd">"""Sum intensities in [target-tol, target+tol] and lay them out on the grid."""</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>    <span class="n">mz</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">var</span><span class="p">[</span><span class="s2">"mz"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    <span class="n">lo</span><span class="p">,</span> <span class="n">hi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">mz</span><span class="p">,</span> <span class="p">[</span><span class="n">target_mz</span> <span class="o">-</span> <span class="n">tol</span><span class="p">,</span> <span class="n">target_mz</span> <span class="o">+</span> <span class="n">tol</span><span class="p">])</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>    <span class="n">values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">table</span><span class="o">.</span><span class="n">X</span><span class="p">[:,</span> <span class="n">lo</span><span class="p">:</span><span class="n">hi</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>    <span class="n">x</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="s2">"x"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>    <span class="n">y</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="s2">"y"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>    <span class="n">image</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">y</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">x</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>    <span class="n">image</span><span class="p">[</span><span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">]</span> <span class="o">=</span> <span class="n">values</span>
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>    <span class="k">return</span> <span class="n">image</span>
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>
+<a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a><span class="k">for</span> <span class="n">target</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="p">[(</span><span class="mf">760.6</span><span class="p">,</span> <span class="s2">"whole section"</span><span class="p">),</span>
+<a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a>                      <span class="p">(</span><span class="mf">772.5</span><span class="p">,</span> <span class="s2">"outer region"</span><span class="p">),</span>
+<a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a>                      <span class="p">(</span><span class="mf">888.6</span><span class="p">,</span> <span class="s2">"inner region"</span><span class="p">)]:</span>
+<a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>
+<a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">ion_image</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="n">target</span><span class="p">),</span> <span class="n">cmap</span><span class="o">=</span><span class="s2">"inferno"</span><span class="p">)</span>
+<a id="__codelineno-17-19" name="__codelineno-17-19" href="#__codelineno-17-19"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s2">"Intensity"</span><span class="p">)</span>
+<a id="__codelineno-17-20" name="__codelineno-17-20" href="#__codelineno-17-20"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">"m/z </span><span class="si">{</span><span class="n">target</span><span class="si">}</span><span class="s2"> -- </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-17-21" name="__codelineno-17-21" href="#__codelineno-17-21"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p>The three images differ: m/z 760.6 covers the whole section, 772.5 covers the
+outer region with the inner structure punched out as a hole, and 888.6 lights
+up only the inner structure. That contrast is what makes MSI worth doing, and
+seeing it here confirms intensities landed on the right pixels.</p>
+<div class="admonition warning">
+<p class="admonition-title">Always integrate over a window, never a single bin</p>
+<p>On a resampled axis most bins are empty by construction. Picking the single
+nearest bin to a target m/z -- <code>np.abs(mz - target).argmin()</code> -- will
+usually land on an empty one and return an all-zero image. Sum over a
+tolerance window, as <code>ion_image</code> does above.</p>
+</div>
+<p>That is the full pipeline. Continue to the
+<a href="../explore-the-output/">notebook</a> for optical overlays, per-pixel spectra,
+z-slices, and metadata, or to <a href="#part-2-the-published-example-dataset">Part 2</a>
+for real data.</p>
+<hr />
+<h2 id="part-2-the-published-example-dataset">Part 2: The published example dataset<a class="headerlink" href="#part-2-the-published-example-dataset" title="Permanent link">&para;</a></h2>
+<p>The dataset behind the paper is archived on Zenodo under
+<a href="https://doi.org/10.5281/zenodo.18326569">10.5281/zenodo.18326569</a>, licensed
+CC-BY-4.0.</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Size</th>
+<th>MD5</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MALDI-MSI_Sagittal_Mouse_Brain.tar.gz</code></td>
+<td>19.1 GB</td>
+<td><code>1dbd2ea14dcb6bd99baf7af6ca843018</code></td>
+</tr>
+<tr>
+<td><code>Xenium_Sagittal_Mouse_Brain.tar.gz</code></td>
+<td>13.0 GB</td>
+<td><code>14416994287008b691d43de9dbe34ca3</code></td>
+</tr>
+<tr>
+<td><code>he_mouse_brain_adjacent.tar.gz</code></td>
+<td>851.5 MB</td>
+<td><code>8393a3ee8ba59219fe1c9f7f21acb710</code></td>
+</tr>
+</tbody>
+</table>
+<p>Only the first is needed to run Thyra. It is a sagittal mouse brain section
+acquired on a Bruker timsTOF fleX: MALDI, positive mode, 250-1200 Da, 5 um
+raster, 1007 x 1469 pixels. The other two files are the Xenium spatial
+transcriptomics and H&amp;E histology of the same specimen, included for
+cross-modal work and not used by Thyra.</p>
+<h3 id="platform-requirements">Platform requirements<a class="headerlink" href="#platform-requirements" title="Permanent link">&para;</a></h3>
+<div class="admonition warning">
+<p class="admonition-title">Bruker data needs the vendor SDK</p>
+<p>This is a Bruker <code>.d</code> dataset, so reading it requires the Bruker SDK. The
+DLLs are bundled for <strong>Windows</strong>. On Linux and macOS the vendor's
+<code>libtimsdata.so</code> / <code>libtimsdata.dylib</code> must be installed separately -- see
+<a href="../getting-started/#no-module-named-timsdata-or-bruker-sdk-errors">Troubleshooting</a>.
+Hosted notebook services such as Colab and Binder cannot run this part.</p>
+<p>If you only need to verify that Thyra works, <a href="#part-1-a-five-minute-check-with-synthetic-data">Part 1</a>
+is platform-independent and requires no SDK.</p>
+</div>
+<p>You will also need roughly 40 GB of free disk: 19 GB for the archive, 19 GB
+extracted, plus the output store.</p>
+<h3 id="step-1-download">Step 1: Download<a class="headerlink" href="#step-1-download" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>pip<span class="w"> </span>install<span class="w"> </span>zenodo_get
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>zenodo_get<span class="w"> </span><span class="m">10</span>.5281/zenodo.18326569<span class="w"> </span>--glob<span class="w"> </span><span class="s2">"MALDI-MSI*"</span>
+</code></pre></div>
+<p>Or directly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>curl<span class="w"> </span>-L<span class="w"> </span>-O<span class="w"> </span><span class="s2">"https://zenodo.org/api/records/18326569/files/MALDI-MSI_Sagittal_Mouse_Brain.tar.gz/content"</span>
+</code></pre></div>
+<p>Verify the download before spending time on conversion:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>md5sum<span class="w"> </span>MALDI-MSI_Sagittal_Mouse_Brain.tar.gz
+</code></pre></div>
+<p>It must print <code>1dbd2ea14dcb6bd99baf7af6ca843018</code>. On Windows use
+<code>CertUtil -hashfile MALDI-MSI_Sagittal_Mouse_Brain.tar.gz MD5</code>.</p>
+<h3 id="step-2-extract">Step 2: Extract<a class="headerlink" href="#step-2-extract" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>tar<span class="w"> </span>-xzf<span class="w"> </span>MALDI-MSI_Sagittal_Mouse_Brain.tar.gz
+</code></pre></div>
+<p>This gives you:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>MALDI-MSI Sagittal Mouse Brain/
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>├── 20240826_Xenium_0040000.tiff       optical image
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>├── 20240826_Xenium_0040001.tiff       optical image, high resolution
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>├── 20240826_Xenium_0041899.bak
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>└── 20240826_Xenium_0041899.d/         the MSI acquisition
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>    └── 250-1200Pos_Maldi_5um.m/       acquisition method
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">The folder name contains spaces</p>
+<p>Quote the path in every command below, or the shell will split it.</p>
+</div>
+<h3 id="step-3-convert">Step 3: Convert<a class="headerlink" href="#step-3-convert" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>thyra<span class="w"> </span><span class="s2">"MALDI-MSI Sagittal Mouse Brain/20240826_Xenium_0041899.d"</span><span class="w"> </span>mouse_brain.zarr
+</code></pre></div>
+<p>Same command as Part 1 -- only the input path changes. Thyra detects the Bruker
+format, reads the 5 um pixel size from the acquisition metadata, and finds the
+optical images next to the <code>.d</code> folder.</p>
+<p>Size is not a concern: every conversion makes two passes over the source and
+writes from memory-mapped arrays, so peak memory stays roughly flat instead of
+scaling with the dataset. Expect a long run; add logging so you can watch
+progress and keep a record:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>thyra<span class="w"> </span><span class="s2">"MALDI-MSI Sagittal Mouse Brain/20240826_Xenium_0041899.d"</span><span class="w"> </span>mouse_brain.zarr<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="w">    </span>-v<span class="w"> </span>INFO<span class="w"> </span>--log-file<span class="w"> </span>conversion.log
+</code></pre></div>
+<p>If memory is tight, reduce the resampling bin count:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>thyra<span class="w"> </span><span class="s2">"MALDI-MSI Sagittal Mouse Brain/20240826_Xenium_0041899.d"</span><span class="w"> </span>mouse_brain.zarr<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="w">    </span>--resample-bins<span class="w"> </span><span class="m">20000</span>
+</code></pre></div>
+<h3 id="step-4-optical-alignment">Step 4: Optical alignment<a class="headerlink" href="#step-4-optical-alignment" title="Permanent link">&para;</a></h3>
+<p>For Bruker data Thyra also writes the microscopy images and aligns the MSI to
+them using the teaching points from the FlexImaging metadata. After conversion
+you will see additional image elements:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">spatialdata</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sd</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="n">sdata</span> <span class="o">=</span> <span class="n">sd</span><span class="o">.</span><span class="n">read_zarr</span><span class="p">(</span><span class="s2">"mouse_brain.zarr"</span><span class="p">)</span>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="nb">print</span><span class="p">([</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">sdata</span><span class="o">.</span><span class="n">images</span> <span class="k">if</span> <span class="s2">"optical"</span> <span class="ow">in</span> <span class="n">k</span><span class="p">])</span>
+</code></pre></div>
+<p>The TIC image carries an affine transform mapping it into the optical image's
+pixel space, so overlays line up without manual registration. The
+<a href="../explore-the-output/">notebook</a> shows how to read that transform and plot
+the overlay, and <a href="../coordinate-systems/">Coordinate Systems</a> documents the
+contract.</p>
+<hr />
+<h2 id="what-just-happened">What just happened<a class="headerlink" href="#what-just-happened" title="Permanent link">&para;</a></h2>
+<p>Each stage of the pipeline maps onto something you can observe in the steps
+above:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>  input                thyra                        output
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>  ─────                ─────                        ──────
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a> .imzML  ──┐      ┌── format detection ──┐      ┌── table      (pixels x m/z)
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a> .d      ──┼──────┼── pixel size         ┼──────┼── TIC image
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a> .raw    ──┘      ├── mass resampling    │      ├── optical images + transform
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>                  └── optical alignment ─┘      └── pixel shapes
+<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a>                                                    + metadata in .attrs
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Where you saw it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Format detection</td>
+<td><code>Detected format: imzml</code> / <code>Using reader: ImzMLReader</code></td>
+</tr>
+<tr>
+<td>Pixel size detection</td>
+<td><code>Detected pixel size: 25.0 um</code>, then <code>sdata.attrs["pixel_size_detection_info"]</code></td>
+</tr>
+<tr>
+<td>Mass resampling</td>
+<td><code>Building resampled mass axis: ... 190000 bins</code></td>
+</tr>
+<tr>
+<td>Sparse table</td>
+<td><code>table.X.nnz</code> of 6,885,838</td>
+</tr>
+<tr>
+<td>TIC image</td>
+<td>Step 5</td>
+</tr>
+<tr>
+<td>Optical alignment</td>
+<td>Part 2, Step 4</td>
+</tr>
+<tr>
+<td>Metadata preservation</td>
+<td><code>sdata.attrs</code>, <code>table.uns</code></td>
+</tr>
+</tbody>
+</table>
+<p>The result is a plain SpatialData store. Nothing in it is Thyra-specific --
+<code>spatialdata.read_zarr</code> is the only Thyra-aware step, and after that napari,
+squidpy, and scanpy work on it directly.</p>
+<hr />
+<h2 id="where-to-go-next">Where to go next<a class="headerlink" href="#where-to-go-next" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong><a href="../explore-the-output/">Explore the output notebook</a></strong> -- optical
+  overlays, per-pixel spectra, z-slices, metadata</li>
+<li><strong><a href="../output-format/">Output Format</a></strong> -- the full element and metadata layout</li>
+<li><strong><a href="../cli/">CLI Reference</a></strong> -- every option</li>
+<li><strong><a href="../coordinate-systems/">Coordinate Systems</a></strong> -- how MSI, optical, and
+  global coordinate spaces relate</li>
+<li><strong><a href="../getting-started/#troubleshooting">Getting Started</a></strong> -- troubleshooting</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.instant.progress", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

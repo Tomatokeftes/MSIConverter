@@ -1,0 +1,1883 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A modern Python library for converting Mass Spectrometry Imaging data into SpatialData/Zarr format">
+      
+      
+      
+        <link rel="canonical" href="https://M4i-Imaging-Mass-Spectrometry.github.io/thyra/imzml-parser-notes/">
+      
+      
+        <link rel="prev" href="../coordinate-systems/">
+      
+      
+        <link rel="next" href="../phi-tofsims-notes/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>imzML Parser Notes - Thyra</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#imzml-parser-notes" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Thyra" class="md-header__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Thyra
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              imzML Parser Notes
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../explore-the-output/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Explore the Output
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../supported-formats/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Supported Formats
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../cli/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../resampling/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Resampling
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../output-format/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Output Format
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../metadata-schema/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metadata Schema
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../coordinate-systems/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Coordinate Systems
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  imzML Parser Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../phi-tofsims-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PHI ToF-SIMS Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../solarix-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  solariX Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../design-decisions/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Design Decisions
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../api/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../code-of-conduct/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Code of Conduct
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Thyra" class="md-nav__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    Thyra
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../explore-the-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Explore the Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resampling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resampling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../output-format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coordinate-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinate Systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    imzML Parser Notes
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    imzML Parser Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#imzmlparser-is-not-thread-safe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ImzMLParser is not thread-safe
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-not-fix-the-ibd-resolution-to-match-pyimzml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do not "fix" the .ibd resolution to match pyimzml
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dead-pyimzml-surface-for-anyone-tempted-to-adopt-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dead pyimzml surface, for anyone tempted to adopt it
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dead pyimzml surface, for anyone tempted to adopt it">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_bisect_spectrum-returns-the-first-peak-for-any-query-below-the-range" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        _bisect_spectrum returns the first peak for any query below the range
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#browse-hands-back-bare-map-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        browse() hands back bare map objects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check_peaks_overlap-is-not-a-centroidprofile-tiebreaker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        check_peaks_overlap is not a centroid/profile tiebreaker
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#include_spectra_metadatafull-is-infeasible-not-merely-expensive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        include_spectra_metadata='full' is infeasible, not merely expensive
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-more-constraints-worth-not-rediscovering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two more constraints worth not rediscovering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-coordinate-base-is-not-a-constant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The coordinate base is not a constant
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fixed-in-thyra-still-true-of-pyimzml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed in Thyra, still true of pyimzml
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fixed in Thyra, still true of pyimzml">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ims1000080-is-never-checked-against-the-ibd-header" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IMS:1000080 is never checked against the .ibd header
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-typed-cvparam-with-no-value-aborts-the-metadata-parse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A typed cvParam with no value aborts the metadata parse
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-fixtures-behind-this-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The fixtures behind this page
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../phi-tofsims-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PHI ToF-SIMS Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../solarix-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solariX Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-of-conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#imzmlparser-is-not-thread-safe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ImzMLParser is not thread-safe
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#do-not-fix-the-ibd-resolution-to-match-pyimzml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do not "fix" the .ibd resolution to match pyimzml
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dead-pyimzml-surface-for-anyone-tempted-to-adopt-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dead pyimzml surface, for anyone tempted to adopt it
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dead pyimzml surface, for anyone tempted to adopt it">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_bisect_spectrum-returns-the-first-peak-for-any-query-below-the-range" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        _bisect_spectrum returns the first peak for any query below the range
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#browse-hands-back-bare-map-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        browse() hands back bare map objects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check_peaks_overlap-is-not-a-centroidprofile-tiebreaker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        check_peaks_overlap is not a centroid/profile tiebreaker
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#include_spectra_metadatafull-is-infeasible-not-merely-expensive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        include_spectra_metadata='full' is infeasible, not merely expensive
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-more-constraints-worth-not-rediscovering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two more constraints worth not rediscovering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-coordinate-base-is-not-a-constant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The coordinate base is not a constant
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fixed-in-thyra-still-true-of-pyimzml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed in Thyra, still true of pyimzml
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fixed in Thyra, still true of pyimzml">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ims1000080-is-never-checked-against-the-ibd-header" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IMS:1000080 is never checked against the .ibd header
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-typed-cvparam-with-no-value-aborts-the-metadata-parse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A typed cvParam with no value aborts the metadata parse
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-fixtures-behind-this-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The fixtures behind this page
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="imzml-parser-notes">imzML Parser Notes<a class="headerlink" href="#imzml-parser-notes" title="Permanent link">&para;</a></h1>
+<p>Thyra reads imzML through <a href="https://github.com/alexandrovteam/pyimzML">pyimzML</a>
+1.5.5. This page is the written-down half of a survey of everything Thyra relies
+on from that library: hazards that are real and verified, but that correctly get
+<strong>no code today</strong> — because they are unreachable from Thyra's current call
+graph, because the safe thing is already what Thyra does, or because the surface
+in question is one Thyra deliberately does not use.</p>
+<p>Nothing here is a bug report against the shipped converter. It is the set of
+things that would cost somebody a day if they had to rediscover them, listed
+where a future reader will look before making the change that reaches them.</p>
+<hr />
+<h2 id="imzmlparser-is-not-thread-safe"><code>ImzMLParser</code> is not thread-safe<a class="headerlink" href="#imzmlparser-is-not-thread-safe" title="Permanent link">&para;</a></h2>
+<p><code>ImzMLParser.get_spectrum_as_string</code> does two unsynchronised seek-then-read
+pairs on a single shared file handle:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="bp">self</span><span class="o">.</span><span class="n">m</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="n">offsets</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">mz_string</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">m</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">lengths</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="bp">self</span><span class="o">.</span><span class="n">m</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="n">offsets</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">intensity_string</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">m</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">lengths</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+</code></pre></div>
+<p>Two threads interleaving between a <code>seek</code> and its <code>read</code> get each other's bytes.
+Measured over real <code>pea.imzML</code>, eight threads sharing one parser, 2000
+<code>getspectrum</code> calls:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>corrupt reads</td>
+<td>108 (5.4%)</td>
+</tr>
+<tr>
+<td>exceptions raised</td>
+<td>0</td>
+</tr>
+<tr>
+<td>corrupt <strong>at the correct declared length</strong></td>
+<td>84 of 108</td>
+</tr>
+<tr>
+<td>corrupt with <code>mz.size == 0</code></td>
+<td>24</td>
+</tr>
+<tr>
+<td>corrupt reads with a <code>threading.Lock</code> added</td>
+<td>0 of 2000</td>
+</tr>
+</tbody>
+</table>
+<p>The 84 are the dangerous ones: the array comes back the length the header
+promised, holding another pixel's masses. No length check, emptiness check or
+dtype check can see it.</p>
+<p><strong>This is not a live defect.</strong> Thyra's imzML reads are strictly serial — a grep
+for concurrency primitives across <code>thyra/</code> finds three hits, all of them on the
+class registry and the Bruker buffer pool, none on the imzML read path, and a
+non-blocking-lock proxy over two real conversions confirmed no contention ever
+occurs.</p>
+<p>It is written down because <strong>parallelising the imzML read is an obvious future
+optimisation, and this trap is laid directly underneath it.</strong> The sanctioned
+route is <code>parser.portable_spectrum_reader()</code> with <strong>one open file object per
+worker</strong>, never a shared <code>ImzMLParser</code>.</p>
+<hr />
+<h2 id="do-not-fix-the-ibd-resolution-to-match-pyimzml">Do not "fix" the <code>.ibd</code> resolution to match pyimzml<a class="headerlink" href="#do-not-fix-the-ibd-resolution-to-match-pyimzml" title="Permanent link">&para;</a></h2>
+<p>There are two rules for finding the <code>.ibd</code> beside an imzML, and <strong>Thyra's is the
+more robust of the two.</strong> This section exists because the asymmetry looks, at a
+glance, like Thyra being sloppy.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Thyra (production)</label><label for="__tabbed_1_2">pyimzml (<code>_infer_bin_filename</code>)</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="bp">self</span><span class="o">.</span><span class="n">ibd_path</span> <span class="o">=</span> <span class="n">imzml_path</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">".ibd"</span><span class="p">)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">ibd_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="bp">self</span><span class="o">.</span><span class="n">ibd_file</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ibd_path</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"rb"</span><span class="p">)</span>
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">ibd_path</span> <span class="o">=</span> <span class="p">[</span><span class="n">f</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">imzml_path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s1">'*'</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>            <span class="k">if</span> <span class="n">re</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="sa">r</span><span class="s1">'.+\.ibd'</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">f</span><span class="p">),</span> <span class="n">re</span><span class="o">.</span><span class="n">IGNORECASE</span><span class="p">)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>            <span class="ow">and</span> <span class="n">f</span><span class="o">.</span><span class="n">stem</span> <span class="o">==</span> <span class="n">imzml_path</span><span class="o">.</span><span class="n">stem</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+</code></pre></div>
+</div>
+</div>
+</div>
+<p>pyimzml's <code>re.IGNORECASE</code> <strong>is decorative</strong>: the <code>f.stem == imzml_path.stem</code>
+comparison sitting beside it is a plain case-sensitive <code>==</code>. So the flag buys
+nothing, and three ordinary situations behave worse under pyimzml's rule:</p>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>pyimzml</th>
+<th>Thyra</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SAMPLE.IBD</code> beside <code>sample.imzML</code></td>
+<td><code>IndexError: list index out of range</code></td>
+<td>resolves — <code>Path.exists()</code> is case-insensitive on Windows</td>
+</tr>
+<tr>
+<td>A <strong>parent directory</strong> named <code>proj.ibd</code></td>
+<td>the unanchored regex matches the full path, so every same-stem sibling qualifies — <em>including the imzML itself</em>, which is what gets returned</td>
+<td>unaffected; only the <code>.ibd</code> suffix is ever constructed</td>
+</tr>
+<tr>
+<td>A half-finished download <code>sample.ibdtmp</code></td>
+<td><code>.+\.ibd</code> matches it, so it competes with the real file</td>
+<td>unaffected</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">Do not change <code>with_suffix('.ibd').exists()</code> to match pyimzml</p>
+<p>It would be a regression on all three rows. If the resolution rule ever does
+need to change, it should get <em>stricter</em>, not more like <code>_infer_bin_filename</code>.</p>
+</div>
+<p>A related consequence worth knowing when writing tests: production always passes
+<code>ibd_file=</code> explicitly, so it never reaches <code>_infer_bin_filename</code> at all. Tests
+that construct a bare <code>ImzMLParser(path)</code> are exercising a rule the shipped code
+does not use, which means they cannot catch a resolution bug in it. Use
+<code>tests.fixtures.imzml_parser.production_parser</code> instead; it mirrors
+<code>ImzMLReader._initialize_parser</code> exactly.</p>
+<p>Two smaller traps on the same handle:</p>
+<ul>
+<li><strong><code>ibd_file=None</code> is not the same as omitting the argument.</strong> Omitting it
+  infers the path; passing <code>None</code> gives a parser that raises
+  <code>AttributeError: 'NoneType' object has no attribute 'seek'</code> on the first read.
+  A caller writing <code>ibd_file=maybe_handle</code> gets the unreadable parser whenever
+  the handle is <code>None</code>.</li>
+<li><strong><code>__enter__</code>/<code>__exit__</code> close a handle the parser does not own.</strong> With
+  <code>ibd_file=f</code> supplied, <code>parser.m is f</code>, and leaving a <code>with</code> block closes the
+  caller's file. Thyra does not use <code>with</code> on a parser; <code>ImzMLReader.close()</code>
+  already closes the same aliased handle twice, which is idempotent in CPython
+  and load-bearing on nothing.</li>
+</ul>
+<hr />
+<h2 id="dead-pyimzml-surface-for-anyone-tempted-to-adopt-it">Dead pyimzml surface, for anyone tempted to adopt it<a class="headerlink" href="#dead-pyimzml-surface-for-anyone-tempted-to-adopt-it" title="Permanent link">&para;</a></h2>
+<p>None of the following is reachable from Thyra today. All of it looks useful, and
+all of it is broken in a way that would not be obvious on first use.</p>
+<h3 id="_bisect_spectrum-returns-the-first-peak-for-any-query-below-the-range"><code>_bisect_spectrum</code> returns the first peak for any query below the range<a class="headerlink" href="#_bisect_spectrum-returns-the-first-peak-for-any-query-below-the-range" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">ix_l</span><span class="p">,</span> <span class="n">ix_u</span> <span class="o">=</span> <span class="n">bisect_left</span><span class="p">(</span><span class="n">mzs</span><span class="p">,</span> <span class="n">mz_value</span> <span class="o">-</span> <span class="n">tol</span><span class="p">),</span> <span class="n">bisect_right</span><span class="p">(</span><span class="n">mzs</span><span class="p">,</span> <span class="n">mz_value</span> <span class="o">+</span> <span class="n">tol</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">if</span> <span class="n">ix_l</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">mzs</span><span class="p">):</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">mzs</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">mzs</span><span class="p">)</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">if</span> <span class="n">ix_u</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="k">return</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>          <span class="c1"># &lt;-- "nothing matched" and "peak 0 matched" are the same answer</span>
+</code></pre></div>
+<p>Query below the mass range and <code>bisect_right</code> returns 0, so <code>ix_u</code> is -1, so the
+function reports the half-open range <code>(0, 0)</code> — which the caller reads as <em>peak
+zero matched</em>. Measured: <code>getionimage(bellini, mz=0.5, tol=0.05)</code> returns a
+128x128 image with <strong>16384 of 16384 pixels non-zero</strong>, where the truth is a
+blank image.</p>
+<p><code>getionimage</code> also constructs a <code>UserWarning</code> about <code>z=0</code> and never raises it —
+<code>UserWarning("...")</code> on a line by itself is just an allocated object.</p>
+<h3 id="browse-hands-back-bare-map-objects"><code>browse()</code> hands back bare <code>map</code> objects<a class="headerlink" href="#browse-hands-back-bare-map-objects" title="Permanent link">&para;</a></h3>
+<p><code>_SpectrumMetaDataBrowser._find_referenceable_param_groups</code> ends with
+<code>ids = map(...); return ids</code>. Anything that indexes the result, checks its
+length, or iterates it a second time sees an exhausted iterator rather than an
+error.</p>
+<h3 id="check_peaks_overlap-is-not-a-centroidprofile-tiebreaker"><code>check_peaks_overlap</code> is not a centroid/profile tiebreaker<a class="headerlink" href="#check_peaks_overlap-is-not-a-centroidprofile-tiebreaker" title="Permanent link">&para;</a></h3>
+<p>Two independent reasons not to adopt it:</p>
+<ol>
+<li>It calls <strong><code>random.seed(42)</code> on the global <code>random</code> module</strong>, clobbering the
+   caller's RNG stream as a side effect of asking a question about a file.
+   <code>calc_statistics</code> does the same.</li>
+<li>On real <code>bellini.imzML</code> — which <em>declares</em> <code>MS:1000128 profile spectrum</code> —
+   it returns 0.01% overlap, i.e. it says <strong>centroid</strong>. Adopting it would put
+   Thyra in disagreement with a shipped file's own declaration on day one.</li>
+</ol>
+<h3 id="include_spectra_metadatafull-is-infeasible-not-merely-expensive"><code>include_spectra_metadata='full'</code> is infeasible, not merely expensive<a class="headerlink" href="#include_spectra_metadatafull-is-infeasible-not-merely-expensive" title="Permanent link">&para;</a></h3>
+<p>It appends a <code>SpectrumData</code> object per spectrum. Measured at <strong>+147 MiB per
+12,737 spectra</strong>, which extrapolates to roughly <strong>10.6 GiB on the 918,855-spectrum
+xenium file</strong> — on top of the parse. The <code>list</code> mode is cheaper and does not work
+either: it never follows <code>referenceableParamGroupRef</code>, so it returns <code>None</code> for
+every spectrum, with no signal that the lookup was structurally incapable of
+succeeding. That is exactly where SCiLS puts <code>MS:1000127</code>.</p>
+<hr />
+<h2 id="two-more-constraints-worth-not-rediscovering">Two more constraints worth not rediscovering<a class="headerlink" href="#two-more-constraints-worth-not-rediscovering" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong><code>choose_iterparse</code> validates nothing.</strong> <code>"LXML"</code>, <code>"elementtree"</code>, <code>"expat"</code>
+  and <code>""</code> all fall through to ElementTree without complaint. Thyra's
+  <code>parse_lib="ElementTree"</code> pin is therefore protected by exact string equality
+  and nothing else — a typo would be silent, and <em>here</em> it would be harmless
+  because the fallback happens to be the pinned choice. Do not rely on that
+  staying true. The reason for the pin is in the comment block at
+  <code>ImzMLReader._initialize_parser</code>.</li>
+<li><strong><code>SIZE_DICT</code> and numpy disagree about <code>'l'</code>.</strong> <code>PRECISION_DICT['64-bit integer']</code>
+  is <code>'l'</code> and <code>SIZE_DICT['l']</code> is 8, but <code>np.dtype('l').itemsize</code> is 4 on Windows
+  and 8 on Linux, so the same file decodes differently on the two platforms.
+  If this ever needs fixing, <strong>patch the module globals</strong> — set
+  <code>PRECISION_DICT['64-bit integer'] = 'q'</code> <em>and</em> <code>SIZE_DICT['q'] = 8</code>. Patching
+  the per-instance <code>parser.sizeDict</code> is not enough:
+  <code>PortableSpectrumReader</code> reads the module-level dict, so the same parser would
+  report one size from <code>getspectrum</code> and another from its own
+  <code>portable_spectrum_reader</code>.</li>
+</ul>
+<hr />
+<h2 id="the-coordinate-base-is-not-a-constant">The coordinate base is not a constant<a class="headerlink" href="#the-coordinate-base-is-not-a-constant" title="Permanent link">&para;</a></h2>
+<p>The specification numbers x and y from 1, and pyimzml passes through whatever
+the document holds. Exports numbered from <strong>0</strong> exist, so subtracting a
+constant 1 -- which Thyra did until v3.24.0 -- produced <code>x = -1</code> for the first
+column of one. A negative index is a legal <em>negative</em> numpy index, so the
+converter's grid guard dropped those spectra rather than crashing: a 3x3
+acquisition at coordinates 0..2 previewed as <code>grid (2, 2)</code>, warned that "5
+spectra sat outside the declared 2x2x1 grid", stored 4 rows and exited 0.</p>
+<p>The base is now measured, by <code>thyra.utils.imzml_coordinate_base</code>, and the rule
+is deliberately <strong>not</strong> the one z uses:</p>
+<table>
+<thead>
+<tr>
+<th>axis</th>
+<th>rule</th>
+<th>why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>x, y</td>
+<td><code>min(observed_minimum, 1)</code></td>
+<td>0 folds down; 1 and anything above it keep the spec base</td>
+</tr>
+<tr>
+<td>z</td>
+<td><code>observed_minimum</code></td>
+<td>z has no physical origin to preserve</td>
+</tr>
+</tbody>
+</table>
+<p>Rebasing x and y on their observed minimum would move a legitimately <strong>cropped</strong>
+acquisition. A file whose leftmost occupied column is <code>x = 5</code> is a region of a
+larger slide, not a 0-based export, and nothing in the document distinguishes
+the two; sliding it to the origin would change its grid width, every
+<code>obs["spatial_x"]</code>, the TIC image extent and its pixel footprint. Folding only
+a 0 down leaves every such file exactly where it was.</p>
+<p>The declared <code>IMS:1000042</code> / <code>IMS:1000043</code> pixel counts were the third
+candidate and are still unread here. <code>mzpeak_extractor</code> is the only place in
+Thyra that reads them at all, and it carries a comment about a declared extent
+disagreeing with the coordinates shipped beside it.</p>
+<p>Whatever is subtracted is reported as
+<code>EssentialMetadata.coordinate_offsets</code> and written to
+<code>coordinate_systems.global.coordinate_offsets_px</code>, so a store can say where its
+origin came from. Before this the imzML extractor set no offsets at all.</p>
+<p>Pinned by <code>tests/unit/readers/test_imzml_zero_based.py</code>, which converts a
+0-based file, a 1-based one and a cropped 1-based one -- the last being the
+file the rejected alternative would have moved.</p>
+<h2 id="fixed-in-thyra-still-true-of-pyimzml">Fixed in Thyra, still true of pyimzml<a class="headerlink" href="#fixed-in-thyra-still-true-of-pyimzml" title="Permanent link">&para;</a></h2>
+<p>One finding was real enough to grow code: <strong><code>imzmldict</code> discards
+<code>unitAccession</code>.</strong> <code>convert_cv_param(accession, value)</code> takes no unit argument,
+so <code>__readimzmlmeta</code> cannot carry one even though <code>ParamGroup.cv_params</code>
+preserves it. <code>imzmldict['pixel size x']</code> is a bare number in whatever unit the
+vendor declared, and Thyra used to label it micrometres. A file declaring its
+pixel as <code>4406.25</code> nanometre (<code>UO:0000018</code>) therefore landed on disk with
+<code>obs/spatial_x</code> a thousand times too large, and <code>convert_msi</code> returned <code>True</code>.</p>
+<p>The information is never lost from the document, only from the dict, so
+<code>ImzMLMetadataExtractor</code> now reads the unit-bearing path — each <code>cv_params</code>
+tuple is <code>(name, accession, value, raw_name, raw_value, unit_name,
+unit_accession)</code> — and converts: <code>UO:0000016</code> mm x1000, <code>UO:0000017</code> um x1,
+<code>UO:0000018</code> nm /1000. Any other declared unit is refused with a <code>ValueError</code>,
+which fails the conversion; a cvParam with no unit at all keeps the historical
+micrometre reading, because real vendor files (the IONTOF class among them)
+write <code>IMS:1000046</code> unitless and were being read correctly.</p>
+<p>Corroboration that the ambiguity was genuine rather than theoretical: pyimzml's
+own <code>get_physical_coordinates</code> docstring says it returns <strong>nanometers</strong> while
+multiplying by the same unlabelled <code>pixel size x</code> that Thyra treats as
+micrometres. The library's author disagreed with Thyra about the unit.</p>
+<p>The behaviour is pinned by
+<code>tests/unit/readers/test_hand_authored_fixtures.py::TestUnitNanometre</code>, whose
+assertions now state the correct conversion — including the refusal — rather
+than characterise the error.</p>
+<h3 id="ims1000080-is-never-checked-against-the-ibd-header"><code>IMS:1000080</code> is never checked against the <code>.ibd</code> header<a class="headerlink" href="#ims1000080-is-never-checked-against-the-ibd-header" title="Permanent link">&para;</a></h3>
+<p>The imzML specification puts the binary file's UUID in the first 16 bytes of
+the <code>.ibd</code> and the same value in the XML as <code>IMS:1000080</code>. pyimzml reads
+neither against the other -- it never touches the header bytes at all -- and
+Thyra used to read only the XML term, for the metadata store.</p>
+<p>That pair is the only thing that can tell an <code>.imzML</code> apart from a <em>different</em>
+acquisition's <code>.ibd</code> renamed to sit beside it. Every other check Thyra makes
+(<code>ImzMLReader._validate_parser_state</code>) reads the XML's own offsets and lengths
+against the binary's size, which a wrong-but-similarly-shaped file satisfies.</p>
+<p>Thyra now compares them and <strong>warns</strong>, naming both values and both filenames,
+rather than refusing. That is measured, not cautious: of the three real files
+in the corpus, <code>pea</code> and the Xenium export match byte for byte, while
+<code>bellini</code> -- an IONTOF SurfaceLab 7.5 export -- declares
+<code>{FC37F303-A9C0-4CD3-A28E-1D18E523C269}</code> and begins its <code>.ibd</code> with
+<code>3ad1bacd-dcc3-4f7b-aea7-f9b375dbf731</code>. Its first spectrum starts at byte 16,
+so the header slot is genuinely populated; the writer just filled the two
+places independently. That file converts correctly, so refusing would reject
+data Thyra reads right today. See design decision D17.</p>
+<p>Only the 32 hex digits are compared. IONTOF writes the registry braces and
+SCiLS does not, case varies, and the hyphens are positional rather than data,
+so a file re-spelling its own UUID in the other convention must not read as a
+disagreement with itself. Pinned by
+<code>tests/unit/readers/test_imzml_parser_state_validation.py::TestIbdUuid</code>.</p>
+<h3 id="a-typed-cvparam-with-no-value-aborts-the-metadata-parse">A typed cvParam with no <code>value</code> aborts the metadata parse<a class="headerlink" href="#a-typed-cvparam-with-no-value-aborts-the-metadata-parse" title="Permanent link">&para;</a></h3>
+<p><code>pyimzml.ontology.ontology.convert_xml_value</code> converts each cvParam value to
+the type its ontology entry declares. It catches <code>ValueError</code> (an empty
+<code>value=""</code> on a float-typed term becomes <code>None</code>) but not <code>TypeError</code>, so a
+term with <strong>no <code>value</code> attribute at all</strong> raises <code>float(None)</code> out of
+<code>ImzMLParser.__init__</code>, before any spectrum is read.</p>
+<p>That is what the pyimzML fork behind TIMSCONVERT and TIMSImaging writes for
+the ion mobility array it adds: a <code>mobilityArray</code> param group whose
+<code>MS:1003006 mean inverse reduced ion mobility array</code> term carries a unit and
+no value, and pyimzml types <code>MS:1003006</code> as <code>xsd:float</code>. Upstream pyimzml
+therefore cannot open any of those exports:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>TypeError: float() argument must be a string or a real number, not 'NoneType'
+</code></pre></div>
+<p>Thyra installs a patch as narrow as the defect before building a parser
+(<code>thyra/readers/imzml/_pyimzml_compat.py</code>): a missing value on a typed term
+converts to <code>None</code>, the same result an empty value already produces. Nothing
+else changes. <code>tests/data/fixtures/mobility_continuous.imzML</code> reproduces the
+layout, and the reader then goes on to read the third array itself, since
+<code>__iter_read_spectrum_meta</code> matches only the m/z and intensity group ids and
+ignores every other <code>binaryDataArray</code> -- see
+<a href="../output-format/#ion-mobility">Output Format: Ion mobility</a>.</p>
+<hr />
+<h2 id="the-fixtures-behind-this-page">The fixtures behind this page<a class="headerlink" href="#the-fixtures-behind-this-page" title="Permanent link">&para;</a></h2>
+<p>Several of the shapes described here are only reachable from
+<a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/tree/main/tests/data/fixtures"><code>tests/data/fixtures/</code></a>,
+a small corpus of hand-authored imzML/<code>.ibd</code> pairs. They exist because every
+other imzML in the test suite was written by pyimzml's own <code>ImzMLWriter</code>, and a
+parser and a writer from one codebase agree on each other's mistakes.</p>
+<p>Read that directory's README before editing any of them; two of the ways they
+break are invisible to the test suite.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.instant.progress", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

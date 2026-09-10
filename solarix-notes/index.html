@@ -1,0 +1,1617 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A modern Python library for converting Mass Spectrometry Imaging data into SpatialData/Zarr format">
+      
+      
+      
+        <link rel="canonical" href="https://M4i-Imaging-Mass-Spectrometry.github.io/thyra/solarix-notes/">
+      
+      
+        <link rel="prev" href="../phi-tofsims-notes/">
+      
+      
+        <link rel="next" href="../design-decisions/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>solariX Notes - Thyra</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#solarix-notes" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Thyra" class="md-header__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Thyra
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              solariX Notes
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../explore-the-output/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Explore the Output
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../supported-formats/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Supported Formats
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../cli/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../resampling/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Resampling
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../output-format/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Output Format
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../metadata-schema/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metadata Schema
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../coordinate-systems/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Coordinate Systems
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../imzml-parser-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  imzML Parser Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../phi-tofsims-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PHI ToF-SIMS Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  solariX Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../design-decisions/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Design Decisions
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../api/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../code-of-conduct/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Code of Conduct
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Thyra" class="md-nav__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    Thyra
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../explore-the-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Explore the Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resampling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resampling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../output-format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coordinate-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinate Systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imzml-parser-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    imzML Parser Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../phi-tofsims-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PHI ToF-SIMS Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solariX Notes
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solariX Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#directory-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directory layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#peakssqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        peaks.sqlite
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="peaks.sqlite">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#blob-encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blob encoding
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#coordinates-and-sparsity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coordinates and sparsity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pixel-size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pixel size
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resampling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resampling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-validation-against-a-vendor-imzml-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-validation against a vendor imzML export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-native-route-adds-over-an-imzml-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the native route adds over an imzML export
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-of-conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#directory-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directory layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#peakssqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        peaks.sqlite
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="peaks.sqlite">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#blob-encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blob encoding
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#coordinates-and-sparsity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coordinates and sparsity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pixel-size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pixel size
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resampling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resampling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-validation-against-a-vendor-imzml-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-validation against a vendor imzML export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-native-route-adds-over-an-imzml-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the native route adds over an imzML export
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="solarix-notes">solariX Notes<a class="headerlink" href="#solarix-notes" title="Permanent link">&para;</a></h1>
+<p>Thyra reads Bruker solariX / MRMS (FT-ICR) imaging <code>.d</code> directories natively
+by consuming <code>peaks.sqlite</code>, the processed peak store ftmsControl writes into
+every imaging acquisition. There is no public specification for this file;
+the layout below was established by inspecting real acquisitions spanning
+2018-2024 (ftmsControl 2.2, flexImaging 5.0.80-5.0.89) and decode-verifying
+the binary blobs against their own metadata. The same file is read by at
+least one independent open-source tool for the solariX XR, so the store is
+not a single-instrument quirk.</p>
+<p>What this route deliberately is <strong>not</strong>: a transient processor. The <code>.d</code>
+also holds the raw time-domain transients (<code>ser</code>, tens of GB per region) and
+Bruker's proprietary <code>.mcf</code> containers. Thyra never opens either -- no FT,
+no apodization, no peak picking. The peaks were picked by the acquisition
+software at acquisition time, and that processing is frozen in the data.
+Anyone needing different peak picking must export via the vendor software.</p>
+<hr />
+<h2 id="directory-layout">Directory layout<a class="headerlink" href="#directory-layout" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>sample.d/
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  peaks.sqlite            centroided per-pixel peak lists  &lt;- what Thyra reads
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  ImagingInfo.xml         per-scan index (spot name, TIC, base peak)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  ser                     raw transients, fixed-length per scan (ignored)
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  &lt;guid&gt;_N.mcf/.mcf_idx   Bruker container stores (ignored)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  parameterChanges.sqlite per-scan parameter history (ignored)
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>  Storage.mcf_idx         container index (ignored)
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  *.m/                    acquisition method directory (ignored)
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>sample.mis                flexImaging sequence NEXT TO the .d, same stem
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>sample.dat                flexImaging cache (ignored)
+</code></pre></div>
+<p>Detection requires <code>peaks.sqlite</code> <strong>and</strong> <code>ImagingInfo.xml</code> inside a <code>.d</code>
+directory. Two traps are handled explicitly:</p>
+<ul>
+<li><strong>Pre-scan directories.</strong> flexImaging writes sibling <code>.d</code> directories such
+  as <code>sample_0_C17_000001.d</code> holding <code>fid</code> + <code>analysis.baf</code> + <code>calib.bin</code> --
+  single-spectrum pre-scans, not imaging runs. They contain none of the
+  detection files and are rejected as unrecognised Bruker data.</li>
+<li><strong>Peaks-less acquisitions.</strong> A <code>.d</code> with <code>ser</code> and <code>ImagingInfo.xml</code> but no
+  <code>peaks.sqlite</code> is still recognisably solariX-family; the error names the
+  imzML export fallback (DataAnalysis, SCiLS Lab, or flexImaging) instead of
+  claiming the directory is not Bruker data.</li>
+</ul>
+<h2 id="peakssqlite">peaks.sqlite<a class="headerlink" href="#peakssqlite" title="Permanent link">&para;</a></h2>
+<p>Three tables matter. <code>Properties</code> is a key/value table carrying the schema
+identity (<code>SchemaType = Imaging</code>, <code>SchemaVersionMajor = 1</code>,
+<code>SchemaVersionMinor = 2</code> in every file inspected), the acquisition software
+name/version, the instrument vendor, family, source type and serial number,
+the operator, the acquisition timestamp and the acquired m/z range
+(<code>MzAcqRangeLower</code>/<code>MzAcqRangeUpper</code>).</p>
+<p>The reader checks <code>SchemaType</code> and <code>SchemaVersionMajor</code> at open and refuses
+anything it has not been verified against, quoting the values it found. A
+newer ftmsControl that bumps the major version fails loudly rather than
+decoding blobs on an unknown layout.</p>
+<p><code>AcquisitionKeys</code> holds one row per acquisition mode with <code>Polarity</code>,
+<code>ScanMode</code>, <code>AcquisitionMode</code> and <code>MsLevel</code>. Only the polarity enum has been
+verified (against a paired positive/negative acquisition of the same
+sample): <strong>0 = positive, 1 = negative</strong>. The other enums are undocumented,
+so Thyra stores the raw integers without inventing labels. Observed values:
+<code>ScanMode 0 / MsLevel 1</code> on full scans, <code>ScanMode 2 / MsLevel 2</code> on a CASI
+(quadrupole isolation) run.</p>
+<p><code>Spectra</code> holds one row per pixel: stage-raster coordinates
+(<code>XIndexPos</code>/<code>YIndexPos</code>), <code>NumPeaks</code>, per-scan acquisition values
+(<code>NumSummations</code>, <code>LaserPower</code>, <code>LaserRepRate</code>), <code>RegionNumber</code>, and the
+peak blobs.</p>
+<h3 id="blob-encoding">Blob encoding<a class="headerlink" href="#blob-encoding" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Encoding</th>
+<th>Length</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PeakMzValues</code></td>
+<td>little-endian float64, ascending</td>
+<td><code>NumPeaks * 8</code></td>
+</tr>
+<tr>
+<td><code>PeakIntensityValues</code></td>
+<td>little-endian float32</td>
+<td><code>NumPeaks * 4</code></td>
+</tr>
+<tr>
+<td><code>PeakFwhmValues</code></td>
+<td>little-endian float32</td>
+<td><code>NumPeaks * 4</code></td>
+</tr>
+<tr>
+<td><code>PeakSnrValues</code></td>
+<td>little-endian float32</td>
+<td><code>NumPeaks * 4</code></td>
+</tr>
+</tbody>
+</table>
+<p>The m/z values are already calibrated -- the frequency-to-m/z law (ML1/ML2/
+ML3 in the acquisition method) has been applied by the time the peaks are
+stored, so the reader does no calibration math. Every blob length is checked
+against <code>NumPeaks * itemsize</code> before decoding; a mismatch is refused as
+corruption rather than silently truncated. <code>PeakFlags</code>, <code>BH</code> and <code>BC</code> are
+undecoded (flags were all-zero in every file inspected) and nothing is
+derived from them.</p>
+<p>The database is opened strictly read-only through a URI (<code>mode=ro</code>), so
+sqlite never creates journal or WAL side files next to it. That matters
+because solariX data commonly lives on read-only network shares. One
+consequence of that: a mapped network drive resolves to a UNC path
+(<code>\\server\share\...</code>) before the reader sees it, and in a <code>file:</code> URI the
+server name would read as an authority, which sqlite rejects. The reader
+therefore writes such paths as <code>file:////server/share/...</code> -- empty
+authority, path intact -- which opens where <code>file://server/share/...</code>
+does not.</p>
+<h2 id="coordinates-and-sparsity">Coordinates and sparsity<a class="headerlink" href="#coordinates-and-sparsity" title="Permanent link">&para;</a></h2>
+<p><code>XIndexPos</code>/<code>YIndexPos</code> are <strong>absolute</strong> stage-raster indices -- a real
+region started at X 1239, not 0. The reader subtracts the per-dataset
+minimum to produce 0-based coordinates and reports the subtracted origin in
+<code>coordinate_offsets</code> and the absolute extents in the format metadata.</p>
+<p>Rasters are sparse: flexImaging acquires the polygon drawn on the optical
+image, so the bounding box contains cells that were never measured (81.5 %
+fill on the reference region). Unmeasured cells are simply absent from the
+output, exactly like sparse pixels in any other format. A measured scan can
+also record zero peaks (seen at the tissue-free edges of one acquisition);
+such pixels are skipped like unmeasured ones.</p>
+<p>One fidelity check worth recording: on the reference region the sum of a
+pixel's stored peak intensities reproduces the per-scan <code>tic</code> value in
+<code>ImagingInfo.xml</code> -- an independent record written at acquisition time --
+to a ratio of 0.9999. TIC images computed from the peak store are therefore
+faithful to what the instrument reported.</p>
+<h2 id="pixel-size">Pixel size<a class="headerlink" href="#pixel-size" title="Permanent link">&para;</a></h2>
+<p>The <code>.d</code> itself does not record the raster pitch anywhere -- the acquisition
+method file was swept for raster/pixel tokens and carries none. The only
+source is the <code>&lt;Raster&gt;x,y&lt;/Raster&gt;</code> element (micrometres) of the
+flexImaging <code>.mis</code> file sitting next to the <code>.d</code> with the same stem.</p>
+<p>Resolution order: a stem-matching <code>.mis</code> in the parent directory; failing
+that, a <em>lone</em> <code>.mis</code> in the parent is accepted as unambiguous. Multiple
+non-matching candidates are refused -- on a multi-region slide each region
+has its own <code>.mis</code>, and guessing one would silently assign a wrong pixel
+size. When no source resolves, the pixel size is reported as unknown and
+conversion asks for <code>--pixel-size</code> instead of defaulting.</p>
+<h2 id="resampling">Resampling<a class="headerlink" href="#resampling" title="Permanent link">&para;</a></h2>
+<p>The stored spectra are centroided per-pixel peak lists, so every spectrum
+has its own m/z values. The metadata extractor stamps
+<code>instrument_type = "FT-ICR"</code> from the instrument identity in <code>Properties</code>
+(<code>InstrumentFamily 513</code> additionally maps to the model name <code>solariX</code>;
+unknown family numbers are surfaced raw). The resampling decision tree
+therefore lands on <code>nearest_neighbor</code> onto the <code>fticr</code> axis with no flags --
+the same pair a vendor imzML export of the same data reaches, minus the
+export step. See <a href="../resampling/">Resampling</a> for why TIC-preserving is
+refused for centroid data.</p>
+<h2 id="cross-validation-against-a-vendor-imzml-export">Cross-validation against a vendor imzML export<a class="headerlink" href="#cross-validation-against-a-vendor-imzml-export" title="Permanent link">&para;</a></h2>
+<p>The reader was validated against a SCiLS-lineage centroid imzML export of
+the <em>same acquisition</em> (a 7,362-pixel run; the export is a 949-pixel tissue
+ROI crop with re-based coordinates). Registering the ROI onto the reader's
+raster by normalized cross-correlation of TIC images -- testing all four
+axis orientations -- found the identity orientation with a pure translation,
+and every ROI pixel landed on a measured pixel. On that overlap:</p>
+<ul>
+<li><strong>The peak lists are the same peaks.</strong> Every one of the 949 overlapping
+  pixels has an identical peak count on both sides -- the exporter consumed
+  the same picked peaks this reader decodes, it did not re-pick.</li>
+<li><strong>Intensities differ only by the exporter's normalization.</strong> Within each
+  pixel the imzML/native intensity ratio is constant to the last float32
+  digit, and the per-pixel factor times the RMS of the pixel's native peak
+  intensities is one dataset-wide constant: the export applied RMS
+  normalization (the <code>_rms</code> in its filename) plus a global scale. Dividing
+  the factor out reproduces the native TICs with a maximum relative error
+  of 2e-7, and the TIC correlation goes to r = 1.000000.</li>
+<li><strong>m/z values agree to 0.00 ppm on average.</strong> The signed difference is
+  zero-mean in every 200 Da band -- no calibration difference. Individual
+  peaks deviate by up to ~4 mDa, growing quadratically with m/z (0.06 mDa
+  median at m/z 200, 2.0 mDa at m/z 1200), which is the FT-ICR grid-spacing
+  law: the exporter snapped centroids to its own profile-grid axis. The
+  native reader keeps the full-precision centroids as stored.</li>
+</ul>
+<p>So the native route and the vendor-export route see the same data; the
+export adds RMS normalization and axis snapping, and drops the pixels
+outside the drawn ROI.</p>
+<h2 id="what-the-native-route-adds-over-an-imzml-export">What the native route adds over an imzML export<a class="headerlink" href="#what-the-native-route-adds-over-an-imzml-export" title="Permanent link">&para;</a></h2>
+<p>Everything an export carries, plus metadata no exporter writes: per-pixel
+laser power, repetition rate and summation counts, the acquisition software
+identity and version, the raw acquisition-mode enums, per-scan region
+numbers, the absolute stage-raster extents, and the acquisition m/z range
+as acquired. And no manual vendor-software step per dataset.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.instant.progress", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

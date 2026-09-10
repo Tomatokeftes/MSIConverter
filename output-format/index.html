@@ -1,0 +1,3380 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A modern Python library for converting Mass Spectrometry Imaging data into SpatialData/Zarr format">
+      
+      
+      
+        <link rel="canonical" href="https://M4i-Imaging-Mass-Spectrometry.github.io/thyra/output-format/">
+      
+      
+        <link rel="prev" href="../resampling/">
+      
+      
+        <link rel="next" href="../metadata-schema/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Output Format - Thyra</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#output-format" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Thyra" class="md-header__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Thyra
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Output Format
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../explore-the-output/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Explore the Output
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../supported-formats/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Supported Formats
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../cli/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../resampling/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Resampling
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Output Format
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../metadata-schema/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metadata Schema
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../coordinate-systems/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Coordinate Systems
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../imzml-parser-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  imzML Parser Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../phi-tofsims-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PHI ToF-SIMS Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../solarix-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  solariX Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../design-decisions/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Design Decisions
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../api/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../code-of-conduct/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Code of Conduct
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Thyra" class="md-nav__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    Thyra
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../explore-the-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Explore the Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resampling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resampling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Format
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#loading-a-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loading a Dataset
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#structure-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structure Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tic-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TIC Images
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optical-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optical Images
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Optical Images">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tic-to-optical-overlay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TIC-to-Optical Overlay
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mass-spectrum-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mass Spectrum Data
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Mass Spectrum Data">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#average-spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Average Spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-region-average-spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-Region Average Spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#intensity-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Intensity Matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ion-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ion Images
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#individual-spectra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Individual Spectra
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#var-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        var columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ion-mobility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ion mobility
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ion mobility">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-same-table-from-a-common-mobility-grid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The same table from a common mobility grid
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fragmentation-msms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fragmentation (MS/MS)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fragmentation (MS/MS)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#demultiplexed-msms-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Demultiplexed MS/MS table
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pixel-coordinates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pixel Coordinates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#regions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Regions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#per-pixel-region-number" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-Pixel Region Number
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#region-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Region Summary
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3d-data-z-slices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3D Data / Z-Slices
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3D Data / Z-Slices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#3d-mode-handle-3d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3D mode (--handle-3d)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3D mode (--handle-3d)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#voxel-depth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Voxel depth
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pixel-footprints-in-a-volume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pixel footprints in a volume
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dataset-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dataset Metadata
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dataset Metadata">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#global-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Global metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-level-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table-level metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provenance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#structured-metadata-unsmsi_metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structured metadata: uns["msi_metadata"]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recipes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recipes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Recipes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#side-by-side-tic-and-ion-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Side-by-side TIC and ion image
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#export-ion-image-to-tiff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export ion image to TIFF
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#top-n-most-intense-mz-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Top N most intense m/z values
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#summary-statistics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary statistics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coordinate-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinate Systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imzml-parser-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    imzML Parser Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../phi-tofsims-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PHI ToF-SIMS Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../solarix-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solariX Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-of-conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#loading-a-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loading a Dataset
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#structure-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structure Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tic-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TIC Images
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optical-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optical Images
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Optical Images">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tic-to-optical-overlay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TIC-to-Optical Overlay
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mass-spectrum-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mass Spectrum Data
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Mass Spectrum Data">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#average-spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Average Spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-region-average-spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-Region Average Spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#intensity-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Intensity Matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ion-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ion Images
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#individual-spectra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Individual Spectra
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#var-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        var columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ion-mobility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ion mobility
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ion mobility">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-same-table-from-a-common-mobility-grid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The same table from a common mobility grid
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fragmentation-msms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fragmentation (MS/MS)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fragmentation (MS/MS)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#demultiplexed-msms-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Demultiplexed MS/MS table
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pixel-coordinates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pixel Coordinates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#regions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Regions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#per-pixel-region-number" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-Pixel Region Number
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#region-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Region Summary
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3d-data-z-slices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3D Data / Z-Slices
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3D Data / Z-Slices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#3d-mode-handle-3d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3D mode (--handle-3d)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3D mode (--handle-3d)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#voxel-depth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Voxel depth
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pixel-footprints-in-a-volume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pixel footprints in a volume
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dataset-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dataset Metadata
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dataset Metadata">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#global-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Global metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-level-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table-level metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provenance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#structured-metadata-unsmsi_metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structured metadata: uns["msi_metadata"]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recipes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recipes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Recipes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#side-by-side-tic-and-ion-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Side-by-side TIC and ion image
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#export-ion-image-to-tiff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export ion image to TIFF
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#top-n-most-intense-mz-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Top N most intense m/z values
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#summary-statistics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary statistics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="output-format">Output Format<a class="headerlink" href="#output-format" title="Permanent link">&para;</a></h1>
+<p>Thyra converts MSI data into <a href="https://spatialdata.scverse.org/">SpatialData</a>
+objects stored as Zarr directories. This page describes what the output
+contains and how to work with it.</p>
+<hr />
+<h2 id="loading-a-dataset">Loading a Dataset<a class="headerlink" href="#loading-a-dataset" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">spatialdata</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sd</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">sdata</span> <span class="o">=</span> <span class="n">sd</span><span class="o">.</span><span class="n">read_zarr</span><span class="p">(</span><span class="s2">"output.zarr"</span><span class="p">)</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nb">print</span><span class="p">(</span><span class="s2">"Tables:"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">tables</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nb">print</span><span class="p">(</span><span class="s2">"Images:"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">images</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="nb">print</span><span class="p">(</span><span class="s2">"Shapes:"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">shapes</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+</code></pre></div>
+<hr />
+<h2 id="structure-overview">Structure Overview<a class="headerlink" href="#structure-overview" title="Permanent link">&para;</a></h2>
+<p>A converted dataset contains the following elements:</p>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Key Pattern</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Table</strong></td>
+<td><code>{dataset_id}_z{z}</code></td>
+<td>AnnData with intensity matrix (pixels x m/z), coordinates in <code>.obs</code>, m/z axis in <code>.var</code></td>
+</tr>
+<tr>
+<td><strong>TIC Image</strong></td>
+<td><code>{dataset_id}_z{z}_tic</code></td>
+<td>2D total ion current image, shape <code>(1, y, x)</code></td>
+</tr>
+<tr>
+<td><strong>Pixel Shapes</strong></td>
+<td><code>{dataset_id}_z{z}_pixels</code></td>
+<td>GeoDataFrame with pixel box geometries</td>
+</tr>
+<tr>
+<td><strong>Optical Images</strong></td>
+<td><code>{dataset_id}_optical_{name}</code></td>
+<td>Microscopy images (when available)</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">3D mode</p>
+<p>When converted with <code>--handle-3d</code>, the <code>_z{z}</code> suffix is dropped and all
+slices are merged into a single table with <code>x</code>, <code>y</code>, <code>z</code> coordinates in
+<code>.obs</code>. The TIC image becomes a single <strong>volume</strong> of shape <code>(c, z, y, x)</code>
+rather than one 2D image per slice — see
+<a href="#3d-data-z-slices">3D Data / Z-Slices</a>.</p>
+<p>The pixel shapes stay two-dimensional: one flat square per pixel per slice,
+carrying no depth. Read a pixel's depth from the table's <code>spatial_z</code>
+instead. See <a href="#pixel-footprints-in-a-volume">Pixel footprints in a volume</a>
+for why, and <a href="../coordinate-systems/">Coordinate systems</a> for how the three
+elements line up.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Default dataset ID</p>
+<p>The default <code>dataset_id</code> is <code>msi_dataset</code>, so typical keys look like
+<code>msi_dataset_z0</code>, <code>msi_dataset_z0_tic</code>, etc. Change it with <code>--dataset-id</code>.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Coordinate systems</p>
+<p>Every element above carries a transform to a single <code>"global"</code>
+coordinate system, and Thyra writes a self-describing
+<code>coordinate_systems</code> metadata attr at the zarr top level so
+consumers know what <code>"global"</code> is in (micrometers or pixels).
+See <a href="../coordinate-systems/">Coordinate Systems</a> for the contract
+and how to read it.</p>
+</div>
+<hr />
+<h2 id="tic-images">TIC Images<a class="headerlink" href="#tic-images" title="Permanent link">&para;</a></h2>
+<p>The TIC (Total Ion Current) image shows the sum of all intensities per pixel.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">tic_key</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">sdata</span><span class="o">.</span><span class="n">images</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"_tic"</span><span class="p">)][</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">tic_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">images</span><span class="p">[</span><span class="n">tic_key</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># drop channel dim -&gt; (y, x)</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">plt</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">tic_array</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s2">"viridis"</span><span class="p">)</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">plt</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s2">"TIC Intensity"</span><span class="p">)</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s2">"Total Ion Current"</span><span class="p">)</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<hr />
+<h2 id="optical-images">Optical Images<a class="headerlink" href="#optical-images" title="Permanent link">&para;</a></h2>
+<p>When converted with <code>--include-optical</code> (the default for Bruker data),
+microscopy images are stored alongside the MSI data.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">optical_keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">sdata</span><span class="o">.</span><span class="n">images</span> <span class="k">if</span> <span class="s2">"optical"</span> <span class="ow">in</span> <span class="n">k</span><span class="p">]</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">print</span><span class="p">(</span><span class="s2">"Optical images:"</span><span class="p">,</span> <span class="n">optical_keys</span><span class="p">)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">if</span> <span class="n">optical_keys</span><span class="p">:</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">opt_image</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">images</span><span class="p">[</span><span class="n">optical_keys</span><span class="p">[</span><span class="mi">0</span><span class="p">]])</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="c1"># Shape is (channels, y, x) -- transpose for display</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">opt_rgb</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">moveaxis</span><span class="p">(</span><span class="n">opt_image</span><span class="p">[:</span><span class="mi">3</span><span class="p">],</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">opt_rgb</span><span class="p">)</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s2">"Optical Image"</span><span class="p">)</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<h3 id="tic-to-optical-overlay">TIC-to-Optical Overlay<a class="headerlink" href="#tic-to-optical-overlay" title="Permanent link">&para;</a></h3>
+<p>The TIC image carries an affine transform that maps it into the optical image's
+coordinate space. This means overlays work automatically in tools like napari.</p>
+<p>To inspect the transform:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spatialdata.transformations</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_transformation</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">tic_element</span> <span class="o">=</span> <span class="n">sdata</span><span class="o">.</span><span class="n">images</span><span class="p">[</span><span class="n">tic_key</span><span class="p">]</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">transforms</span> <span class="o">=</span> <span class="n">get_transformation</span><span class="p">(</span><span class="n">tic_element</span><span class="p">,</span> <span class="n">get_all</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">affine</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">transforms</span><span class="o">.</span><span class="n">values</span><span class="p">())[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">matrix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">affine</span><span class="o">.</span><span class="n">to_affine_matrix</span><span class="p">(</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="n">input_axes</span><span class="o">=</span><span class="p">(</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">),</span> <span class="n">output_axes</span><span class="o">=</span><span class="p">(</span><span class="s2">"x"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">)</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="p">))</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Scale: </span><span class="si">{</span><span class="n">matrix</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">]</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">x, </span><span class="si">{</span><span class="n">matrix</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">]</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">x"</span><span class="p">)</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Offset: (</span><span class="si">{</span><span class="n">matrix</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">]</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">matrix</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">]</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
+</code></pre></div>
+<div class="admonition info">
+<p class="admonition-title">How alignment works</p>
+<p>The optical image has an Identity transform and defines the reference
+coordinate system. The TIC image has an Affine transform (scale + offset)
+that positions it in the optical coordinate space. This comes from the
+teaching point calibration in the <code>.mis</code> file (Bruker data).</p>
+</div>
+<hr />
+<h2 id="mass-spectrum-data">Mass Spectrum Data<a class="headerlink" href="#mass-spectrum-data" title="Permanent link">&para;</a></h2>
+<h3 id="average-spectrum">Average Spectrum<a class="headerlink" href="#average-spectrum" title="Permanent link">&para;</a></h3>
+<p>Each table stores a pre-computed average spectrum in <code>uns</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">table_key</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">tables</span><span class="o">.</span><span class="n">keys</span><span class="p">())[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">msi_table</span> <span class="o">=</span> <span class="n">sdata</span><span class="o">.</span><span class="n">tables</span><span class="p">[</span><span class="n">table_key</span><span class="p">]</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">mz_values</span> <span class="o">=</span> <span class="n">msi_table</span><span class="o">.</span><span class="n">var</span><span class="p">[</span><span class="s2">"mz"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">avg_spectrum</span> <span class="o">=</span> <span class="n">msi_table</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">"average_spectrum"</span><span class="p">]</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">mz_values</span><span class="p">,</span> <span class="n">avg_spectrum</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">"m/z"</span><span class="p">)</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">"Average Intensity"</span><span class="p">)</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s2">"Average Mass Spectrum"</span><span class="p">)</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p>It is <strong>that table's own <code>X.mean(axis=0)</code></strong> -- the intensity summed down the
+m/z axis and divided by the rows the table holds, not by the grid positions it
+covers and not by the spectra the reader handed in. Read it off the matrix and
+you get the same numbers back:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">X</span> <span class="o">=</span> <span class="n">msi_table</span><span class="o">.</span><span class="n">X</span><span class="o">.</span><span class="n">toarray</span><span class="p">()</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">msi_table</span><span class="o">.</span><span class="n">X</span><span class="p">,</span> <span class="s2">"toarray"</span><span class="p">)</span> <span class="k">else</span> <span class="n">msi_table</span><span class="o">.</span><span class="n">X</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">msi_table</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">"average_spectrum"</span><span class="p">],</span> <span class="n">X</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>   <span class="c1"># True</span>
+</code></pre></div>
+<p>Two consequences of "rows, not spectra". A grid position the acquisition never
+reached has no row and so is in neither the sum nor the count. A position the
+source measured <strong>twice</strong> has one row holding the sum of both spectra, so it
+contributes two spectra of ion current over one row -- which is what that row
+really holds.</p>
+<p>On a multi-slice source converted as 2D each plane's table carries <strong>its own</strong>
+mean. They used to all carry one dataset-wide vector, so a plane brighter or
+dimmer than the average was described by a spectrum that was not its own; the
+3D volume path had the same key fixed a release earlier.</p>
+<h3 id="per-region-average-spectrum">Per-Region Average Spectrum<a class="headerlink" href="#per-region-average-spectrum" title="Permanent link">&para;</a></h3>
+<p>For multi-region datasets, Thyra also stores a mean spectrum per acquisition
+region in <code>uns["average_spectrum_per_region"]</code>. Each key is the region number
+(as a string), and the value is a 1-D array matching the m/z axis.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">if</span> <span class="s2">"average_spectrum_per_region"</span> <span class="ow">in</span> <span class="n">msi_table</span><span class="o">.</span><span class="n">uns</span><span class="p">:</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="n">per_region</span> <span class="o">=</span> <span class="n">msi_table</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">"average_spectrum_per_region"</span><span class="p">]</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="k">for</span> <span class="n">region_id</span><span class="p">,</span> <span class="n">spectrum</span> <span class="ow">in</span> <span class="n">per_region</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>        <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">mz_values</span><span class="p">,</span> <span class="n">spectrum</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="sa">f</span><span class="s2">"Region </span><span class="si">{</span><span class="n">region_id</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">"m/z"</span><span class="p">)</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">"Average Intensity"</span><span class="p">)</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s2">"Average Spectrum per Region"</span><span class="p">)</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<p>Each region's vector is the mean of the rows in that region, on the same
+"rows, not spectra" rule as <code>average_spectrum</code>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This key is only present when the dataset contains multiple acquisition
+regions. Single-region datasets only have the global <code>average_spectrum</code>.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Regions span the slices</p>
+<p>A region is an in-plane footprint: <code>get_region_map()</code> is keyed on <code>(x, y)</code>
+and has no z component, so on a multi-slice store one region covers the
+same area on every plane. <code>average_spectrum_per_region</code> is therefore
+<strong>dataset-wide</strong> and identical in every plane's table, while
+<code>average_spectrum</code> beside it is that plane's alone. On the single-table
+stores that regions actually occur on, the two are over the same rows.</p>
+</div>
+<h3 id="intensity-matrix">Intensity Matrix<a class="headerlink" href="#intensity-matrix" title="Permanent link">&para;</a></h3>
+<p>The intensity matrix is stored as a sparse matrix. Each row is one pixel, each
+column is one m/z bin:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">X</span> <span class="o">=</span> <span class="n">msi_table</span><span class="o">.</span><span class="n">X</span>  <span class="c1"># sparse (pixels x m/z)</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Shape: </span><span class="si">{</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Non-zero: </span><span class="si">{</span><span class="n">X</span><span class="o">.</span><span class="n">nnz</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">X</span><span class="o">.</span><span class="n">nnz</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">100</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">%)"</span><span class="p">)</span>
+</code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title">Sparse format</p>
+<p>The storage is CSC (Compressed Sparse Column) on every route, which is fast
+for extracting ion images (column = one m/z across all pixels). If you need
+fast per-pixel access, call <code>X.tocsr()</code> on the matrix you read back -- that
+is one conversion in memory, and it is why there is no format choice at
+write time.</p>
+<p>The stored matrix is canonical: within every column the row indices are in
+ascending order and each appears once, whatever order the source delivered
+its pixels in (a multi-area Bruker acquisition comes back area by area,
+for instance). A consumer can binary-search a column's indices directly,
+and scipy reports <code>has_sorted_indices</code> as true without a <code>sort_indices()</code>
+pass.</p>
+<p>One pixel is one row. A source that measures the same coordinate twice --
+a processed imzML with a repeated coordinate -- has both spectra <strong>summed</strong>
+into that row, which is what the pixel's TIC image and its
+<code>non_empty_pixels</code> count then describe as well. The conversion says so in
+the log, naming how many positions it applied to. Reading the store is not
+how you would find out otherwise: scipy and dask both merge repeated
+entries as they read, so <code>read_zarr</code> would show the sum whether or not the
+stored arrays held one entry or two.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Every stored intensity is a real, non-negative number</p>
+<p>Non-finite and negative intensities are dropped from a spectrum before it
+is resampled, and the conversion says how many at <code>WARNING</code> the first time
+it happens.</p>
+<p>A NaN is not a measurement, and one of them makes every aggregate over its
+column NaN -- the average spectrum, the TIC image, any ion image. A
+negative value is a baseline subtraction that overshot rather than a
+smaller measurement, and nothing that reads a store treats it as signal: a
+TIC, an ion image and a mean spectrum all read it as removing current that
+was never there.</p>
+<p>Dropping them before either resampling method runs is also what makes the
+two agree. Given a negative value, <code>nearest_neighbor</code> stored it (leaving
+the pixel with a TIC of 0) while <code>tic_preserving</code> found a non-positive
+total for the spectrum and zeroed the whole thing, so the same file
+converted two ways gave two different stores with nothing in either saying
+why.</p>
+<p>The sibling tables built from the raw scans -- the mobility grid, the
+demultiplexed MS/MS split -- drop the same points by the same rule, so a
+grid's marginal over channels still reproduces the summed table's column
+on a source that carries them.</p>
+<p>Zero is not affected by this; the sparse write drops explicit zeros as it
+always did. A source whose m/z values are non-finite is refused outright
+instead, since those values <em>are</em> <code>var["mz"]</code> and dropping them would
+desynchronise every index paired with them.</p>
+</div>
+<h3 id="ion-images">Ion Images<a class="headerlink" href="#ion-images" title="Permanent link">&para;</a></h3>
+<p>To visualise the spatial distribution of a specific m/z value:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">target_mz</span> <span class="o">=</span> <span class="mf">760.5</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">mz_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">mz_values</span> <span class="o">-</span> <span class="n">target_mz</span><span class="p">)</span><span class="o">.</span><span class="n">argmin</span><span class="p">()</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Extract column from sparse matrix</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">ion_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">X</span><span class="p">[:,</span> <span class="n">mz_idx</span><span class="p">]</span><span class="o">.</span><span class="n">toarray</span><span class="p">())</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># Reconstruct image from pixel coordinates</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">x_coords</span> <span class="o">=</span> <span class="n">msi_table</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="s2">"x"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="n">y_coords</span> <span class="o">=</span> <span class="n">msi_table</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="s2">"y"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="n">ion_image</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">y_coords</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">x_coords</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="n">ion_image</span><span class="p">[</span><span class="n">y_coords</span><span class="p">,</span> <span class="n">x_coords</span><span class="p">]</span> <span class="o">=</span> <span class="n">ion_values</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="n">plt</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">ion_image</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s2">"hot"</span><span class="p">)</span>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="n">plt</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s2">"Intensity"</span><span class="p">)</span>
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">"m/z </span><span class="si">{</span><span class="n">mz_values</span><span class="p">[</span><span class="n">mz_idx</span><span class="p">]</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<h3 id="individual-spectra">Individual Spectra<a class="headerlink" href="#individual-spectra" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">pixel_idx</span> <span class="o">=</span> <span class="mi">0</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">spectrum</span> <span class="o">=</span> <span class="n">X</span><span class="p">[</span><span class="n">pixel_idx</span><span class="p">]</span><span class="o">.</span><span class="n">toarray</span><span class="p">()</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">mz_values</span><span class="p">,</span> <span class="n">spectrum</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">"m/z"</span><span class="p">)</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">"Intensity"</span><span class="p">)</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Pixel </span><span class="si">{</span><span class="n">pixel_idx</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<h3 id="var-columns">var columns<a class="headerlink" href="#var-columns" title="Permanent link">&para;</a></h3>
+<p><code>var</code> always carries <code>mz</code> (numeric, finite, strictly increasing).
+Readers whose native axis is not m/z keep that axis alongside it, and
+annotation tools add <code>formula</code>, <code>adduct</code>, <code>annotation_source</code> and
+<code>fdr</code> -- names fixed by the
+<a href="../metadata-schema/#var-column-conventions">metadata schema</a> so they
+mean the same thing in every store. <code>thyra validate</code> checks the <code>mz</code>
+contract on every table.</p>
+<h3 id="ion-mobility">Ion mobility<a class="headerlink" href="#ion-mobility" title="Permanent link">&para;</a></h3>
+<p>Mobility is a <strong>feature coordinate</strong>, next to m/z. It never enters <code>obs</code>, a
+coordinate system or a transform: those say where a pixel is, mobility says
+what was measured there. Two things follow.</p>
+<p>The MSI table above is always <strong>summed over mobility</strong>. When the source had
+a mobility dimension (Bruker TDF with TIMS engaged, or an imzML export that
+carries a mobility array), the table's <code>uns</code> gains two blocks, and
+<code>uns["msi_metadata"]["ms_analysis"]["ion_mobility"]</code> carries the schema-level
+summary. A source without mobility writes none of them, so a consumer can
+tell "summed over mobility" from "never had any".</p>
+<p><strong><code>uns["mobility_axis"]</code></strong> describes the axis the table was summed over.
+Plain-name keys (never a CV accession: a colon is not a legal zarr key on
+Windows), numpy arrays rather than lists:</p>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>present</code></td>
+<td><code>True</code></td>
+</tr>
+<tr>
+<td><code>type_name</code>, <code>type_accession</code></td>
+<td>the quantity: <code>inverse reduced ion mobility</code> / <code>MS:1002815</code> (TIMS), or drift time / <code>MS:1002476</code></td>
+</tr>
+<tr>
+<td><code>unit_name</code>, <code>unit_accession</code></td>
+<td>e.g. <code>volt-second per square centimeter</code> / <code>MS:1002814</code> for 1/K0</td>
+</tr>
+<tr>
+<td><code>n_scans</code></td>
+<td>length of <code>values</code> (the TIMS ramp length on a Bruker source)</td>
+</tr>
+<tr>
+<td><code>values</code></td>
+<td><code>float64[n_scans]</code>: the native axis when it is shared across pixels -- the 1/K0 of every TIMS scan (from the vendor calibration, decreasing with scan number) or of every feature of a continuous imzML export; absent when mobility is per pixel</td>
+</tr>
+<tr>
+<td><code>acq_range</code></td>
+<td><code>float64[2]</code>, <code>[lower, upper]</code>: the acquired range as declared, else the span of <code>values</code></td>
+</tr>
+<tr>
+<td><code>calibration</code></td>
+<td><code>{model_type, coefficients}</code>: the vendor <code>TimsCalibration</code> row, provenance only</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td><code>"bruker_tdf"</code> or <code>"imzml"</code></td>
+</tr>
+<tr>
+<td><code>resolved_table</code></td>
+<td>element key of the mobility-resolved sibling table, when one was written</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>uns["mobility_heatmap"]</code></strong> is the dataset's mean mass-mobility frame: the
+raw <code>(m/z, mobility, intensity)</code> points of every pixel, binned and averaged
+over pixels, accumulated from the raw scan read during conversion. It is the
+discovery surface -- look at it to see whether mobility separates anything
+before asking for a mobility-resolved table -- and what a viewer's mobility
+panel draws.</p>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mz_edges</code></td>
+<td><code>float64[m + 1]</code>: bin edges on the common m/z axis, which is coarsened by an integer factor to about 4,000 bins (<code>m</code> is the axis length itself when it is shorter)</td>
+</tr>
+<tr>
+<td><code>mobility_edges</code></td>
+<td><code>float64[k + 1]</code>, <strong><code>k = 256</code></strong>: equal-width bins in the axis unit, ascending, spanning the axis <code>values</code></td>
+</tr>
+<tr>
+<td><code>counts</code></td>
+<td><code>float32[m, k]</code>: mean intensity per bin over pixels</td>
+</tr>
+<tr>
+<td><code>current_ratio</code></td>
+<td><code>float</code>: what fraction of <code>uns["average_spectrum"]</code>'s ion current the heatmap holds -- 1.0 under <code>scan_sum</code>, about 0.85 under <code>vendor_centroid</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>k = 256</code> is fixed on purpose: the mobility grid table below defaults to the
+same 256 channels over the same edges -- literally the same constant and the
+same generator -- so a box drawn on the heatmap maps onto grid channels by
+integer index in both directions.
+The m/z binning is the converter's own nearest-bin rule, coarsened, so under a
+lossless summed spectrum (<code>--tdf-spectrum scan_sum</code>) the heatmap summed over
+mobility, <code>counts.sum(axis=1)</code>, equals <code>uns["average_spectrum"]</code> coarsened to
+<code>mz_edges</code>. Under <code>vendor_centroid</code> it does not: the centroid keeps only the current
+inside the peaks its picker assigns (87 to 96 percent on the acquisitions
+measured, see <a href="../design-decisions/#d1-which-spectrum-a-reader-takes">Design Decisions</a>)
+and merges bins, while the heatmap is built from every raw point. Which case a given store is in is recorded rather than left to be found by subtraction: <code>current_ratio</code> is the heatmap's total over the stored mean spectrum's, the same number <code>uns["mobility_marginal"]</code> carries for the grid table, and the conversion says it at <code>WARNING</code> when it is not 1. On a Bruker source the heatmap costs one extra
+library call per frame (about a millisecond); <code>--no-mobility-heatmap</code> skips
+it.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">heat</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">"mobility_heatmap"</span><span class="p">]</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">counts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">heat</span><span class="p">[</span><span class="s2">"counts"</span><span class="p">])</span>              <span class="c1"># (m, 256)</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">mz_centres</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">heat</span><span class="p">[</span><span class="s2">"mz_edges"</span><span class="p">])</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">mz_centres</span> <span class="o">=</span> <span class="p">(</span><span class="n">mz_centres</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">mz_centres</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span> <span class="o">/</span> <span class="mi">2</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="n">k0_centres</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">heat</span><span class="p">[</span><span class="s2">"mobility_edges"</span><span class="p">])</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="n">k0_centres</span> <span class="o">=</span> <span class="p">(</span><span class="n">k0_centres</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">k0_centres</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span> <span class="o">/</span> <span class="mi">2</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="n">plt</span><span class="o">.</span><span class="n">pcolormesh</span><span class="p">(</span><span class="n">k0_centres</span><span class="p">,</span> <span class="n">mz_centres</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">log1p</span><span class="p">(</span><span class="n">counts</span><span class="p">))</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">"1/K0 (V s cm^-2)"</span><span class="p">);</span> <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">"m/z"</span><span class="p">)</span>
+</code></pre></div>
+<p>Both blocks are summaries of the whole dataset. Nothing in them is per pixel,
+and nothing in them enters <code>obs</code> or a coordinate system.</p>
+<p>When every pixel shares one set of <code>(m/z, mobility)</code> feature pairs -- a
+continuous imzML export with a mobility array, as TIMSCONVERT and
+TIMSImaging write -- Thyra also writes a <strong>mobility-resolved sibling
+table</strong>, <code>{table}_mobility</code>, unless <code>--no-mobility-table</code> is given:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>MSI table <code>{id}_z0</code></th>
+<th>mobility table <code>{id}_z0_mobility</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>rows</td>
+<td>pixels</td>
+<td>the same pixels, same <code>obs</code>, same <code>region</code></td>
+</tr>
+<tr>
+<td><code>var["mz"]</code></td>
+<td>strictly increasing, unique</td>
+<td><strong>non-decreasing with duplicates</strong></td>
+</tr>
+<tr>
+<td><code>var["mobility"]</code></td>
+<td>absent</td>
+<td>the feature's 1/K0 (or drift time)</td>
+</tr>
+<tr>
+<td>sort</td>
+<td>by <code>mz</code></td>
+<td>lexicographic <code>(mz, mobility)</code></td>
+</tr>
+<tr>
+<td>also</td>
+<td></td>
+<td><code>mz_index</code> (column on the MSI axis), <code>mobility_index</code> (rank of the mobility value, or the grid channel), <code>uns["feature_axis"]</code>, <code>uns["mobility_axis"]</code></td>
+</tr>
+</tbody>
+</table>
+<p>Two isomers at one m/z that separate in mobility are one column in the MSI
+table and two in the mobility table. The <code>(mz, mobility)</code> sort means an m/z
+window is one contiguous column block whose mobility-summed image equals the
+MSI table's, and a mobility window is a mask inside that block.</p>
+<p><strong>Consumers must discriminate on <code>"mobility" in var.columns</code></strong>, never on the
+element name: the mobility table is not a second MSI dataset, and code that
+assumes a unique, strictly increasing <code>var["mz"]</code> must not be pointed at it.
+<code>thyra validate</code> applies the pair contract (non-decreasing <code>mz</code>, unique
+sorted pairs) to tables carrying <code>mobility</code> and the strict contract to all
+others.</p>
+<h4 id="the-same-table-from-a-common-mobility-grid">The same table from a common mobility grid<a class="headerlink" href="#the-same-table-from-a-common-mobility-grid" title="Permanent link">&para;</a></h4>
+<p>A source whose mobility values differ per pixel -- a Bruker TDF, where a
+frame is a point cloud and no two pixels are promised the same <code>(m/z, 1/K0)</code>
+pairs -- has no shared feature axis to read off. <code>--mobility-grid</code> fills the
+<strong>same</strong> <code>{table}_mobility</code> element for it by binning: every pixel's points
+go onto one set of mobility channels shared across the conversion, and
+<code>(m/z bin, channel)</code> becomes the feature axis.</p>
+<p>The two mechanisms produce the same kind of table -- same element key, same
+<code>var</code> columns, same sort, same discriminator -- and a consumer does not need
+to tell them apart to read either. What says which one filled it is
+<code>uns["mobility_grid"]</code>, present only on a binned table:</p>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>law</code></td>
+<td>how the channel edges are spaced; <code>"linear"</code> (equal width in the axis unit) is the only law today</td>
+</tr>
+<tr>
+<td><code>lower</code>, <code>upper</code></td>
+<td>the range the channels span, in the axis unit</td>
+</tr>
+<tr>
+<td><code>n_channels</code></td>
+<td>how many channels, <strong>256 by default</strong></td>
+</tr>
+<tr>
+<td><code>channel_width</code></td>
+<td><code>(upper - lower) / n_channels</code>, recorded so a reader can see it without arithmetic</td>
+</tr>
+<tr>
+<td><code>edges</code></td>
+<td><code>float64[n_channels + 1]</code>, the channel edges themselves</td>
+</tr>
+</tbody>
+</table>
+<p><code>msi_metadata.ms_analysis.ion_mobility.grid</code> carries <code>law</code>, <code>lower</code>, <code>upper</code>
+and <code>n_channels</code> too, so a consumer reading only the summed table finds them.</p>
+<p>Three things are worth knowing before asking for one:</p>
+<ul>
+<li><strong>The edges come from the axis values, never the declared acquisition
+  range.</strong> A real file's per-scan 1/K0 overhangs its declared
+  <code>OneOverK0AcqRange</code> by a few scans (1.00003 to 1.29133 against a declared
+  1.0 to 1.29 on one measured acquisition), and <code>uns["mobility_heatmap"]</code>
+  already bins over the values. <code>--mobility-min</code> / <code>--mobility-max</code> override
+  them, at the cost of the alignment below.</li>
+<li><strong>256 channels is an alignment anchor, not a tuning knob.</strong> It is the
+  heatmap's own channel count over the heatmap's own edges, so a box drawn on
+  the heatmap selects grid channels by integer index with no resampling and
+  no edge off-by-one. <code>--mobility-bins</code> changes it and gives that up. The
+  width the anchor realizes on a typical 0.29 1/K0 span is 0.0011, finer than
+  the 0.002 to 0.02 band TIMS resolving power supports; that is said at
+  <code>INFO</code> and the count is not moved for it, because the alignment is worth
+  more than the size.</li>
+<li><strong>Its marginal reproduces the summed table under the default
+  <code>--tdf-spectrum scan_sum</code>.</strong> A grid table is built from raw scans, so its
+  marginal reproduces the summed table only when the summed table was built
+  from the same scans, which the default is. An explicit <code>vendor_centroid</code>,
+  a peak-picked spectrum over the same ramp, is kept and said at <code>WARNING</code>;
+  <code>uns["mobility_marginal"]</code> then records by how much the two differ.</li>
+</ul>
+<p><strong>The marginal invariant.</strong> Summing a grid table's channels within one m/z
+bin reproduces that bin's column of the summed table, per pixel. That is what
+<code>uns["mobility_marginal"]</code> records rather than merely asserting:</p>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>summed_table</code></td>
+<td>element key of the table the marginal is compared against</td>
+</tr>
+<tr>
+<td><code>current_ratio</code></td>
+<td>total ion current of the grid table over the summed table's; exactly <code>1.0</code> under <code>scan_sum</code></td>
+</tr>
+<tr>
+<td><code>current_ratio_pixel_min</code> / <code>_max</code></td>
+<td>the same ratio across pixels</td>
+</tr>
+</tbody>
+</table>
+<p>The comparison is per pixel, one bounded pass over each table's memmaps. A
+per-cell deviation (<code>max_absolute_deviation</code> / <code>max_relative_deviation</code>)
+was recorded up to v3.21 by the in-memory converter only; it needed the
+marginal and its difference from the summed table materialised, each as
+large as the summed table, and went with that converter (see
+<a href="../design-decisions/#d11-one-converter">Design Decisions</a>). The snippet
+below computes it from the two stored matrices when it is wanted.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">grid</span> <span class="o">=</span> <span class="n">sdata</span><span class="o">.</span><span class="n">tables</span><span class="p">[</span><span class="s2">"msi_dataset_z0_mobility"</span><span class="p">]</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">mz_index</span> <span class="o">=</span> <span class="n">grid</span><span class="o">.</span><span class="n">var</span><span class="p">[</span><span class="s2">"mz_index"</span><span class="p">]</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">marginal</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">sdata</span><span class="o">.</span><span class="n">tables</span><span class="p">[</span><span class="s2">"msi_dataset_z0"</span><span class="p">]</span><span class="o">.</span><span class="n">n_vars</span><span class="p">)</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="n">np</span><span class="o">.</span><span class="n">add</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="n">marginal</span><span class="p">,</span> <span class="n">mz_index</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">grid</span><span class="o">.</span><span class="n">X</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">todense</span><span class="p">())</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="c1"># equals the summed table's row 0, to floating point</span>
+</code></pre></div>
+<p>A grid is refused, at <code>INFO</code> or <code>WARNING</code> and never as an exception, when:</p>
+<table>
+<thead>
+<tr>
+<th>refused when</th>
+<th>because</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>the source has no mobility dimension</td>
+<td>there is nothing to bin</td>
+</tr>
+<tr>
+<td><code>--mobility-grid</code> was not given</td>
+<td>binning is opt in: it costs a pass over the source and a much larger table</td>
+</tr>
+<tr>
+<td>the mobility axis carries no per-scan values</td>
+<td>a reader opened without its vendor library cannot supply them, and the declared range is not a substitute</td>
+</tr>
+<tr>
+<td>the grid spans more pairs than the counting pass can hold (a raw, unresampled axis of millions of bins)</td>
+<td>the count array is <code>4 bytes x bins x channels</code>, capped at 1 GB; resample to fewer mass bins</td>
+</tr>
+<tr>
+<td>the <code>var</code> frame of the occupied <code>(m/z bin, channel)</code> pairs is projected to take more than half of the machine's free memory (330 bytes per pair, measured), or the pairs pass an absolute cap of 100,000,000</td>
+<td>the count, the projection and the free memory are printed; resample to fewer mass bins or ask for fewer channels. A projection past a quarter of free memory is attempted with a <code>WARNING</code>. See <a href="../design-decisions/#d4-the-grids-feature-ceiling-is-a-memory-guard-not-a-format-limit">Design Decisions</a></td>
+</tr>
+</tbody>
+</table>
+<p><strong>How it is built, and why its size does not matter.</strong> The table is built
+the way the summed table is built, in two passes over the raw scans. The first pass counts, per <code>(m/z bin, channel)</code> cell of the
+grid, how many pixels occupy it -- a dense count over the grid's span, 142 MB
+on a default-resampled timsTOF axis, sized before the first pixel is read and
+independent of how many pixels there are. The second pass scatters each
+pixel's cells straight into memmapped CSC arrays in a scratch directory next
+to the output (<code>.thyra_mobility_*</code>, removed once the table is written), 12
+bytes of disk per stored non-zero. Nothing is ever held for the whole image:
+memory is the count array plus one frame. On a Bruker TDF both passes are
+the summed table's own: the converter reads each frame once per pass
+and derives the summed spectrum, the heatmap's points, the grid's cells and
+the MS/MS split from that one read, so none of the siblings adds a read of
+the source (see <a href="../design-decisions/#d5-one-raw-read-per-frame-per-pass-serves-every-table">Design Decisions</a>).
+Every point is mapped onto the mass axis once per pass and shared between
+the heatmap and the grid, since the mapping costs more than the vendor read.</p>
+<p>The size ceiling is on the pairs that carry signal, not on the pairs the grid
+spans. The two differ by an order of magnitude -- 200 frames of a measured
+timsTOF acquisition occupied 3.9M of a possible 35.5M -- so refusing on the
+span would turn away conversions that fit ninefold over. The span is said at
+<code>INFO</code> when it passes the ceiling; the count is what refuses, checked the
+moment the first pass ends and before a single value has been scattered, so a
+refusal costs one read and no memory.</p>
+<p>Bruker TDF is the only source that needs a grid today; an imzML export with a
+mobility array already has a shared feature axis and is read off it.</p>
+<h3 id="fragmentation-msms">Fragmentation (MS/MS)<a class="headerlink" href="#fragmentation-msms" title="Permanent link">&para;</a></h3>
+<p>An MS/MS imaging run measures fragments, so <code>var["mz"]</code> is fragment m/z.
+Nothing about the axis says so -- a converted MS/MS store is otherwise shaped
+exactly like an MS1 one -- so when the source reports fragmentation the table
+carries <strong><code>uns["msms_schedule"]</code></strong>:</p>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ms_level</code></td>
+<td><code>2</code> for a fragment spectrum; the block is absent for MS1</td>
+</tr>
+<tr>
+<td><code>n_windows</code></td>
+<td>number of precursors isolated per pixel</td>
+</tr>
+<tr>
+<td><code>merges_precursors</code></td>
+<td><code>True</code> when more than one, so the stored spectrum sums them</td>
+</tr>
+<tr>
+<td><code>constant_across_pixels</code></td>
+<td>whether every pixel was fragmented on the same schedule</td>
+</tr>
+<tr>
+<td><code>isolation_window_target</code></td>
+<td><code>float64[n]</code>: the isolated m/z of each window</td>
+</tr>
+<tr>
+<td><code>isolation_window_lower_offset</code> / <code>_upper_offset</code></td>
+<td><code>float64[n]</code>: the window spans <code>target - lower</code> to <code>target + upper</code></td>
+</tr>
+<tr>
+<td><code>collision_energy</code></td>
+<td><code>float64[n]</code>: in electronvolts</td>
+</tr>
+<tr>
+<td><code>scan_begin</code> / <code>scan_end</code></td>
+<td><code>int64[n]</code>: the mobility scans each window occupies, when the source separates them that way (Bruker PASEF)</td>
+</tr>
+<tr>
+<td><code>resolved_table</code></td>
+<td>element key of the demultiplexed sibling table, when one was written</td>
+</tr>
+</tbody>
+</table>
+<p>Field names and CV terms follow
+<a href="https://github.com/HUPO-PSI/mzPeak">mzPeak</a>'s <code>spectra_metadata_precursors</code>:
+<code>ms_level</code> is <code>MS:1000511</code>, the isolation terms are <code>MS:1000827</code> / <code>828</code> /
+<code>829</code>, and activation is <code>MS:1000133</code> with <code>MS:1000045</code> collision energy in
+<code>UO:0000266</code>. The accessions travel as <em>values</em> (<code>..._accession</code> keys), never
+as dict keys -- a colon is not a legal Windows path character and zarr writes
+a key as a directory name. A source reporting a single full isolation width
+has it halved into two equal offsets.</p>
+<p>The same facts appear in the versioned schema block as
+<code>uns["msi_metadata"]["ms_analysis"]["fragmentation"]</code>, where the precursor
+list is a JSON string (a list of objects does not round-trip through
+AnnData/zarr); <code>read_msi_metadata_blocks</code> and <code>thyra validate</code> decode it.</p>
+<div class="admonition warning">
+<p class="admonition-title">A multi-precursor pixel is a chimera</p>
+<p>The MSI table sums a frame into one spectrum per pixel. When
+<code>merges_precursors</code> is <code>True</code>, that spectrum holds fragments of every
+precursor the frame isolated, with nothing marking which came from
+which -- so it must not be read as the fragment spectrum of any one of
+them. Conversion says so at <code>WARNING</code>, and by default also writes the
+split apart as a second table, below (<code>--no-msms-table</code> turns that
+off); the MSI table itself is unchanged either way.</p>
+</div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">if</span> <span class="s2">"msms_schedule"</span> <span class="ow">in</span> <span class="n">table</span><span class="o">.</span><span class="n">uns</span><span class="p">:</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>    <span class="n">sched</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">"msms_schedule"</span><span class="p">]</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">"MS level:"</span><span class="p">,</span> <span class="n">sched</span><span class="p">[</span><span class="s2">"ms_level"</span><span class="p">])</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>    <span class="k">for</span> <span class="n">mz</span><span class="p">,</span> <span class="n">ce</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">sched</span><span class="p">[</span><span class="s2">"isolation_window_target"</span><span class="p">],</span> <span class="n">sched</span><span class="p">[</span><span class="s2">"collision_energy"</span><span class="p">]):</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  precursor </span><span class="si">{</span><span class="n">mz</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2"> at </span><span class="si">{</span><span class="n">ce</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> eV"</span><span class="p">)</span>
+</code></pre></div>
+<h4 id="demultiplexed-msms-table">Demultiplexed MS/MS table<a class="headerlink" href="#demultiplexed-msms-table" title="Permanent link">&para;</a></h4>
+<p>When the source isolates several precursors per pixel in <strong>disjoint
+mobility scan ranges</strong> (Bruker PASEF -- the targeted MALDI variant is
+Bruker's <code>iprm-PASEF</code>, which serially fragments a scheduled list of
+precursors at every pixel), Thyra also writes them split apart as a
+sibling table, <code>{table}_msms</code>, by default (<code>--no-msms-table</code> opts out; see
+<a href="../design-decisions/#d2-the-msms-table-is-written-by-default-when-the-schedule-qualifies">Design Decisions</a>).
+Each precursor's block is its <strong>precursor
+ion image</strong>, and each column inside the block is one fragment's image:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>MSI table <code>{id}_z0</code></th>
+<th>MS/MS table <code>{id}_z0_msms</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>rows</td>
+<td>pixels</td>
+<td>the same pixels, same <code>obs</code>, same <code>region</code></td>
+</tr>
+<tr>
+<td>a column</td>
+<td>one m/z bin, all precursors summed</td>
+<td>one m/z bin <strong>of one precursor</strong></td>
+</tr>
+<tr>
+<td><code>var["mz"]</code></td>
+<td>strictly increasing, unique</td>
+<td>the fragment m/z, <strong>restarting at every precursor</strong></td>
+</tr>
+<tr>
+<td><code>var["precursor_mz"]</code></td>
+<td>absent</td>
+<td>the isolated m/z the fragments came from</td>
+</tr>
+<tr>
+<td>sort</td>
+<td>by <code>mz</code></td>
+<td>lexicographic <code>(precursor_mz, precursor_mobility, mz)</code></td>
+</tr>
+<tr>
+<td>also</td>
+<td></td>
+<td><code>precursor_mobility</code> (the 1/K0 it was isolated at), <code>precursor_index</code> (its position in this store's precursor axis), <code>mz_index</code> (column on the MSI axis), <code>uns["feature_axis"]</code>, <code>uns["msms_schedule"]</code>, <code>uns["demultiplexed_current"]</code></td>
+</tr>
+</tbody>
+</table>
+<p>The fragment axis is the MSI table's own mass axis: <code>var["mz"]</code> is
+<code>msi.var["mz"][var["mz_index"]]</code>, so a column of this table and the
+corresponding column of the summed table are the same m/z bin. One
+precursor's fragments are therefore a contiguous column block whose row
+sums are its ion image, and <strong>the blocks add back up</strong>: summing all
+fragment columns of every precursor reproduces the summed table's TIC per
+pixel, because each recorded point falls in exactly one isolation window.
+Exactly, under the default <code>--tdf-spectrum scan_sum</code>: the split is built
+from the raw scans, and only a summed spectrum built from the same scans
+can add back up to it. An explicit <code>vendor_centroid</code> keeps only the current
+inside the peaks it picks (87 to 96 percent on the acquisitions measured),
+so the two tables of one store would genuinely not agree; that is said at
+<code>WARNING</code> and recorded in <code>uns["demultiplexed_current"]</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">msms</span> <span class="o">=</span> <span class="n">sdata</span><span class="o">.</span><span class="n">tables</span><span class="p">[</span><span class="s2">"msi_z0_msms"</span><span class="p">]</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="c1"># Look the precursor up once, then slice on its block index: never</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="c1"># compare precursor_mz with == , and never assume an m/z is unique.</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="n">var</span> <span class="o">=</span> <span class="n">msms</span><span class="o">.</span><span class="n">var</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="n">index</span> <span class="o">=</span> <span class="n">var</span><span class="p">[</span><span class="s2">"precursor_index"</span><span class="p">][</span><span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">var</span><span class="p">[</span><span class="s2">"precursor_mz"</span><span class="p">]</span> <span class="o">-</span> <span class="mf">936.578</span><span class="p">))]</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="n">block</span> <span class="o">=</span> <span class="p">(</span><span class="n">var</span><span class="p">[</span><span class="s2">"precursor_index"</span><span class="p">]</span> <span class="o">==</span> <span class="n">index</span><span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="n">image</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">msms</span><span class="o">.</span><span class="n">X</span><span class="p">[:,</span> <span class="n">block</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Consumers must discriminate on <code>"precursor_mz" in var.columns</code></strong>, never
+on the element name. <code>thyra validate</code> checks that <code>precursor_mz</code> is
+non-decreasing, that each <code>precursor_index</code> owns one contiguous block, and
+that <code>mz</code> increases strictly inside it; the strict single-column contract
+applies to every other table.</p>
+<div class="admonition warning">
+<p class="admonition-title">Two precursors can share an m/z</p>
+<p>A method may isolate the same mass at two mobility positions -- that is
+how an <strong>isomer pair</strong> is targeted, and separating them is what the
+mobility dimension is for. Thyra keeps them as two column blocks and
+never sums them back together. So:</p>
+<ul>
+<li>the block identity is <strong><code>precursor_index</code></strong>, not <code>precursor_mz</code>;</li>
+<li><code>(precursor_mz, mz)</code> may legitimately repeat, which is why
+  validation does not use that pair;</li>
+<li><code>precursor_mobility</code> is what tells the two apart (the 1/K0 at the
+  middle of the window's scan range -- a window spans a slice of the
+  ramp, and a scheduled method reports no apex).</li>
+</ul>
+</div>
+<div class="admonition danger">
+<p class="admonition-title">Aligning two datasets</p>
+<p><code>precursor_index</code> is a position in <strong>one store's</strong> precursor axis and
+means nothing outside it: two samples whose schedules differ in length
+give the same index to different precursors. Align on
+<code>(precursor_mz, precursor_mobility)</code> -- by matching the pair, never by
+comparing it with <code>==</code>: two runs acquired back to back agreed on the
+1/K0 bitwise, while two of the same method on different days came out
+up to 4.0e-3 apart, because each file carries its own TIMS calibration.
+The <code>var</code> index labels are named
+after the precursor's m/z for the same reason -- <code>p936.578_mz1732</code>,
+never <code>p14_mz1732</code> -- so <code>anndata.concat</code> cannot silently merge two
+unrelated precursors. Measured on two real acquisitions in opposite
+polarities, 15 precursors against 13 with none in common: <strong>zero</strong>
+labels shared, against <strong>5,262</strong> a rank-named scheme would have shared,
+every one of them naming two different precursors. Differing mass axes
+do not save you there -- both started at m/z 50, so the low <code>mz_index</code>
+values line up. Concatenate with <code>join="inner"</code> to keep
+a <code>var</code> at all: on an outer join every column missing from one side
+makes <code>merge="unique"</code> drop the whole column, while on an inner join it
+keeps <code>precursor_mz</code>, <code>mz</code> and <code>mz_index</code> and drops exactly
+<code>precursor_index</code> and <code>precursor_mobility</code> -- anndata finding, on its
+own, which of the four travel between stores. The table carries no
+<code>mobility</code></p>
+</div>
+<p>column: the scan range is how the precursors are <em>separated</em>, not what
+they are <em>indexed by</em>, and a table matching both discriminators would tell
+a consumer nothing about which kind it holds.</p>
+<p>The split is a filter on the scan number, never an estimate, so Thyra
+refuses rather than approximates and says at <code>INFO</code> which condition
+failed. They are asked in this order, which is by how much each says about
+the acquisition rather than by how cheap it is to check:</p>
+<table>
+<thead>
+<tr>
+<th>refused when</th>
+<th>because</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>the schedule varies from pixel to pixel</td>
+<td>the precursors are not a global feature axis</td>
+</tr>
+<tr>
+<td>the source records no precursor for the fragment frames</td>
+<td>there is nothing to separate them by</td>
+</tr>
+<tr>
+<td>there is one precursor</td>
+<td>the summed table already <em>is</em> its fragment spectrum</td>
+</tr>
+<tr>
+<td>the isolation windows overlap, or carry no scan range</td>
+<td>they cannot be separated by mobility alone</td>
+</tr>
+</tbody>
+</table>
+<p>The order matters because the last three are facts about what the source
+recorded and the first is a fact about the method. A diaPASEF file puts its
+windows in <code>DiaFrameMsMsWindows</code>, which the TDF reader does not read, so it
+arrives with no windows at all <em>and</em> survey frames mixed in among the
+fragment ones -- and reporting a count first would describe a run isolating
+32 precursors as one isolating a single precursor. A data-dependent
+(DDA) PASEF run trips the first row and the last at once -- one measured
+holds 14,952 distinct windows, each in one to eight frames, overlapping on
+the ramp -- and the varying schedule is the design while the overlap is
+only its consequence.</p>
+<p>A refusal writes no sibling table, is never an exception and never touches
+the summed table. Bruker TDF is the only source that reports what the
+split needs today.</p>
+<p><strong><code>uns["demultiplexed_current"]</code></strong> records how much of the summed table's
+ion current the split holds: <code>current_ratio</code> over the whole image, and
+<code>current_ratio_pixel_min</code> / <code>_max</code> across pixels. Under the default
+<code>--tdf-spectrum scan_sum</code> it is exactly <code>1.0</code>.
+Under an explicit <code>--tdf-spectrum vendor_centroid</code> it is <strong>above</strong> 1 -- the
+vendor peak picker drops the index bins it assigns to no peak while the
+split reads raw scans,
+which on a real acquisition is about 1.5% overall and up to 1.14x on a
+single pixel. The two tables genuinely do not add up in that mode, and this
+block is where the store says so. It compares the two tables' per-pixel
+ion current, one bounded pass over each.</p>
+<div class="admonition note">
+<p class="admonition-title">Deliberate limits</p>
+<ul>
+<li><strong>The feature axis depends on the data.</strong> Only <code>(precursor, bin)</code>
+  pairs that carry signal become columns, so two datasets converted
+  with identical settings get different <code>var</code>. The alternative is
+  precursors x the whole mass axis -- millions of empty columns -- and
+  is not worth it. Align on the intrinsic columns, as above.</li>
+<li><strong>The fragment axis is borrowed from MS1.</strong> It is the summed table's
+  mass axis, so a resampling grid chosen for intact ions also sets
+  fragment resolution. That coupling is what makes <code>mz_index</code>
+  meaningful and the conservation check exact; it is a choice, not a
+  necessity.</li>
+<li><strong>Do not select precursors by float equality.</strong> Look the precursor up
+  once and slice on <code>precursor_index</code> within that store.</li>
+<li><strong>Built out of core, like the mobility grid.</strong> Two passes over the
+  precursor spectra -- count the occupied <code>(precursor, bin)</code> pairs,
+  then scatter into memmapped CSC arrays in a scratch directory next to
+  the output (<code>.thyra_msms_*</code>) -- so memory is the count array
+  (<code>4 bytes x precursors x mass bins</code>) plus one frame, whatever the
+  pixel count. Those are the summed table's own two passes, fed from
+  the same frame read, so the split adds no read of the source. The largest acquisition this has run on is still 713
+  pixels with 15 precursors; <code>var</code> grows with the occupied pairs.</li>
+<li><strong>Two acquired schedules have been tested, from one instrument.</strong> 15
+  precursors in positive mode and 13 in negative sharing none of them,
+  over four images of 487 to 713 pixels, plus a third shape made by
+  deleting one window from a copy, the single-precursor refusal on a
+  real <code>MsMsType = 2</code> acquisition and the varying-schedule refusal on
+  real DDA-PASEF (see
+  <a href="../design-decisions/#d2-the-msms-table-is-written-by-default-when-the-schedule-qualifies">Design Decisions</a>).
+  All four come from the same instrument and method family, and none
+  exceeds 713 pixels.</li>
+<li><strong>A label means the same bin only when the axes match.</strong> <code>mz_index</code>
+  is a column of <em>that store's</em> mass axis, and the default resampling
+  grid follows the acquisition range, so two runs share an axis only
+  when they share that range -- 599,146 bins to m/z 1000 against
+  635,610 to 1200 on the two measured. Check <code>var["mz"]</code>, not just the
+  label, before reading across stores.</li>
+</ul>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Relation to other MS/MS imaging representations</p>
+<p>The open formats solve this at the raw layer by never merging: an
+imzML or mzML spectrum carries its own precursor, and mzPeak links a
+spectrum row to a precursor table by index. The chimera is created by
+the analysis layer's one-spectrum-per-pixel model, so this table is
+that per-spectrum precursor reference translated onto a feature axis.</p>
+<p>Feature-based workflows (MZmine's SIMSEF, for instance) instead attach
+one representative MS2 spectrum to each MS1 feature, which identifies
+the feature but keeps no spatial information about the fragments. This
+table is the stronger form of the same data: summing a precursor's
+block collapses it to that per-precursor ion image, while keeping the
+block gives every fragment its own image -- which is what a spatial
+co-localisation check between a fragment and its precursor needs.</p>
+<p>The <code>(precursor_mz, mz)</code> feature-pair layout is Thyra's own; no open
+analysis-layer convention for per-precursor ion images exists to
+follow. The vocabulary is not: <code>ms_level</code>, the isolation window terms
+and the activation terms are PSI-MS, spelled as mzPeak spells them.</p>
+</div>
+<hr />
+<h2 id="pixel-coordinates">Pixel Coordinates<a class="headerlink" href="#pixel-coordinates" title="Permanent link">&para;</a></h2>
+<p>Coordinates are stored in the table's <code>.obs</code> DataFrame:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nb">print</span><span class="p">(</span><span class="s2">"Columns:"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">msi_table</span><span class="o">.</span><span class="n">obs</span><span class="o">.</span><span class="n">columns</span><span class="p">))</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>x</code>, <code>y</code></td>
+<td>int</td>
+<td>Raster grid coordinates (pixel indices)</td>
+</tr>
+<tr>
+<td><code>spatial_x</code>, <code>spatial_y</code></td>
+<td>float</td>
+<td>Physical coordinates in micrometers</td>
+</tr>
+<tr>
+<td><code>region</code></td>
+<td>categorical</td>
+<td>SpatialData region key</td>
+</tr>
+<tr>
+<td><code>region_number</code></td>
+<td>int</td>
+<td>Acquisition region number</td>
+</tr>
+</tbody>
+</table>
+<p>The DataFrame index is <code>instance_id</code> (a string pixel identifier).</p>
+<hr />
+<h2 id="regions">Regions<a class="headerlink" href="#regions" title="Permanent link">&para;</a></h2>
+<p>Datasets acquired from multi-region slides (e.g., multiple tissue sections on
+one slide) store region information in two places.</p>
+<h3 id="per-pixel-region-number">Per-Pixel Region Number<a class="headerlink" href="#per-pixel-region-number" title="Permanent link">&para;</a></h3>
+<p>The <code>region_number</code> column in <code>.obs</code> indicates which acquisition region each
+pixel belongs to:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nb">print</span><span class="p">(</span><span class="n">msi_table</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="s2">"region_number"</span><span class="p">]</span><span class="o">.</span><span class="n">value_counts</span><span class="p">())</span>
+</code></pre></div>
+<h3 id="region-summary">Region Summary<a class="headerlink" href="#region-summary" title="Permanent link">&para;</a></h3>
+<p>Region metadata -- including human-readable names from the instrument's Area
+definitions -- is stored as JSON in <code>uns</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="n">regions</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">msi_table</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">"regions"</span><span class="p">])</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">regions</span><span class="p">:</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Region </span><span class="si">{</span><span class="n">r</span><span class="p">[</span><span class="s1">'region_number'</span><span class="p">]</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'name'</span><span class="p">,</span><span class="w"> </span><span class="s1">'unnamed'</span><span class="p">)</span><span class="si">}</span><span class="s2"> "</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>          <span class="sa">f</span><span class="s2">"(</span><span class="si">{</span><span class="n">r</span><span class="p">[</span><span class="s1">'n_spectra'</span><span class="p">]</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> spectra)"</span><span class="p">)</span>
+</code></pre></div>
+<p>Example output:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>Region 0: E2506 (104,321 spectra)
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>Region 1: Matrix (1,053 spectra)
+</code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title">Filtering by region</p>
+<p>To work with only one region:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">mask</span> <span class="o">=</span> <span class="n">msi_table</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="s2">"region_number"</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="n">tissue_table</span> <span class="o">=</span> <span class="n">msi_table</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+</code></pre></div></p>
+</div>
+<hr />
+<h2 id="3d-data-z-slices">3D Data / Z-Slices<a class="headerlink" href="#3d-data-z-slices" title="Permanent link">&para;</a></h2>
+<p>By default, Thyra stores each z-slice as a separate table and TIC image:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">slice_tables</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">sdata</span><span class="o">.</span><span class="n">tables</span> <span class="k">if</span> <span class="s2">"_z"</span> <span class="ow">in</span> <span class="n">k</span><span class="p">)</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">slice_tables</span><span class="p">)</span><span class="si">}</span><span class="s2"> z-slices: </span><span class="si">{</span><span class="n">slice_tables</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="c1"># Access a single slice</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="n">z0_table</span> <span class="o">=</span> <span class="n">sdata</span><span class="o">.</span><span class="n">tables</span><span class="p">[</span><span class="n">slice_tables</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Slice 0: </span><span class="si">{</span><span class="n">z0_table</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="3d-mode-handle-3d">3D mode (<code>--handle-3d</code>)<a class="headerlink" href="#3d-mode-handle-3d" title="Permanent link">&para;</a></h3>
+<p>When converted with <code>--handle-3d</code>, all slices are combined into a single table
+with <code>x</code>, <code>y</code>, <code>z</code> coordinates in <code>.obs</code>, and the per-slice TIC images are
+replaced by one <strong>volume</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Key</th>
+<th>Shape / dims</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Table</strong></td>
+<td><code>{dataset_id}</code></td>
+<td>pixels x m/z, with <code>x</code>, <code>y</code>, <code>z</code> and <code>spatial_x</code>, <code>spatial_y</code>, <code>spatial_z</code> in <code>.obs</code></td>
+</tr>
+<tr>
+<td><strong>TIC volume</strong></td>
+<td><code>{dataset_id}_tic</code></td>
+<td><code>(c, z, y, x)</code> — one channel, then the three spatial axes</td>
+</tr>
+<tr>
+<td><strong>Pixel Shapes</strong></td>
+<td><code>{dataset_id}_pixels</code></td>
+<td>GeoDataFrame of 2D pixel boxes — one per pixel per slice, no z</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="n">volume</span> <span class="o">=</span> <span class="n">sdata</span><span class="o">.</span><span class="n">images</span><span class="p">[</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">dataset_id</span><span class="si">}</span><span class="s2">_tic"</span><span class="p">]</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">volume</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span>                      <span class="c1"># ('c', 'z', 'y', 'x')</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">volume</span><span class="o">.</span><span class="n">data</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>        <span class="c1"># drop channel -&gt; (z, y, x)</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="n">plt</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">arr</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">cmap</span><span class="o">=</span><span class="s2">"viridis"</span><span class="p">)</span>      <span class="c1"># first slice</span>
+</code></pre></div>
+<p>Note the axis order is <code>(c, z, y, x)</code>, not <code>(c, x, y, z)</code>: index a slice with
+<code>arr[z]</code>, not <code>arr[..., z]</code>.</p>
+<h4 id="voxel-depth">Voxel depth<a class="headerlink" href="#voxel-depth" title="Permanent link">&para;</a></h4>
+<p>The volume carries a <code>Scale</code> to <code>"global"</code> built from <strong>two</strong> distinct numbers —
+the in-plane pixel pitch for <code>x</code> and <code>y</code>, and the slice spacing for <code>z</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">spatialdata.transformations</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_transformation</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="n">axes</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"c"</span><span class="p">,</span> <span class="s2">"z"</span><span class="p">,</span> <span class="s2">"y"</span><span class="p">,</span> <span class="s2">"x"</span><span class="p">)</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="n">matrix</span> <span class="o">=</span> <span class="n">get_transformation</span><span class="p">(</span><span class="n">volume</span><span class="p">,</span> <span class="n">to_coordinate_system</span><span class="o">=</span><span class="s2">"global"</span><span class="p">)</span><span class="o">.</span><span class="n">to_affine_matrix</span><span class="p">(</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>    <span class="n">input_axes</span><span class="o">=</span><span class="n">axes</span><span class="p">,</span> <span class="n">output_axes</span><span class="o">=</span><span class="n">axes</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="p">)</span>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="nb">print</span><span class="p">(</span><span class="n">matrix</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>   <span class="c1"># um per slice step</span>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">matrix</span><span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>   <span class="c1"># um per pixel in x</span>
+</code></pre></div>
+<p>The slice spacing comes from <code>--z-spacing</code>. When nothing supplies one, Thyra
+falls back to the in-plane pitch and records that it did:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="n">cs</span> <span class="o">=</span> <span class="n">sdata</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"coordinate_systems"</span><span class="p">][</span><span class="s2">"global"</span><span class="p">]</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="n">cs</span><span class="p">[</span><span class="s2">"z_spacing_um"</span><span class="p">]</span>      <span class="c1"># the number used</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="n">cs</span><span class="p">[</span><span class="s2">"z_spacing_source"</span><span class="p">]</span>  <span class="c1"># "manual" | "automatic" | "assumed_isotropic"</span>
+</code></pre></div>
+<p>A <code>z_spacing_source</code> of <code>"assumed_isotropic"</code> means <strong>nobody supplied a spacing
+and the in-plane pitch was reused</strong> — treat the depth as unknown rather than as
+measured. Section thickness is set by the microtome, not by the raster, so the
+two agree only by coincidence. See
+<a href="../cli/#set-z-spacing-whenever-you-know-it"><code>--z-spacing</code></a>.</p>
+<div class="admonition note">
+<p class="admonition-title">These keys only appear on volumes</p>
+<p><code>z_spacing_um</code> and <code>z_spacing_source</code> are written only when the store
+actually holds a multi-slice volume. Their absence is how a 2D store says it
+has no z axis, which is why <code>convention_version</code> stays at <code>1</code> — the keys are
+additive and a consumer that never reads 3D sees the schema it already
+knows.</p>
+</div>
+<h4 id="pixel-footprints-in-a-volume">Pixel footprints in a volume<a class="headerlink" href="#pixel-footprints-in-a-volume" title="Permanent link">&para;</a></h4>
+<p>The pixel polygons are <strong>two-dimensional</strong>, on every route including a volume.
+A slice's depth is not on the geometry; read it from the table's <code>spatial_z</code>,
+or from the volume's own <code>Scale</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="n">shapes</span> <span class="o">=</span> <span class="n">sdata</span><span class="o">.</span><span class="n">shapes</span><span class="p">[</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">dataset_id</span><span class="si">}</span><span class="s2">_pixels"</span><span class="p">]</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">shapes</span><span class="o">.</span><span class="n">geometry</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">has_z</span><span class="p">)</span>    <span class="c1"># False, on 2D and 3D alike</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="c1"># Depth per pixel, in micrometres, from the table:</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="n">obs</span> <span class="o">=</span> <span class="n">sdata</span><span class="o">.</span><span class="n">tables</span><span class="p">[</span><span class="n">dataset_id</span><span class="p">]</span><span class="o">.</span><span class="n">obs</span>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">obs</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">"0"</span><span class="p">,</span> <span class="s2">"spatial_z"</span><span class="p">])</span>        <span class="c1"># z_index * z_spacing_um</span>
+</code></pre></div>
+<p>Every footprint therefore resolves to the correct place in x and y, and carries
+no claim about z. Overlaying the shapes on the volume is exact in-plane and
+needs <code>spatial_z</code> to pick the slice.</p>
+<div class="admonition note">
+<p class="admonition-title">Why the footprints are flat</p>
+<p>They briefly were not. v3.2.0 made them <code>POLYGON Z</code> at the depth of their
+slice, which is geometrically the more honest representation, and it broke
+<code>spatialdata</code>'s spatial queries: a bounding box enclosing an entire test
+volume returned 26 of 30 footprints and 26 of 30 table rows, with no
+exception and no warning. A z-restricted query returned the same rows
+whether z was inside or far outside the data.</p>
+<p><code>spatialdata</code> asks for 2D here: <code>ShapesModel.validate</code> warns that a
+3-dimensional geometry column "could led to unexpected behaviors" and names
+<code>force_2d()</code> as the remedy. 3D shapes are not on its roadmap
+(<a href="https://github.com/scverse/spatialdata/issues/109">#109</a> has been idle
+since June 2023), and the live 2.5D discussion
+(<a href="https://github.com/scverse/spatialdata/issues/961">#961</a>) covers points,
+images and labels only. Serial-section MSI is 2.5D in that sense.</p>
+<p>So this is a deliberate trade: a documented gap in z, in exchange for
+queries that return every pixel. Expressing the depth as a <code>Translation</code> on
+flat geometry does not close the gap either — the transform silently drops
+z. Both negative results are pinned by
+<code>tests/unit/converters/test_3d_pixel_shapes_z.py</code>, which will fail if
+upstream changes. See <a href="../coordinate-systems/">Coordinate systems</a>.</p>
+</div>
+<hr />
+<h2 id="dataset-metadata">Dataset Metadata<a class="headerlink" href="#dataset-metadata" title="Permanent link">&para;</a></h2>
+<h3 id="global-metadata">Global metadata<a class="headerlink" href="#global-metadata" title="Permanent link">&para;</a></h3>
+<p>Stored in <code>sdata.attrs</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="k">if</span> <span class="s2">"pixel_size_x_um"</span> <span class="ow">in</span> <span class="n">sdata</span><span class="o">.</span><span class="n">attrs</span><span class="p">:</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>    <span class="nb">print</span><span class="p">(</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>        <span class="sa">f</span><span class="s2">"Pixel size: </span><span class="si">{</span><span class="n">sdata</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">'pixel_size_x_um'</span><span class="p">]</span><span class="si">}</span><span class="s2"> x "</span>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a>        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">sdata</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">'pixel_size_y_um'</span><span class="p">]</span><span class="si">}</span><span class="s2"> um"</span>
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>    <span class="p">)</span>
+<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a>
+<a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a><span class="k">if</span> <span class="s2">"msi_dataset_info"</span> <span class="ow">in</span> <span class="n">sdata</span><span class="o">.</span><span class="n">attrs</span><span class="p">:</span>
+<a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a>    <span class="n">info</span> <span class="o">=</span> <span class="n">sdata</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"msi_dataset_info"</span><span class="p">]</span>
+<a id="__codelineno-24-9" name="__codelineno-24-9" href="#__codelineno-24-9"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Dimensions: </span><span class="si">{</span><span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'dimensions_xyz'</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-24-10" name="__codelineno-24-10" href="#__codelineno-24-10"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Non-empty pixels: </span><span class="si">{</span><span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'non_empty_pixels'</span><span class="p">)</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="table-level-metadata">Table-level metadata<a class="headerlink" href="#table-level-metadata" title="Permanent link">&para;</a></h3>
+<p>Instrument info, acquisition parameters, and resampling config are in
+<code>msi_table.uns</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="nb">print</span><span class="p">(</span><span class="s2">"uns keys:"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">msi_table</span><span class="o">.</span><span class="n">uns</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+</code></pre></div>
+<h3 id="provenance">Provenance<a class="headerlink" href="#provenance" title="Permanent link">&para;</a></h3>
+<p><code>uns["essential_metadata"]</code> records what the store was made from, and how
+the source was interpreted. It is the only place a converted dataset says
+where it came from, so it is written the same way by every converter path:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="n">provenance</span> <span class="o">=</span> <span class="n">msi_table</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">"essential_metadata"</span><span class="p">]</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">provenance</span><span class="p">[</span><span class="s2">"source_path"</span><span class="p">])</span>     <span class="c1"># the file this was converted from</span>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">provenance</span><span class="p">[</span><span class="s2">"dimensions"</span><span class="p">])</span>      <span class="c1"># source grid, [x, y, z]</span>
+<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">provenance</span><span class="p">[</span><span class="s2">"mass_range"</span><span class="p">])</span>      <span class="c1"># SOURCE m/z range, not the target axis</span>
+<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">provenance</span><span class="p">[</span><span class="s2">"spectrum_type"</span><span class="p">])</span>   <span class="c1"># "centroid spectrum" / "profile spectrum"</span>
+<a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a><span class="nb">print</span><span class="p">(</span><span class="n">provenance</span><span class="p">[</span><span class="s2">"thyra_version"</span><span class="p">])</span>   <span class="c1"># the Thyra that wrote the store</span>
+</code></pre></div>
+<p><code>mass_range</code> describes the source, not the resampled axis -- for the axis
+the data actually sits on, read <code>msi_table.var["mz"]</code>.</p>
+<p>Beside it, when the source format provides them:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>format_specific</code></td>
+<td>Vendor metadata (imzML file mode and UUID, FlexImaging areas, teaching points)</td>
+</tr>
+<tr>
+<td><code>acquisition_params</code></td>
+<td>Polarity, scan range, laser settings</td>
+</tr>
+<tr>
+<td><code>instrument_info</code></td>
+<td>Instrument model, serial, software version</td>
+</tr>
+<tr>
+<td><code>raw_metadata</code></td>
+<td>Source metadata as read, for round-trip fidelity</td>
+</tr>
+<tr>
+<td><code>regions</code></td>
+<td>Acquisition region summary, as a JSON string (see <a href="#regions">Regions</a>)</td>
+</tr>
+</tbody>
+</table>
+<p>A section the source format has nothing for is omitted rather than written
+empty, so <code>"instrument_info" not in uns</code> means "this format does not carry
+it" rather than "it was carried and lost".</p>
+<p>Within these sections, a list that holds anything besides numbers -- imzML
+<code>cvParams</code> (a list of objects) is the main case -- is stored as a <strong>JSON
+string</strong>; decode it with <code>json.loads</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="n">cv_params</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">msi_table</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">"raw_metadata"</span><span class="p">][</span><span class="s2">"cvParams"</span><span class="p">])</span>
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">cv_params</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>   <span class="c1"># {"name": ..., "accession": "MS:...", "value": ...}</span>
+</code></pre></div>
+<p>Purely numeric lists stay plain arrays. The JSON encoding exists because
+AnnData/zarr cannot round-trip such lists faithfully (a list of objects
+comes back as <code>repr</code> strings), and because a stored list of strings reads
+back as a numpy string array -- and on numpy 2.1-2.2, deepcopying such an
+array segfaults the Python process outright
+(<a href="https://github.com/numpy/numpy/issues/28609">numpy#28609</a>, fixed in
+numpy 2.3). Every table copy deepcopies <code>uns</code> (<code>AnnData.copy</code>,
+<code>spatialdata.polygon_query</code>, joins), so a store carrying one would crash
+those readers with no traceback.</p>
+<div class="admonition note">
+<p class="admonition-title">Stores written by Thyra &lt;= 3.7.2 on numpy 2.1-2.2</p>
+<p>Older stores still carry <code>cvParams</code> as a string array. On numpy
+2.1.x-2.2.x (Google Colab ships 2.1.3), convert those arrays to
+plain lists right after loading, before anything copies the table:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">thyra.metadata</span><span class="w"> </span><span class="kn">import</span> <span class="n">sanitize_uns_string_arrays</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="k">for</span> <span class="n">table</span> <span class="ow">in</span> <span class="n">sdata</span><span class="o">.</span><span class="n">tables</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>    <span class="n">table</span><span class="o">.</span><span class="n">uns</span> <span class="o">=</span> <span class="n">sanitize_uns_string_arrays</span><span class="p">(</span><span class="n">table</span><span class="o">.</span><span class="n">uns</span><span class="p">)</span>
+</code></pre></div>
+<p>Environments on numpy 2.0 or &gt;= 2.3 are unaffected either way.</p>
+</div>
+<h3 id="structured-metadata-unsmsi_metadata">Structured metadata: <code>uns["msi_metadata"]</code><a class="headerlink" href="#structured-metadata-unsmsi_metadata" title="Permanent link">&para;</a></h3>
+<p>The sections above preserve what the source said, in the source's own
+vocabulary. <code>uns["msi_metadata"]</code> is the normalised, versioned view of the
+same facts: fixed field names, PSI-MS/NCBITaxon/UBERON/CHEBI ontology
+terms, and a schema a validator can hold it to.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="n">block</span> <span class="o">=</span> <span class="n">msi_table</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">"msi_metadata"</span><span class="p">]</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">block</span><span class="p">[</span><span class="s2">"schema_version"</span><span class="p">])</span>                    <span class="c1"># "0.1.0"</span>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">block</span><span class="p">[</span><span class="s2">"ms_analysis"</span><span class="p">][</span><span class="s2">"pixel_size_um"</span><span class="p">])</span>      <span class="c1"># {"x": 20.0, "y": 20.0}</span>
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">block</span><span class="p">[</span><span class="s2">"provenance"</span><span class="p">][</span><span class="s2">"source_format"</span><span class="p">])</span>       <span class="c1"># "imzml"</span>
+</code></pre></div>
+<p>It is written by every converter path identically, validated by
+<code>thyra validate</code>, and exported to a METASPACE submission by
+<code>thyra export-metaspace</code>. See <a href="../metadata-schema/">Metadata Schema</a> for
+the full contract.</p>
+<hr />
+<h2 id="recipes">Recipes<a class="headerlink" href="#recipes" title="Permanent link">&para;</a></h2>
+<h3 id="side-by-side-tic-and-ion-image">Side-by-side TIC and ion image<a class="headerlink" href="#side-by-side-tic-and-ion-image" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="n">fig</span><span class="p">,</span> <span class="p">(</span><span class="n">ax1</span><span class="p">,</span> <span class="n">ax2</span><span class="p">)</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="mi">5</span><span class="p">))</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="n">ax1</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">tic_array</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s2">"viridis"</span><span class="p">)</span>
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="n">ax1</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">"TIC"</span><span class="p">)</span>
+<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a>
+<a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a><span class="n">target_mz</span> <span class="o">=</span> <span class="mf">760.5</span>
+<a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a><span class="n">mz_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">mz_values</span> <span class="o">-</span> <span class="n">target_mz</span><span class="p">)</span><span class="o">.</span><span class="n">argmin</span><span class="p">()</span>
+<a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a><span class="n">ion_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">X</span><span class="p">[:,</span> <span class="n">mz_idx</span><span class="p">]</span><span class="o">.</span><span class="n">toarray</span><span class="p">())</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+<a id="__codelineno-30-9" name="__codelineno-30-9" href="#__codelineno-30-9"></a>
+<a id="__codelineno-30-10" name="__codelineno-30-10" href="#__codelineno-30-10"></a><span class="n">x_coords</span> <span class="o">=</span> <span class="n">msi_table</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="s2">"x"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<a id="__codelineno-30-11" name="__codelineno-30-11" href="#__codelineno-30-11"></a><span class="n">y_coords</span> <span class="o">=</span> <span class="n">msi_table</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="s2">"y"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<a id="__codelineno-30-12" name="__codelineno-30-12" href="#__codelineno-30-12"></a><span class="n">ion_image</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">y_coords</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">x_coords</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+<a id="__codelineno-30-13" name="__codelineno-30-13" href="#__codelineno-30-13"></a><span class="n">ion_image</span><span class="p">[</span><span class="n">y_coords</span><span class="p">,</span> <span class="n">x_coords</span><span class="p">]</span> <span class="o">=</span> <span class="n">ion_values</span>
+<a id="__codelineno-30-14" name="__codelineno-30-14" href="#__codelineno-30-14"></a>
+<a id="__codelineno-30-15" name="__codelineno-30-15" href="#__codelineno-30-15"></a><span class="n">ax2</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">ion_image</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s2">"hot"</span><span class="p">)</span>
+<a id="__codelineno-30-16" name="__codelineno-30-16" href="#__codelineno-30-16"></a><span class="n">ax2</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="sa">f</span><span class="s2">"m/z </span><span class="si">{</span><span class="n">mz_values</span><span class="p">[</span><span class="n">mz_idx</span><span class="p">]</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-30-17" name="__codelineno-30-17" href="#__codelineno-30-17"></a>
+<a id="__codelineno-30-18" name="__codelineno-30-18" href="#__codelineno-30-18"></a><span class="n">plt</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+<a id="__codelineno-30-19" name="__codelineno-30-19" href="#__codelineno-30-19"></a><span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</code></pre></div>
+<h3 id="export-ion-image-to-tiff">Export ion image to TIFF<a class="headerlink" href="#export-ion-image-to-tiff" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">PIL</span><span class="w"> </span><span class="kn">import</span> <span class="n">Image</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a><span class="c1"># Normalise to 0-255</span>
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a><span class="n">ion_norm</span> <span class="o">=</span> <span class="p">(</span><span class="n">ion_image</span> <span class="o">/</span> <span class="n">ion_image</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">*</span> <span class="mi">255</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+<a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a><span class="n">Image</span><span class="o">.</span><span class="n">fromarray</span><span class="p">(</span><span class="n">ion_norm</span><span class="p">)</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"ion_image.tiff"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="top-n-most-intense-mz-values">Top N most intense m/z values<a class="headerlink" href="#top-n-most-intense-mz-values" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="n">avg</span> <span class="o">=</span> <span class="n">msi_table</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">"average_spectrum"</span><span class="p">]</span>
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="n">top_n</span> <span class="o">=</span> <span class="mi">10</span>
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a><span class="n">top_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">avg</span><span class="p">)[</span><span class="o">-</span><span class="n">top_n</span><span class="p">:][::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a>
+<a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a><span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">top_indices</span><span class="p">:</span>
+<a id="__codelineno-32-6" name="__codelineno-32-6" href="#__codelineno-32-6"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  m/z </span><span class="si">{</span><span class="n">mz_values</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">  avg intensity </span><span class="si">{</span><span class="n">avg</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="summary-statistics">Summary statistics<a class="headerlink" href="#summary-statistics" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Dataset: </span><span class="si">{</span><span class="n">table_key</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  Pixels: </span><span class="si">{</span><span class="n">msi_table</span><span class="o">.</span><span class="n">n_obs</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  m/z bins: </span><span class="si">{</span><span class="n">msi_table</span><span class="o">.</span><span class="n">n_vars</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  m/z range: </span><span class="si">{</span><span class="n">mz_values</span><span class="o">.</span><span class="n">min</span><span class="p">()</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> -- </span><span class="si">{</span><span class="n">mz_values</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  Sparsity: </span><span class="si">{</span><span class="p">(</span><span class="mi">1</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">X</span><span class="o">.</span><span class="n">nnz</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">100</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">%"</span><span class="p">)</span>
+<a id="__codelineno-33-6" name="__codelineno-33-6" href="#__codelineno-33-6"></a><span class="k">if</span> <span class="s2">"pixel_size_x_um"</span> <span class="ow">in</span> <span class="n">sdata</span><span class="o">.</span><span class="n">attrs</span><span class="p">:</span>
+<a id="__codelineno-33-7" name="__codelineno-33-7" href="#__codelineno-33-7"></a>    <span class="nb">print</span><span class="p">(</span>
+<a id="__codelineno-33-8" name="__codelineno-33-8" href="#__codelineno-33-8"></a>        <span class="sa">f</span><span class="s2">"  Pixel size: </span><span class="si">{</span><span class="n">sdata</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">'pixel_size_x_um'</span><span class="p">]</span><span class="si">}</span><span class="s2"> x "</span>
+<a id="__codelineno-33-9" name="__codelineno-33-9" href="#__codelineno-33-9"></a>        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">sdata</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s1">'pixel_size_y_um'</span><span class="p">]</span><span class="si">}</span><span class="s2"> um"</span>
+<a id="__codelineno-33-10" name="__codelineno-33-10" href="#__codelineno-33-10"></a>    <span class="p">)</span>
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Read both axes</p>
+<p><code>pixel_size_x_um</code> and <code>pixel_size_y_um</code> are equal on a square raster,
+which is nearly every acquisition -- but a DESI method with
+<code>DesiXStep != DesiYStep</code> is not square, and the store carries the real
+pitch on each axis in every block that states one: these attrs,
+<code>coordinate_systems.global</code> and its <code>raster_to_global_affine</code>, the image
+and shapes transforms, <code>obs["spatial_x"]</code>/<code>["spatial_y"]</code>, the pixel
+footprints and <code>msi_metadata.ms_analysis.pixel_size_um</code>. Reading only
+<code>pixel_size_x_um</code> as <em>the</em> pixel size renders such a raster squashed by
+y/x. Pass <code>--pixel-size</code> to declare the raster square instead, which
+applies one number to both axes.</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.instant.progress", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

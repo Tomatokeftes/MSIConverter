@@ -1,0 +1,2842 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A modern Python library for converting Mass Spectrometry Imaging data into SpatialData/Zarr format">
+      
+      
+      
+        <link rel="canonical" href="https://M4i-Imaging-Mass-Spectrometry.github.io/thyra/cli/">
+      
+      
+        <link rel="prev" href="../supported-formats/">
+      
+      
+        <link rel="next" href="../resampling/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>CLI Reference - Thyra</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#cli-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Thyra" class="md-header__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Thyra
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              CLI Reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../explore-the-output/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Explore the Output
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../supported-formats/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Supported Formats
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../resampling/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Resampling
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../output-format/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Output Format
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../metadata-schema/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metadata Schema
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../coordinate-systems/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Coordinate Systems
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../imzml-parser-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  imzML Parser Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../phi-tofsims-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PHI ToF-SIMS Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../solarix-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  solariX Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../design-decisions/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Design Decisions
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../api/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../code-of-conduct/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Code of Conduct
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Thyra" class="md-nav__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    Thyra
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../explore-the-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Explore the Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#exit-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exit status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conversion
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Conversion">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logging
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Logging">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ion-mobility-grid-advanced" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ion Mobility Grid (Advanced)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ion Mobility Grid (Advanced)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resampling-advanced" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resampling (Advanced)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resampling (Advanced)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#which-of-these-you-actually-need" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which of these you actually need
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#imzml-specific" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        imzML-Specific
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="imzML-Specific">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bruker-specific" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bruker-Specific
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bruker-Specific">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#waters-specific" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Waters-Specific
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Waters-Specific">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Other">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-z-spacing-whenever-you-know-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set --z-spacing whenever you know it
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metadata-subcommands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata subcommands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Metadata subcommands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#thyra-validate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        thyra validate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#thyra-export-metaspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        thyra export-metaspace
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-other-two-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The other two commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The other two commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#thyra-example-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        thyra-example-data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#thyra-check-ontology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        thyra-check-ontology
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resampling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resampling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../output-format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coordinate-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinate Systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imzml-parser-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    imzML Parser Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../phi-tofsims-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PHI ToF-SIMS Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../solarix-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solariX Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-of-conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#exit-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exit status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conversion
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Conversion">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#logging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logging
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Logging">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ion-mobility-grid-advanced" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ion Mobility Grid (Advanced)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ion Mobility Grid (Advanced)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resampling-advanced" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resampling (Advanced)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resampling (Advanced)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#which-of-these-you-actually-need" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which of these you actually need
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#imzml-specific" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        imzML-Specific
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="imzML-Specific">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bruker-specific" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bruker-Specific
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bruker-Specific">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#waters-specific" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Waters-Specific
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Waters-Specific">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Other">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#examples_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-z-spacing-whenever-you-know-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set --z-spacing whenever you know it
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metadata-subcommands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata subcommands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Metadata subcommands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#thyra-validate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        thyra validate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#thyra-export-metaspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        thyra export-metaspace
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-other-two-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The other two commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The other two commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#thyra-example-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        thyra-example-data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#thyra-check-ontology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        thyra-check-ontology
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="cli-reference">CLI Reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h1>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>thyra [OPTIONS] INPUT OUTPUT
+</code></pre></div>
+<p><strong>INPUT</strong> -- Path to input MSI file or directory (<code>.imzML</code>, <code>.d</code>, <code>.raw</code>)</p>
+<p><strong>OUTPUT</strong> -- Path for output <code>.zarr</code> directory</p>
+<p><code>thyra</code> also has two metadata subcommands, <code>thyra validate</code> and
+<code>thyra export-metaspace</code> -- see <a href="#metadata-subcommands">Metadata subcommands</a>.</p>
+<div class="admonition tip">
+<p class="admonition-title">Grouped help</p>
+<p><code>thyra --help</code> lists every option under a category heading, in this order:
+Conversion, Logging, Ion mobility grid (advanced), Resampling (advanced),
+imzML-specific, Bruker-specific, Waters-specific, Other, and a General
+section holding <code>--version</code> and <code>--help</code>. The sections on this page follow
+the same order. The one page section with no matching help group is
+<a href="#performance">Performance</a>, which now records only options that were
+removed or that select nothing -- there is nothing left there for <code>--help</code>
+to list.</p>
+</div>
+<hr />
+<h2 id="exit-status">Exit status<a class="headerlink" href="#exit-status" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>Conversion completed and the output store was written</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td>Conversion failed</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>Invalid command-line arguments (click usage error)</td>
+</tr>
+</tbody>
+</table>
+<p>A refusal Thyra planned for -- a <code>.d</code> directory with no analysis files, a
+Waters raster whose stage never moved, a mass range with no extent, a source
+in which no pixel carries a spectrum -- prints its message once at <code>ERROR</code> and
+nothing else. The traceback behind it is kept for <code>-v DEBUG</code>, and a traceback
+at <code>ERROR</code> now means an exception nobody planned for, which is worth reporting
+as a bug.</p>
+<p>A conversion that would store <strong>nothing</strong> is one of those failures. If no
+position carries a spectrum -- an all-zero source, every spectrum empty,
+every peak outside a narrowed <code>--resample-min-mz</code>/<code>--resample-max-mz</code> range,
+every coordinate off the declared grid -- the conversion exits <code>1</code> and
+leaves no store, rather than exiting <code>0</code> with a zarr holding no table. The
+message names which of those happened. A multi-slice source with <em>some</em>
+empty planes is not affected: those planes are dropped with a warning and
+the rest of the store is written.</p>
+<p>A failed conversion renames any partially written store to
+<code>&lt;output&gt;.zarr.failed</code>, so the output path stays free for a retry and an
+incomplete store is never left where a finished one is expected. An
+interrupted conversion is a failed one: <code>Ctrl-C</code> exits <code>1</code> and takes the
+same path, so the partial store is moved aside and the scratch directories
+the conversion built (<code>.thyra_summed_*</code> and its siblings, next to the
+output) are removed rather than left behind. This makes <code>thyra</code> safe to
+chain in a shell script or CI job:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>python<span class="w"> </span>analyse.py<span class="w"> </span>output.zarr
+</code></pre></div>
+<hr />
+<h2 id="conversion">Conversion<a class="headerlink" href="#conversion" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--format [spatialdata]</code></td>
+<td><code>spatialdata</code></td>
+<td>Output format</td>
+</tr>
+<tr>
+<td><code>--pixel-size FLOAT</code></td>
+<td>auto-detect</td>
+<td>Pixel size in micrometers, applied to <strong>both</strong> axes. Auto-detection keeps the source's own x and y pitch separately, so an anisotropic raster stays anisotropic; passing this declares it square</td>
+</tr>
+<tr>
+<td><code>--region TEXT</code></td>
+<td>all</td>
+<td>Convert one region, by <code>.mis</code> Area Name or by DB RegionNumber. Checked against the dataset's own region list whether it has one region or several; a value that matches no Area Name is read as a RegionNumber, and says so</td>
+</tr>
+<tr>
+<td><code>--resample / --no-resample</code></td>
+<td>enabled</td>
+<td>Mass axis resampling</td>
+</tr>
+<tr>
+<td><code>--include-optical / --no-optical</code></td>
+<td>enabled</td>
+<td>Include optical images in output</td>
+</tr>
+<tr>
+<td><code>--mobility-table / --no-mobility-table</code></td>
+<td>enabled</td>
+<td>Also write the mobility-resolved sibling table when the source shares one set of (m/z, ion mobility) features across pixels (see <a href="../output-format/#ion-mobility">Output Format</a>)</td>
+</tr>
+<tr>
+<td><code>--mobility-heatmap / --no-mobility-heatmap</code></td>
+<td>enabled</td>
+<td>When the source has an ion mobility dimension, store the mean mass-mobility frame on the summed table as <code>uns["mobility_heatmap"]</code>; on a Bruker TDF it is fed from the summed table's own passes, on other sources it is one extra pass (see <a href="../output-format/#ion-mobility">Output Format</a>)</td>
+</tr>
+<tr>
+<td><code>--mobility-grid / --no-mobility-grid</code></td>
+<td><strong>disabled</strong></td>
+<td>When the source carries ion mobility per pixel rather than as a shared feature list (Bruker TDF), bin the point cloud onto a common mobility grid and write the same mobility-resolved sibling table; fed from the summed table's own two passes (no extra read of the source), a much larger table built out of core so any acquisition fits; its marginal reproduces the summed table exactly under the default <code>--tdf-spectrum scan_sum</code> (see <a href="../output-format/#the-same-table-from-a-common-mobility-grid">Output Format</a>)</td>
+</tr>
+<tr>
+<td><code>--msms-table / --no-msms-table</code></td>
+<td>enabled</td>
+<td>When the source isolates several precursors per pixel in disjoint mobility slices (Bruker PASEF), also write them split apart as a demultiplexed sibling table; fed from the summed table's own two passes (no extra read of the source); the split adds back up to the summed table exactly under the default <code>--tdf-spectrum scan_sum</code> (see <a href="../output-format/#demultiplexed-msms-table">Output Format</a>)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Basic conversion -- format, pixel size, and resampling all auto-detected</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Specify pixel size manually (when metadata is unavailable)</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span>--pixel-size<span class="w"> </span><span class="m">25</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># Convert one region, named the way flexImaging names it</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>thyra<span class="w"> </span>data.d<span class="w"> </span>output.zarr<span class="w"> </span>--region<span class="w"> </span><span class="m">03</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># Or by the database's own region number</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>thyra<span class="w"> </span>data.d<span class="w"> </span>output.zarr<span class="w"> </span>--region<span class="w"> </span><span class="m">0</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="c1"># Skip optical images</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>thyra<span class="w"> </span>data.d<span class="w"> </span>output.zarr<span class="w"> </span>--no-optical
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Naming a region</p>
+<p><code>--region</code> takes a string, and the value is matched against the <code>.mis</code>
+Area Names first. Only if nothing matches is it parsed as a DB
+RegionNumber, which starts at 0. Passing something that is neither is an
+error that lists the area names it did find.</p>
+<p>The two numbering schemes do not have to agree, which is exactly why area
+<code>'03'</code> need not be RegionNumber 3. For a multi-region dataset Thyra logs
+the whole mapping at <code>INFO</code> during startup -- a header line
+<code>Region mapping (DB RegionNumber -&gt; .mis Area Name):</code> followed by one
+<code>RegionNumber &lt;n&gt; -&gt; Area '&lt;name&gt;' (&lt;n&gt; frames)</code> line per region -- so a
+plain run already tells you which is which before you pick one.</p>
+<p>Use <code>-v DEBUG</code> for the per-region spectrum counts as well.</p>
+</div>
+<hr />
+<h2 id="logging">Logging<a class="headerlink" href="#logging" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-v, --log-level LEVEL</code></td>
+<td><code>INFO</code></td>
+<td>Logging level: <code>DEBUG</code>, <code>INFO</code>, <code>WARNING</code>, <code>ERROR</code>, <code>CRITICAL</code></td>
+</tr>
+<tr>
+<td><code>--log-file PATH</code></td>
+<td>none</td>
+<td>Write logs to file</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_1">Examples<a class="headerlink" href="#examples_1" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Verbose output -- shows pixel size detection, resampling config, timing</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span>-v<span class="w"> </span>DEBUG
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Save logs to file for later review</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span>--log-file<span class="w"> </span>conversion.log
+</code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title">Debugging conversions</p>
+<p>When something looks wrong in the output, re-run with <code>-v DEBUG --log-file
+debug.log</code>. The log will contain pixel size detection details, resampling
+parameters, region info, and timing for each step.</p>
+</div>
+<hr />
+<h2 id="ion-mobility-grid-advanced">Ion Mobility Grid (Advanced)<a class="headerlink" href="#ion-mobility-grid-advanced" title="Permanent link">&para;</a></h2>
+<p>These size the grid <code>--mobility-grid</code> bins onto. They do nothing without it,
+and passing one without it is logged at <code>WARNING</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--mobility-bins INTEGER</code></td>
+<td><code>256</code></td>
+<td>Mobility channels the grid divides the range into. At least 1</td>
+</tr>
+<tr>
+<td><code>--mobility-min FLOAT</code></td>
+<td>axis minimum</td>
+<td>Lower edge of the grid, in the axis unit (1/K0 for TIMS). May be zero or negative -- it is a position on an axis, not a quantity -- but must be below <code>--mobility-max</code></td>
+</tr>
+<tr>
+<td><code>--mobility-max FLOAT</code></td>
+<td>axis maximum</td>
+<td>Upper edge of the grid</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_2">Examples<a class="headerlink" href="#examples_2" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># The mobility-resolved table for a TIMS acquisition, at the default</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># 256 channels over the range the acquisition actually used</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>thyra<span class="w"> </span>tims_data.d<span class="w"> </span>output.zarr<span class="w"> </span>--mobility-grid
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># A narrower range at finer resolution, giving up the heatmap alignment</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>thyra<span class="w"> </span>tims_data.d<span class="w"> </span>output.zarr<span class="w"> </span>--mobility-grid<span class="w"> </span>--mobility-bins<span class="w"> </span><span class="m">512</span><span class="w">     </span>--mobility-min<span class="w"> </span><span class="m">1</span>.05<span class="w"> </span>--mobility-max<span class="w"> </span><span class="m">1</span>.25
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">The grid table is built out of core</p>
+<p>Like the summed table, the grid table is built in two passes: the first counts the occupied <code>(m/z bin, channel)</code> cells and
+the second scatters every pixel straight into memmapped CSC arrays in a
+scratch directory next to the output (<code>.thyra_mobility_*</code>, removed once
+the table is written). On a Bruker TDF those are the summed table's own
+two passes: each frame is read once per pass and the read serves the
+summed spectrum, the heatmap, the grid and the MS/MS split alike (see
+<a href="../design-decisions/#d5-one-raw-read-per-frame-per-pass-serves-every-table">Design Decisions</a>). Memory is the count array over the grid's span --
+142 MB on a default-resampled timsTOF axis -- plus one frame, whatever the
+number of pixels; disk is 12 bytes per stored non-zero while the table is
+being built. Measured on a whole 26,087-pixel timsTOF acquisition on a
+40,000-bin axis (7.3M features, 1.59 billion non-zeros, 18 GB of scratch):
+the table's own phases peaked at 3.2 GB of private memory above the
+interpreter's baseline, in the <code>var</code> frame rather than in the matrix.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">A mobility-resolved table wants a coarser mass axis than the default</p>
+<p>The table's features are <code>(m/z bin, mobility channel)</code> pairs, so the mass
+axis' width is multiplied by 256. A default resampled timsTOF axis is
+around 140,000 bins; 200 frames of one measured acquisition filled 3.9
+million of the resulting pairs, and a whole 26,000-pixel acquisition
+occupies 21 million. The table is refused when the <code>var</code> frame those
+pairs make is projected to take more than half of the machine's free
+memory (about 330 bytes per pair, measured), and warned about past a
+quarter. Reach for <code>--resample-bins</code> when the whole image is wanted
+resolved on a smaller machine.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">The defaults are an alignment, and the grid changes the TIC</p>
+<p>256 channels over the mobility axis' own value range is exactly what
+<code>uns["mobility_heatmap"]</code> bins over, so a box drawn on the heatmap
+selects grid channels by integer index. <code>--mobility-bins</code>,
+<code>--mobility-min</code> and <code>--mobility-max</code> each give that up.</p>
+<p>The grid is built from raw scans, and its marginal over channels
+reproduces the summed table only when that table was built the same
+way, which the default <code>--tdf-spectrum scan_sum</code> is. An explicit
+<code>vendor_centroid</code> is kept, said at <code>WARNING</code>, and the mismatch is
+recorded in the grid's <code>uns</code> block.</p>
+</div>
+<hr />
+<h2 id="resampling-advanced">Resampling (Advanced)<a class="headerlink" href="#resampling-advanced" title="Permanent link">&para;</a></h2>
+<p>These options control how spectra are mapped onto a common mass axis. In most
+cases the defaults work well -- Thyra auto-detects the instrument type and
+chooses an appropriate method, axis law and bin width. <strong>Start with no flags</strong>;
+the table after this one says when each option is actually needed.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--resample-method METHOD</code></td>
+<td><code>auto</code></td>
+<td><code>auto</code>, <code>nearest_neighbor</code>, or <code>tic_preserving</code>. A value that contradicts the detector's own choice is applied, and warned about</td>
+</tr>
+<tr>
+<td><code>--mass-axis-type TYPE</code></td>
+<td><code>auto</code></td>
+<td><code>auto</code>, <code>constant</code>, <code>linear_tof</code>, <code>reflector_tof</code>, <code>tof</code>, <code>orbitrap</code>, <code>fticr</code></td>
+</tr>
+<tr>
+<td><code>--tof-law A B</code></td>
+<td>auto</td>
+<td>Coefficients of the <code>tof</code> width law <code>sqrt(A m + B m^2)</code> mDa (<code>A</code> in mDa<sup>2</sup>/Da, <code>B</code> dimensionless). Only for an instrument Thyra has no pair for; an MRT centroid run or a timsTOF supplies its own</td>
+</tr>
+<tr>
+<td><code>--resample-bins INTEGER</code></td>
+<td>auto</td>
+<td>Number of bins (mutually exclusive with <code>--resample-width-at-mz</code>)</td>
+</tr>
+<tr>
+<td><code>--resample-min-mz FLOAT</code></td>
+<td>auto</td>
+<td>Minimum m/z value. Inclusive: a peak sitting exactly on it lands in the first bin</td>
+</tr>
+<tr>
+<td><code>--resample-max-mz FLOAT</code></td>
+<td>auto</td>
+<td>Maximum m/z value. Inclusive, as above; peaks outside the range are dropped, never folded into the edge bins</td>
+</tr>
+<tr>
+<td><code>--resample-width-at-mz FLOAT</code></td>
+<td>auto</td>
+<td>Mass width in Da at reference m/z for physics-based binning</td>
+</tr>
+<tr>
+<td><code>--resample-reference-mz FLOAT</code></td>
+<td><code>1000.0</code></td>
+<td>Reference m/z for width specification</td>
+</tr>
+<tr>
+<td><code>--resample-gap-tolerance FLOAT</code></td>
+<td>none</td>
+<td><code>tic_preserving</code> only: discard target bins farther than this many Da from any measured m/z, instead of interpolating across the gap</td>
+</tr>
+</tbody>
+</table>
+<h3 id="which-of-these-you-actually-need">Which of these you actually need<a class="headerlink" href="#which-of-these-you-actually-need" title="Permanent link">&para;</a></h3>
+<p>Every instrument Thyra recognises gets a measured default: the method, the
+axis law and the bin width all come from the detector that matched the file
+(see <a href="../resampling/#which-detector-wins">Resampling</a>). The flags exist for the
+cases the defaults cannot know about.</p>
+<table>
+<thead>
+<tr>
+<th>You want to</th>
+<th>Use</th>
+<th>Leave alone</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Convert a file from a recognised instrument</td>
+<td>nothing</td>
+<td>everything here</td>
+</tr>
+<tr>
+<td>A finer or coarser axis than the default</td>
+<td><code>--resample-width-at-mz</code> (with <code>--resample-reference-mz</code>)</td>
+<td><code>--mass-axis-type</code>: the law stays the instrument's, only the width moves</td>
+</tr>
+<tr>
+<td>A fixed number of bins instead of a width</td>
+<td><code>--resample-bins</code></td>
+<td></td>
+</tr>
+<tr>
+<td>A narrower mass window</td>
+<td><code>--resample-min-mz</code> / <code>--resample-max-mz</code></td>
+<td></td>
+</tr>
+<tr>
+<td>An axis law for an instrument Thyra could not identify</td>
+<td><code>--mass-axis-type</code></td>
+<td>Note that a manual axis type also resets the width to the axis type's own default (5 mDa at m/z 1000; 17 mDa at 300 for <code>linear_tof</code>), since a width tuned for one law is not a default for another</td>
+</tr>
+<tr>
+<td>The measured <code>tof</code> law on a timsTOF, or on a new TOF you have fitted</td>
+<td><code>--mass-axis-type tof</code>, plus <code>--tof-law A B</code> only when Thyra has no pair for the instrument</td>
+<td></td>
+</tr>
+<tr>
+<td>Force interpolation on data Thyra would bin</td>
+<td><code>--resample-method tic_preserving</code>, and <code>--resample-gap-tolerance</code> if the m/z arrays are sparse</td>
+<td>The conversion warns when the method contradicts the detector, and names the tolerance flag. Take it seriously: on a sparse source, interpolation without a tolerance filled the axis and stored 1,400x the non-zeros</td>
+</tr>
+<tr>
+<td>The raw m/z values, no common axis</td>
+<td><code>--no-resample</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>The bin width of a <code>tof</code> axis is set the same way as any other: the width at
+the reference m/z. Thyra derives the bins per peak width from it (3 by
+default), so there is no separate flag for that quantity.</p>
+<div class="admonition info">
+<p class="admonition-title">Choosing a resampling method</p>
+<ul>
+<li><strong><code>nearest_neighbor</code></strong> -- Each target bin takes the nearest original m/z
+  value. Correct for <strong>centroid</strong> data, where peaks are discrete masses.</li>
+<li><strong><code>tic_preserving</code></strong> -- Linear interpolation, rescaled so the total ion
+  current is unchanged. Correct for <strong>profile</strong> data on a target axis
+  whose bin widths scale the same way the source points are spaced.</li>
+<li><strong><code>auto</code></strong> -- Picks <code>tic_preserving</code> only where the source grid's law
+  is known and the target axis follows it: Bruker flexImaging / Rapiflex
+  data (uniform in m/z, onto <code>constant</code>) and the Waters profile trace
+  (uniform in flight time, onto <code>linear_tof</code>). Everything else gets
+  <code>nearest_neighbor</code> -- including profile data from an instrument Thyra
+  cannot identify, because the interpolating method is only exact when
+  the two axis laws match. See
+  <a href="../resampling/#which-detector-wins">Resampling</a> for the full decision
+  table.</li>
+</ul>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">A very fine axis is refused before it is built</p>
+<p>Everything a conversion holds per m/z bin -- the axis, the <code>var</code> frame
+with its index, the running intensity totals, the pre-scan's count array
+and anndata's copies during the write -- comes to about 200 bytes,
+measured. So the bin count is checked against the machine's free memory
+before the axis is materialised: past half of it the conversion is
+refused with the projection and the free memory printed, and past a
+quarter it is attempted with a <code>WARNING</code>. On an 8 GB machine that is
+around 21 million bins. <code>--resample-bins</code> and a small
+<code>--resample-width-at-mz</code> are the two ways to ask for more than that; a
+wide-range source at a fine width reaches it without either.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Choosing a mass axis type</p>
+<p>The axis type determines how bin widths scale with m/z:</p>
+<ul>
+<li><strong><code>constant</code></strong> -- Uniform bin width (Da). Suitable for MALDI-TOF in linear mode.</li>
+<li><strong><code>linear_tof</code></strong> -- Width scales as sqrt(m/z). Matches TOF resolution.</li>
+<li><strong><code>reflector_tof</code></strong> -- Width scales linearly with m/z (constant relative resolution). Matches reflector TOF.</li>
+<li><strong><code>tof</code></strong> -- Width follows a measured peak-width law <code>sqrt(A m + B m^2)</code>, of which the two above are the limits. See <a href="../resampling/#the-two-term-tof-law">the two-term TOF law</a>.</li>
+<li><strong><code>orbitrap</code></strong> -- Width scales as m/z^(3/2). Matches Orbitrap resolution.</li>
+<li><strong><code>fticr</code></strong> -- Width scales as m/z^2. Matches FTICR resolution.</li>
+<li><strong><code>auto</code></strong> -- Detected from instrument metadata.</li>
+</ul>
+</div>
+<h3 id="examples_3">Examples<a class="headerlink" href="#examples_3" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Physics-based resampling for Orbitrap data</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span>--resample-method<span class="w"> </span>tic_preserving<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span>--mass-axis-type<span class="w"> </span>orbitrap
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1"># Fixed number of bins</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span>--resample-bins<span class="w"> </span><span class="m">50000</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="c1"># Restrict mass range</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span>--resample-min-mz<span class="w"> </span><span class="m">100</span><span class="w"> </span>--resample-max-mz<span class="w"> </span><span class="m">1000</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="c1"># Specify bin width at a reference m/z (physics-based)</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="w">    </span>--resample-width-at-mz<span class="w"> </span><span class="m">0</span>.01<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="w">    </span>--resample-reference-mz<span class="w"> </span><span class="m">500</span>
+</code></pre></div>
+<hr />
+<h2 id="performance">Performance<a class="headerlink" href="#performance" title="Permanent link">&para;</a></h2>
+<p>No options. Every conversion streams and every table is CSC, so the two
+flags that used to live here select nothing.</p>
+<div class="admonition info">
+<p class="admonition-title">Every conversion streams</p>
+<p>There is no streaming mode to switch on: every conversion makes two passes
+over the source -- one to count, one to scatter straight into memory-mapped
+CSC arrays -- and writes each table from those arrays, so the matrix is
+never held in RAM whatever the dataset's size. The in-memory converter
+that used to handle small datasets was folded into this one in v3.23 (see
+<a href="../design-decisions/#d11-one-converter">Design Decisions</a>); on a small
+file the second pass costs about a third of the run.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title"><code>--streaming</code> is deprecated</p>
+<p><code>--streaming auto|true|false</code> used to pick the converter. It is still
+accepted so existing scripts keep running, but it selects nothing.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title"><code>--sparse-format</code> was removed in v3.22</p>
+<p>Every table is CSC, so there is nothing left to choose and the option is
+gone rather than kept as a no-op. It was only ever honoured by the
+in-memory converters, which made its meaning depend on <code>--streaming</code>; on
+the streaming route a <code>csr</code> request spent a release silently producing
+CSC.</p>
+<p>CSC is the layout an ion image reads down -- one m/z across all pixels is
+one contiguous column. If you want the row-wise layout instead, take it
+after reading rather than at write time:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">X</span> <span class="o">=</span> <span class="n">sdata</span><span class="o">.</span><span class="n">tables</span><span class="p">[</span><span class="s2">"dataset_z0"</span><span class="p">]</span><span class="o">.</span><span class="n">X</span><span class="o">.</span><span class="n">tocsr</span><span class="p">()</span>
+</code></pre></div>
+</div>
+<div class="admonition warning">
+<p class="admonition-title"><code>--optimize-chunks</code> is deprecated</p>
+<p>The flag is still accepted, so existing scripts keep running, but it does
+nothing and now logs a warning. It will be dropped in a future release.</p>
+<p>It never did anything: the post-hoc pass it invoked was written for a dense
+4-D image layout and could not read the sparse table the converter actually
+writes, so it failed on every conversion and the CLI still exited 0. Chunk
+sizes are chosen at write time instead.</p>
+</div>
+<hr />
+<h2 id="imzml-specific">imzML-Specific<a class="headerlink" href="#imzml-specific" title="Permanent link">&para;</a></h2>
+<div class="admonition note">
+<p class="admonition-title">A vendor option on another vendor's file is logged as ignored</p>
+<p>Each of the format-specific groups below -- imzML, Bruker, Waters -- and
+the ion mobility grid options are accepted on any input and do nothing on
+a source they do not apply to. Passing one on another format is now
+logged at <code>WARNING</code>, naming the option and both formats, so a script that
+has been carrying a dead flag says so on the next run rather than
+producing a store byte-identical to the plain one in silence.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--spectrum-type TYPE</code></td>
+<td><code>auto</code></td>
+<td><code>auto</code>, <code>profile</code>, or <code>centroid</code> -- declare the spectrum representation instead of detecting it. imzML only</td>
+</tr>
+</tbody>
+</table>
+<p>By default Thyra reads the representation the file declares (<code>MS:1000127</code>
+centroid / <code>MS:1000128</code> profile), wherever in the document it is written, and
+only guesses when the file declares neither. <code>--spectrum-type</code> overrides all of
+that.</p>
+<p>SCiLS Lab exposes the same control as <code>--rep_type PROFILE|CENTROID</code> (2026b User
+Guide, p.81).</p>
+<div class="admonition warning">
+<p class="admonition-title">This changes stored values</p>
+<p>The representation is not just a label: it feeds instrument detection,
+which picks the mass-axis type, which decides the bin spacing. Overriding
+it changes the axis a dataset is resampled onto, and therefore the numbers
+written to the store. It changes nothing for anyone who does not pass it.</p>
+<p>Use it when a file declares the wrong thing -- that does happen. When the
+override contradicts an explicit declaration Thyra logs a warning naming
+both values; run with <code>-v INFO</code> to see it, and check the result.</p>
+</div>
+<h3 id="examples_4">Examples<a class="headerlink" href="#examples_4" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># The file says centroid but it is really profile data</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span>--spectrum-type<span class="w"> </span>profile
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># See what detection would have concluded before overriding it</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span>-v<span class="w"> </span>INFO
+</code></pre></div>
+<hr />
+<h2 id="bruker-specific">Bruker-Specific<a class="headerlink" href="#bruker-specific" title="Permanent link">&para;</a></h2>
+<p>Grouped here because this is where they are reached for. All but
+<code>--intensity-threshold</code> only apply when converting Bruker <code>.d</code> directories;
+that one is honoured by every reader, and is here because continuous-mode
+Bruker data is what usually needs it.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--use-recalibrated / --no-recalibrated</code></td>
+<td>enabled</td>
+<td>Use recalibrated m/z state. Bruker <code>.d</code> only</td>
+</tr>
+<tr>
+<td><code>--interactive-calibration</code></td>
+<td>off</td>
+<td>Display available calibration states. Bruker <code>.d</code> only</td>
+</tr>
+<tr>
+<td><code>--intensity-threshold FLOAT</code></td>
+<td>none</td>
+<td>Minimum intensity filter. <strong>Every format</strong></td>
+</tr>
+<tr>
+<td><code>--tdf-spectrum {scan_sum,vendor_centroid}</code></td>
+<td><code>scan_sum</code></td>
+<td>How a TDF (TIMS) frame's mobility scans collapse into one spectrum per pixel. Bruker TDF only</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_5">Examples<a class="headerlink" href="#examples_5" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Use raw (non-recalibrated) m/z values</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>thyra<span class="w"> </span>data.d<span class="w"> </span>output.zarr<span class="w"> </span>--no-recalibrated
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Interactively choose calibration state</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>thyra<span class="w"> </span>data.d<span class="w"> </span>output.zarr<span class="w"> </span>--interactive-calibration
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># Filter low-intensity signals (useful for continuous-mode Bruker data)</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>thyra<span class="w"> </span>data.d<span class="w"> </span>output.zarr<span class="w"> </span>--intensity-threshold<span class="w"> </span><span class="m">100</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="c1"># TIMS data: reproduce Bruker's centroided spectrum instead of the raw scan sum</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>thyra<span class="w"> </span>tims_data.d<span class="w"> </span>output.zarr<span class="w"> </span>--tdf-spectrum<span class="w"> </span>vendor_centroid
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">TDF: the mobility ramp is summed, not sliced</p>
+<p>Every scan of a TIMS frame is read. <code>scan_sum</code> (default) sums every scan
+per digitizer index and keeps all of the ion current, which is also
+Bruker's own per-frame total; <code>vendor_centroid</code> is Bruker's frame-level
+peak picker over the full ramp (parity with TSF line spectra and SCiLS
+Lab), at 87 to 96 percent of the current and a third to two thirds of
+the points. See <a href="../supported-formats/#bruker-timstof">Supported Formats</a>
+and <a href="../design-decisions/#d1-which-spectrum-a-reader-takes">Design Decisions</a>.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Intensity threshold</p>
+<p>The <code>--intensity-threshold</code> option drops all peaks below the given value
+<strong>before</strong> writing to zarr. This reduces file size but is irreversible.
+Use with care -- inspect the data with <code>-v DEBUG</code> first to choose an
+appropriate threshold.</p>
+</div>
+<hr />
+<h2 id="waters-specific">Waters-Specific<a class="headerlink" href="#waters-specific" title="Permanent link">&para;</a></h2>
+<p>This option only applies when converting Waters <code>.raw</code> directories; on any
+other input it is logged as ignored.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--waters-spectrum {centroid,profile}</code></td>
+<td><code>profile</code> on a SELECT SERIES MRT, <code>centroid</code> on every other Waters instrument</td>
+<td>What MassLynx hands back for one pixel: the vendor peak picker, or the sampled trace behind it</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_6">Examples<a class="headerlink" href="#examples_6" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># An MRT run: the profile trace on a linear_tof axis at 1.3 mDa, no flags needed</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>thyra<span class="w"> </span>mrt_run.raw<span class="w"> </span>output.zarr
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># The same run through the vendor peak picker instead (reflector_tof, 2 mDa)</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>thyra<span class="w"> </span>mrt_run.raw<span class="w"> </span>output.zarr<span class="w"> </span>--waters-spectrum<span class="w"> </span>centroid
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># A Synapt run's profile trace; the bin width follows its own digitiser</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>thyra<span class="w"> </span>synapt_run.raw<span class="w"> </span>output.zarr<span class="w"> </span>--waters-spectrum<span class="w"> </span>profile
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">When the profile is worth its size</p>
+<p>MassLynx centroiding reports a single peak wherever the sampled trace has
+two maxima a few mDa apart, and puts it partway between them. On a
+SELECT SERIES MRT brain section, four separate 8-9 mDa doublets between
+m/z 760 and 830 -- including the <sup>13</sup>C<sub>2</sub> isotopologue of
+PC 34:1 [M+K]<sup>+</sup> against PC 34:0 [M+K]<sup>+</sup> -- came back as
+one centroid in 96-100% of the pixels that resolved them, 4-8 ppm from
+either true mass. The profile keeps them apart, for about 3 times the
+store, and is not slower: MassLynx centroids on demand, so a profile read
+skips that work. On a Synapt G2-Si the centroider was found to merge
+nothing the profile resolves, which is why only the MRT defaults to it;
+see <a href="../supported-formats/#waters-masslynx">Supported Formats</a>.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">The other reason to pass <code>profile</code></p>
+<p>A long imaging run outgrows one <code>_FUNC*.DAT</code> file, and MassLynx continues
+it in a new <em>function</em>. It will not centroid the last of them, so a
+centroid conversion leaves that chunk out and logs how many pixels
+(16.6% of one Synapt G1 run) and this flag. Reading the trace converts
+every chunk, because then they all come back the same way -- budget the
+disk for it, since the profile store for that run is estimated at 74 GB
+against 241 MB. See
+<a href="../supported-formats/#which-functions-hold-the-image">Which functions hold the image</a>.</p>
+</div>
+<hr />
+<h2 id="other">Other<a class="headerlink" href="#other" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--dataset-id TEXT</code></td>
+<td><code>msi_dataset</code></td>
+<td>Dataset identifier used in element keys. Letters, digits, underscores, dots and hyphens only, and not <code>.</code>, <code>..</code> or a leading <code>__</code>: it names every element in the store, so SpatialData's naming rule applies to it. Checked before any pass over the source</td>
+</tr>
+<tr>
+<td><code>--handle-3d</code></td>
+<td>off</td>
+<td>Process as 3D volume instead of 2D slices</td>
+</tr>
+<tr>
+<td><code>--z-spacing FLOAT</code></td>
+<td>in-plane pixel size (x)</td>
+<td>Distance between consecutive slices, in um. Only used with <code>--handle-3d</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples_7">Examples<a class="headerlink" href="#examples_7" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Custom dataset ID (affects table and image key names)</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span>--dataset-id<span class="w"> </span>hippocampus
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="c1"># -&gt; table key: hippocampus_z0, TIC key: hippocampus_z0_tic</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="c1"># Combine z-slices into a single 3D table</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>thyra<span class="w"> </span>volume.imzML<span class="w"> </span>output.zarr<span class="w"> </span>--handle-3d
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="c1"># 20 um sections acquired on a 50 um raster</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>thyra<span class="w"> </span>volume.imzML<span class="w"> </span>output.zarr<span class="w"> </span>--handle-3d<span class="w"> </span>--pixel-size<span class="w"> </span><span class="m">50</span><span class="w"> </span>--z-spacing<span class="w"> </span><span class="m">20</span>
+</code></pre></div>
+<h3 id="set-z-spacing-whenever-you-know-it">Set <code>--z-spacing</code> whenever you know it<a class="headerlink" href="#set-z-spacing-whenever-you-know-it" title="Permanent link">&para;</a></h3>
+<p><code>--pixel-size</code> is the <strong>in-plane</strong> raster pitch. It says nothing about how far
+apart consecutive slices are: that distance is set by the microtome that cut the
+sections, not by the stage that rastered them, and the two match only by
+coincidence.</p>
+<p>With no <code>--z-spacing</code>, Thyra reuses the in-plane pitch (the x one, when the
+raster is anisotropic and there is no single in-plane pitch to reuse), warns,
+and records <code>z_spacing_source: "assumed_isotropic"</code> in the store so the guess
+stays distinguishable from a measurement. The volume's voxel values are
+unaffected either way — what is wrong is its depth, so a viewer reading it in micrometres
+renders the stack squashed or stretched along z.</p>
+<p>There is no way to detect this from the data. imzML has no term for slice
+spacing, and 3D MSI acquisitions are frequently non-consecutive sections, so
+the number has to come from whoever cut them.</p>
+<div class="admonition warning">
+<p class="admonition-title">It does nothing without <code>--handle-3d</code></p>
+<p>Without 3D handling each slice is written as its own 2D image and there is
+no z axis to space out. Passing <code>--z-spacing</code> on its own is logged as
+ignored rather than silently accepted.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title"><code>--handle-3d</code> on a single-slice acquisition</p>
+<p>One plane has no slice-to-slice distance, so no <code>z_spacing_um</code> is applied
+or recorded and a <code>--z-spacing</code> given alongside is logged as ignored. The
+store is still written as a volume of one plane, which changes the element
+keys -- the table is <code>{id}</code>, not <code>{id}_z0</code> -- but not the values.</p>
+</div>
+<hr />
+<h2 id="metadata-subcommands">Metadata subcommands<a class="headerlink" href="#metadata-subcommands" title="Permanent link">&para;</a></h2>
+<p>Both take either a converted <code>.zarr</code> store or a standalone metadata
+<code>.json</code> document. Only the metadata block is read, never the intensity
+data, so both are instant on stores of any size. See
+<a href="../metadata-schema/">Metadata Schema</a> for the schema itself.</p>
+<h3 id="thyra-validate"><code>thyra validate</code><a class="headerlink" href="#thyra-validate" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>thyra validate PATH [OPTIONS]
+</code></pre></div>
+<p>Validates the <code>uns["msi_metadata"]</code> block (or a JSON document) against
+the schema: structure, schema version, and ontology terms.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--merge PATH</code></td>
+<td>none</td>
+<td>JSON file overlaid onto the metadata before validation</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>off</td>
+<td>Machine-readable report on stdout instead of text</td>
+</tr>
+</tbody>
+</table>
+<p>Exit status follows the conversion command's convention: <code>0</code> when every
+document conforms (warnings allowed), <code>1</code> otherwise, <code>2</code> for usage
+errors -- so <code>thyra validate</code> can gate a CI pipeline.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>thyra<span class="w"> </span>validate<span class="w"> </span>output.zarr
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>thyra<span class="w"> </span>validate<span class="w"> </span>output.zarr<span class="w"> </span>--merge<span class="w"> </span>sample.json
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>thyra<span class="w"> </span>validate<span class="w"> </span>metadata.json<span class="w"> </span>--json
+</code></pre></div>
+<h3 id="thyra-export-metaspace"><code>thyra export-metaspace</code><a class="headerlink" href="#thyra-export-metaspace" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>thyra export-metaspace PATH [OPTIONS]
+</code></pre></div>
+<p>Writes the <a href="https://metaspace2020.org">METASPACE</a> submission metadata
+JSON for a dataset. Required fields the store cannot know (organism,
+condition, ...) are emitted empty and reported as warnings on stderr;
+supply them with <code>--merge</code> or fill them on the submission form.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--merge PATH</code></td>
+<td>none</td>
+<td>JSON file overlaid onto the metadata before export</td>
+</tr>
+<tr>
+<td><code>--table NAME</code></td>
+<td>the only one</td>
+<td>Table to export when the store has several</td>
+</tr>
+<tr>
+<td><code>-o, --output PATH</code></td>
+<td><code>&lt;input&gt;.metaspace.json</code></td>
+<td>Output file; <code>-</code> for stdout</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>thyra<span class="w"> </span>export-metaspace<span class="w"> </span>output.zarr<span class="w"> </span>--merge<span class="w"> </span>sample.json
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>thyra<span class="w"> </span>export-metaspace<span class="w"> </span>output.zarr<span class="w"> </span>-o<span class="w"> </span>-<span class="w">          </span><span class="c1"># print to stdout</span>
+</code></pre></div>
+<hr />
+<h2 id="the-other-two-commands">The other two commands<a class="headerlink" href="#the-other-two-commands" title="Permanent link">&para;</a></h2>
+<p>Installing Thyra puts three commands on your path, not one.</p>
+<h3 id="thyra-example-data"><code>thyra-example-data</code><a class="headerlink" href="#thyra-example-data" title="Permanent link">&para;</a></h3>
+<p>Writes the small synthetic imzML dataset the <a href="../tutorial/">tutorial</a> uses. No
+download, no vendor SDK.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>thyra-example-data [OUTPUT] [OPTIONS]
+</code></pre></div>
+<p><strong>OUTPUT</strong> -- Path for the <code>.imzML</code> (default:
+<code>example_data/synthetic_brain.imzML</code>). A non-<code>.imzML</code> suffix is replaced.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--pixels-x INTEGER</code></td>
+<td><code>48</code></td>
+<td>Grid width in pixels</td>
+</tr>
+<tr>
+<td><code>--pixels-y INTEGER</code></td>
+<td><code>36</code></td>
+<td>Grid height in pixels</td>
+</tr>
+<tr>
+<td><code>--pixel-size FLOAT</code></td>
+<td><code>25.0</code></td>
+<td>Pixel size in micrometers written to the metadata</td>
+</tr>
+<tr>
+<td><code>--mz-bins INTEGER</code></td>
+<td><code>4000</code></td>
+<td>Number of points on the m/z axis</td>
+</tr>
+<tr>
+<td><code>--seed INTEGER</code></td>
+<td><code>0</code></td>
+<td>Random seed</td>
+</tr>
+<tr>
+<td><code>--verbose</code></td>
+<td>off</td>
+<td>Verbose output</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1"># The tutorial's dataset: 48 x 36 pixels, 4,000 m/z points, seed 0</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>thyra-example-data<span class="w"> </span>example_data/synthetic_brain.imzML
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="c1"># A larger phantom on a coarser axis</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>thyra-example-data<span class="w"> </span>big.imzML<span class="w"> </span>--pixels-x<span class="w"> </span><span class="m">200</span><span class="w"> </span>--pixels-y<span class="w"> </span><span class="m">150</span><span class="w"> </span>--mz-bins<span class="w"> </span><span class="m">2000</span>
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title"><code>--seed</code> is what makes the tutorial reproducible</p>
+<p>Generation is deterministic given the seed, so the default <code>--seed 0</code>
+produces byte-identical data on every machine -- which is why the
+tutorial can print exact numbers and expect yours to match. Change the
+seed and the numbers change with it.</p>
+</div>
+<h3 id="thyra-check-ontology"><code>thyra-check-ontology</code><a class="headerlink" href="#thyra-check-ontology" title="Permanent link">&para;</a></h3>
+<p>Validates the CV (controlled vocabulary) terms in an imzML file against
+Thyra's ontology cache, and reports any it does not recognise.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>thyra-check-ontology INPUT [OPTIONS]
+</code></pre></div>
+<p><strong>INPUT</strong> -- An <code>.imzML</code> file, or a directory to check every file in.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--output PATH</code></td>
+<td>none</td>
+<td>Save results as JSON instead of printing them</td>
+</tr>
+<tr>
+<td><code>--verbose</code></td>
+<td>off</td>
+<td>Verbose output, including the per-file summary</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># Check one file</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>thyra-check-ontology<span class="w"> </span>sample.imzML
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="c1"># Check a whole directory and keep the report</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>thyra-check-ontology<span class="w"> </span>data/<span class="w"> </span>--output<span class="w"> </span>ontology_report.json
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.instant.progress", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

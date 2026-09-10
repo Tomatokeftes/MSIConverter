@@ -1,0 +1,2113 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A modern Python library for converting Mass Spectrometry Imaging data into SpatialData/Zarr format">
+      
+      
+      
+        <link rel="canonical" href="https://M4i-Imaging-Mass-Spectrometry.github.io/thyra/phi-tofsims-notes/">
+      
+      
+        <link rel="prev" href="../imzml-parser-notes/">
+      
+      
+        <link rel="next" href="../solarix-notes/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>PHI ToF-SIMS Notes - Thyra</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#phi-tof-sims-notes" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Thyra" class="md-header__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Thyra
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              PHI ToF-SIMS Notes
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../explore-the-output/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Explore the Output
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../supported-formats/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Supported Formats
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../cli/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../resampling/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Resampling
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../output-format/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Output Format
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../metadata-schema/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metadata Schema
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../coordinate-systems/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Coordinate Systems
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../imzml-parser-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  imzML Parser Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PHI ToF-SIMS Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../solarix-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  solariX Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../design-decisions/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Design Decisions
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../api/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../code-of-conduct/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Code of Conduct
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Thyra" class="md-nav__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    Thyra
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../explore-the-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Explore the Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resampling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resampling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../output-format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coordinate-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinate Systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imzml-parser-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    imzML Parser Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PHI ToF-SIMS Notes
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PHI ToF-SIMS Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#file-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File layout
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="File layout">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#blocks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blocks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Events
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mass-calibration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mass calibration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Mass calibration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-header-calibration-may-be-stale" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The header calibration may be stale
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-real-calibration-is-appended-to-the-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The real calibration is appended to the file
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-time-axis-and-why-it-is-binned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The time axis, and why it is binned
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The time axis, and why it is binned">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-binning-costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What binning costs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resampling-onto-a-common-axis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resampling onto a common axis
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resampling onto a common axis">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#choosing-a-bin-width" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing a bin width
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#previewing-without-decoding-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Previewing without decoding events
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pixel-size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pixel size
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#acquisition-characteristics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Acquisition characteristics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-yet-exercised-on-real-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not yet exercised on real data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-exports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related exports
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../solarix-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solariX Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-of-conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#file-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File layout
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="File layout">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#blocks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blocks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Events
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mass-calibration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mass calibration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Mass calibration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-header-calibration-may-be-stale" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The header calibration may be stale
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-real-calibration-is-appended-to-the-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The real calibration is appended to the file
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-time-axis-and-why-it-is-binned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The time axis, and why it is binned
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The time axis, and why it is binned">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-binning-costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What binning costs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resampling-onto-a-common-axis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resampling onto a common axis
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resampling onto a common axis">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#choosing-a-bin-width" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing a bin width
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#previewing-without-decoding-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Previewing without decoding events
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pixel-size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pixel size
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#acquisition-characteristics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Acquisition characteristics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#not-yet-exercised-on-real-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not yet exercised on real data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-exports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related exports
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="phi-tof-sims-notes">PHI ToF-SIMS Notes<a class="headerlink" href="#phi-tof-sims-notes" title="Permanent link">&para;</a></h1>
+<p>Thyra reads PHI (Physical Electronics) SmartSoft-TOF <code>.raw</code> files from nanoTOF
+instruments directly -- there is no vendor SDK for this format, so the layout
+below was established by reverse engineering and verified against the
+instrument software's own exports.</p>
+<p>Everything on this page was measured on a 512x512 negative-mode acquisition,
+148 MB, 18.4 million ion events. The verification is not incidental: PHI's
+software can export a total-ion image and peak images as <code>.bif6</code> files, and
+reconstructing the total ion image from Thyra's parse reproduces the vendor's
+export <strong>bit-exactly</strong> -- 262,144 of 262,144 pixels identical.</p>
+<hr />
+<h2 id="file-layout">File layout<a class="headerlink" href="#file-layout" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>[0, HeaderSize)   ASCII key/value header, CRLF lines, SOFH ... EOFH,
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>                  zero-padded out to the size it declares itself
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>[HeaderSize, EOF) block-structured stream
+</code></pre></div>
+<p>The header is plain text. Top-level entries are <code>Key: value</code>; entries under a
+<code>[Section]</code> marker are <code>Key=value</code>. <code>HeaderSize</code> (20000 in the reference file)
+says where the binary begins.</p>
+<h3 id="blocks">Blocks<a class="headerlink" href="#blocks" title="Permanent link">&para;</a></h3>
+<p>Everything after the header is a chain of blocks, each introduced by a 16-byte
+header:</p>
+<table>
+<thead>
+<tr>
+<th>offset</th>
+<th>type</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>uint16</td>
+<td>block id</td>
+</tr>
+<tr>
+<td>2</td>
+<td>10 bytes</td>
+<td>not interpreted</td>
+</tr>
+<tr>
+<td>12</td>
+<td>uint32</td>
+<td>record size</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>id</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>ion events (8 bytes each); <code>8</code> instead when MS/MS is active</td>
+</tr>
+<tr>
+<td>2</td>
+<td>end of frame, no payload</td>
+</tr>
+<tr>
+<td>6</td>
+<td>mosaic tile origin: two uint32 tile indices</td>
+</tr>
+<tr>
+<td>14</td>
+<td>appended ASCII info block, e.g. a post-hoc recalibration</td>
+</tr>
+<tr>
+<td>0</td>
+<td>end of stream</td>
+</tr>
+</tbody>
+</table>
+<p>Any other id is skipped using its record size. The chain tiles the payload
+exactly, which is what makes it trustworthy: a parse that ends anywhere other
+than end-of-file has gone wrong. In the reference file the walk covers 32,179
+blocks and lands precisely on the final byte, and the 100 end-of-frame blocks
+match the header's <code>NoFrames: 100</code>.</p>
+<h3 id="events">Events<a class="headerlink" href="#events" title="Permanent link">&para;</a></h3>
+<p>Each event is a little-endian uint64:</p>
+<table>
+<thead>
+<tr>
+<th>bits</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>31</td>
+<td>set on a valid event</td>
+</tr>
+<tr>
+<td>0-30</td>
+<td>flight time in picoseconds (27 bits used)</td>
+</tr>
+<tr>
+<td>32-42</td>
+<td>X pixel index</td>
+</tr>
+<tr>
+<td>43-53</td>
+<td>Y pixel index</td>
+</tr>
+<tr>
+<td>58-63</td>
+<td>clear on a valid event</td>
+</tr>
+</tbody>
+</table>
+<p>Records failing that test are dropped. The reference file carries 64,493 of
+them among 18.5 million (0.35%), many holding the <code>0xADADADAD</code> uninitialised
+-heap fill. Excluding them is what makes the reconstruction exact.</p>
+<div class="admonition warning">
+<p class="admonition-title">Do not parse the payload as a flat event array</p>
+<p>Because block headers happen to be 16 bytes -- exactly two event slots --
+and fail the validity test, a naive flat parse <em>appears</em> to work on
+single-tile data. It silently collapses every mosaic tile onto the same
+grid, because it never sees the block 6 tile origins.</p>
+</div>
+<hr />
+<h2 id="mass-calibration">Mass calibration<a class="headerlink" href="#mass-calibration" title="Permanent link">&para;</a></h2>
+<p>The relation is the standard time-of-flight one:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sqrt(m/z) = (Mass/Time) * t_us + MassOffset
+</code></pre></div>
+<h3 id="the-header-calibration-may-be-stale">The header calibration may be stale<a class="headerlink" href="#the-header-calibration-may-be-stale" title="Permanent link">&para;</a></h3>
+<p>The acquisition header carries <code>Mass/Time</code> and <code>MassOffset</code>, and often
+<code>Calibrated: no</code> alongside them. In the reference file those coefficients are
+left over from a positive-mode session -- its <code>Calibration:</code> line lists C+H,
+C₂, C₃, C₄ although the acquisition is negative-mode -- and they place known
+ions about <strong>+3 mDa</strong> high:</p>
+<table>
+<thead>
+<tr>
+<th>ion</th>
+<th>theoretical</th>
+<th>header calibration</th>
+<th>error</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CH₂⁻</td>
+<td>14.01565</td>
+<td>14.01851</td>
+<td>+2.86 mDa</td>
+</tr>
+<tr>
+<td>CN⁻</td>
+<td>26.00307</td>
+<td>26.00676</td>
+<td>+3.69 mDa</td>
+</tr>
+<tr>
+<td>CNO⁻</td>
+<td>41.99799</td>
+<td>42.00144</td>
+<td>+3.45 mDa</td>
+</tr>
+<tr>
+<td>PO₂⁻</td>
+<td>62.96343</td>
+<td>62.96569</td>
+<td>+2.26 mDa</td>
+</tr>
+<tr>
+<td>PO₃⁻</td>
+<td>78.95834</td>
+<td>78.96093</td>
+<td>+2.59 mDa</td>
+</tr>
+</tbody>
+</table>
+<p>Mean +3.02 mDa, standard deviation 0.46 -- a consistent bias, not scatter.</p>
+<h3 id="the-real-calibration-is-appended-to-the-file">The real calibration is appended to the file<a class="headerlink" href="#the-real-calibration-is-appended-to-the-file" title="Permanent link">&para;</a></h3>
+<p>A recalibration performed after acquisition is <strong>not</strong> written back into the
+header. It is appended near the end of the file as a block 14
+<code>AsciiInfoBlock01</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>AppendedBlockType: AsciiInfoBlock01
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>BlockAppendedDate: 07/27/2026 17:29:40
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>Calibration: 4  (26.003016, C+N, 26.003099)  (41.998143, C+N+O, 41.998001) ...
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>Mass/Time: 0.382674
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>MassOffset: -1.598302
+</code></pre></div>
+<p>Thyra prefers it automatically. The difference is not cosmetic -- measured
+against the instrument's own peak-image exports:</p>
+<table>
+<thead>
+<tr>
+<th>calibration</th>
+<th>peak count recovery</th>
+<th>mean correlation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>header</td>
+<td>83.4%</td>
+<td>0.852</td>
+</tr>
+<tr>
+<td>appended</td>
+<td><strong>99.7%</strong></td>
+<td><strong>0.985</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Pass <code>use_appended_calibration=False</code> to reproduce a legacy conversion that
+ignored it. Whichever is used, <code>uns["raw_metadata"]["calibration"]</code> records
+both sets of coefficients, which one was applied, and the appended block
+verbatim.</p>
+<hr />
+<h2 id="the-time-axis-and-why-it-is-binned">The time axis, and why it is binned<a class="headerlink" href="#the-time-axis-and-why-it-is-binned" title="Permanent link">&para;</a></h2>
+<p>The instrument measures <strong>flight time</strong>; m/z is derived. Thyra therefore keeps
+the flight time in <code>var["tof_us"]</code> next to <code>var["mz"]</code>, so the calibration is
+reversible without re-reading the raw file:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">spatialdata</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sd</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">table</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">sd</span><span class="o">.</span><span class="n">read_zarr</span><span class="p">(</span><span class="s2">"out.zarr"</span><span class="p">)</span><span class="o">.</span><span class="n">tables</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">cal</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">"raw_metadata"</span><span class="p">][</span><span class="s2">"calibration"</span><span class="p">]</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">tof</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">var</span><span class="p">[</span><span class="s2">"tof_us"</span><span class="p">]</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">mz</span> <span class="o">=</span> <span class="p">(</span><span class="n">cal</span><span class="p">[</span><span class="s2">"mass_slope_used"</span><span class="p">]</span> <span class="o">*</span> <span class="n">tof</span> <span class="o">+</span> <span class="n">cal</span><span class="p">[</span><span class="s2">"mass_offset_used"</span><span class="p">])</span> <span class="o">**</span> <span class="mi">2</span>   <span class="c1"># == var["mz"]</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="c1"># a corrected calibration needs only the stored times</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="n">better</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.382674</span> <span class="o">*</span> <span class="n">tof</span> <span class="o">-</span> <span class="mf">1.598302</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
+</code></pre></div>
+<h3 id="what-binning-costs">What binning costs<a class="headerlink" href="#what-binning-costs" title="Permanent link">&para;</a></h3>
+<p>Events are binned onto the detector's time-channel grid, whose width the header
+gives as <code>SpecBinSize</code> (0.128 ns = 128 ps). Individual flight times are
+recorded more finely than that -- <code>SpecBinIncr</code> is 1 ps -- and in a
+mass-shift-corrected file they are scattered off the native grid entirely (only
+0.77% of times are multiples of 128 ps).</p>
+<p>So it is fair to ask what binning to 128 ps throws away. Measured across bin
+widths on the reference file, against the vendor's peak images:</p>
+<table>
+<thead>
+<tr>
+<th>bin (ps)</th>
+<th>channels</th>
+<th>non-zeros</th>
+<th>axis size</th>
+<th>peak recovery</th>
+<th>correlation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>116,578,841</td>
+<td>16,712,840</td>
+<td>932.6 MB</td>
+<td>99.7%</td>
+<td>0.9846</td>
+</tr>
+<tr>
+<td>8</td>
+<td>14,572,356</td>
+<td>16,712,840</td>
+<td>116.6 MB</td>
+<td>99.7%</td>
+<td>0.9851</td>
+</tr>
+<tr>
+<td>32</td>
+<td>3,643,089</td>
+<td>16,712,840</td>
+<td>29.1 MB</td>
+<td>99.8%</td>
+<td>0.9869</td>
+</tr>
+<tr>
+<td><strong>128</strong></td>
+<td><strong>910,773</strong></td>
+<td><strong>16,712,608</strong></td>
+<td><strong>7.3 MB</strong></td>
+<td><strong>100.4%</strong></td>
+<td><strong>0.9937</strong></td>
+</tr>
+<tr>
+<td>512</td>
+<td>227,694</td>
+<td>14,453,296</td>
+<td>1.8 MB</td>
+<td>100.8%</td>
+<td>0.9820</td>
+</tr>
+<tr>
+<td>2048</td>
+<td>56,924</td>
+<td>11,935,480</td>
+<td>0.5 MB</td>
+<td>76.3%</td>
+<td>--</td>
+</tr>
+</tbody>
+</table>
+<p>Going from 1 ps to 128 ps merges <strong>232 cells out of 16.7 million</strong> and shrinks
+the mass axis 128-fold. The data is so sparse that events essentially never
+share a bin: 18.4 million events occupy 16.7 million distinct (pixel, channel)
+cells regardless of how fine the bins are.</p>
+<p>Agreement with the vendor does not merely survive the coarsening, it <em>improves</em>
+-- 0.9846 to 0.9937 -- because 128 ps is the grid the instrument software
+itself works on. Finer bins place events at positions that then fall
+differently against peak-window edges.</p>
+<p>Below 128 ps you pay 128x the storage for nothing. Above it you start
+destroying data: at 512 ps a fifth of the cells merge, and at 2048 ps a quarter
+of all counts fall outside their peak windows and some peaks vanish entirely.</p>
+<p>The rounding itself is small against any real peak. Events sit a mean 32 ps
+from their bin centre, worst case 64 ps, which at m/z 79 is 4.7 ppm or
+0.37 mDa -- against a vendor integration window for PO₃⁻ that is 49.3 mDa wide.</p>
+<div class="admonition note">
+<p class="admonition-title">What is not stored</p>
+<p>The output holds the binned axis, not the 18.4 million individual events.
+Per-event data -- for instance the exact arrival time of one ion, or
+re-binning at a width Thyra did not choose -- requires the original <code>.raw</code>.
+Keep it.</p>
+</div>
+<hr />
+<h2 id="resampling-onto-a-common-axis">Resampling onto a common axis<a class="headerlink" href="#resampling-onto-a-common-axis" title="Permanent link">&para;</a></h2>
+<p>Converting a single <code>.raw</code> needs no resampling -- the reader's own axis is the
+output axis. Resampling only comes up when several samples have to share one
+mass axis, and PHI is an awkward case for it.</p>
+<p><code>InstrumentDetectorChain</code> recognises the format (via the
+<code>format_specific["format"]</code> stamp) and answers <strong><code>nearest_neighbor</code> on a
+<code>linear_tof</code> axis</strong>. Both halves matter.</p>
+<p><strong>Why <code>linear_tof</code>.</strong> Channels are laid out at a constant flight-time step, and
+m/z goes as the square of time, so the m/z spacing grows as <code>sqrt(m/z)</code> -- the
+<code>linear_tof</code> law exactly. Measured on the reference file: 9.8e-5 u per channel
+at m/z 1 against 5.0e-4 at m/z 26, a ratio of 5.1 where <code>sqrt(26)</code> is 5.099.</p>
+<p><strong>Why not <code>tic_preserving</code>.</strong> The method interpolates onto the target axis and
+rescales the result back to the source TIC. A PHI pixel is not a profile
+spectrum -- it holds only the channels that happened to fire, a median of 44
+points spread across m/z 0.5--1850. <code>np.interp</code> draws a straight line between
+consecutive points, so every bin in those gaps comes back with an intensity
+nothing measured, and the rescale then normalises the total to the pixel's true
+TIC. <strong>The fabrication is invisible to any total-ion check</strong>: on the reference
+file the total came out at 70.3704 against a true 70.3707, while the average
+spectrum went from 56% hard zeros to 0.1% -- empty regions such as m/z 200
+sitting at 44% of the base peak. Use <code>nearest_neighbor</code>, or if the method is
+forced, set <code>ResamplingConfig.gap_tolerance_da</code> (see
+<a href="../resampling/">Resampling</a> and <code>thyra.resampling.gaps</code>).</p>
+<p>Forcing it no longer happens silently: since v3.24.0 an explicit
+<code>--resample-method</code> that contradicts the detector is warned about, and the
+warning names <code>--resample-gap-tolerance</code>. The detector alone was never enough,
+because a detector only steers <code>auto</code>.</p>
+<p><strong>The first and last channel.</strong> <code>mass_range</code> here is literally
+<code>(axis.mz[0], axis.mz[-1])</code> -- the first and last detector channel, not an
+acquisition setting. A physics axis stores bin centres, which stop half a bin
+short of the range they were built across, so testing membership against the
+axis points discarded both channels in every pixel: the mock fixture stored 12
+counts against the source's 14, on all six resampled variants, where
+<code>--no-resample</code> stored all 14. Since v3.24.0 the test is the declared range, so
+a peak on either bound lands in the edge bin. See
+<a href="../resampling/#what-in-range-means">What "in range" means</a>.</p>
+<h3 id="choosing-a-bin-width">Choosing a bin width<a class="headerlink" href="#choosing-a-bin-width" title="Permanent link">&para;</a></h3>
+<p>The instrument's measured resolving power on the reference file is <strong>R ~ 4,000</strong>
+(median), which is normal for a nanoTOF:</p>
+<table>
+<thead>
+<tr>
+<th>ion</th>
+<th>m/z</th>
+<th>FWHM</th>
+<th>R</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>C⁻</td>
+<td>12.000</td>
+<td>5.02 mDa</td>
+<td>2,393</td>
+</tr>
+<tr>
+<td>CN⁻</td>
+<td>26.003</td>
+<td>5.35 mDa</td>
+<td>4,861</td>
+</tr>
+<tr>
+<td>CNO⁻</td>
+<td>41.998</td>
+<td>8.90 mDa</td>
+<td>4,717</td>
+</tr>
+<tr>
+<td>PO₃⁻</td>
+<td>78.958</td>
+<td>17.12 mDa</td>
+<td>4,613</td>
+</tr>
+</tbody>
+</table>
+<p>Note that this is resolving power, not axis spacing -- the 128 ps grid samples
+each peak 11 to 20 times. A target axis only has to keep a few samples per
+FWHM. A <code>linear_tof</code> axis of 0.01 Da at a reference of m/z 500 gives 189,191
+bins over the full range and 2.3 to 4.3 samples per FWHM, which keeps CN⁻ and
+C₂H₂⁻ -- 12.6 mDa apart, or 1.94 FWHM, genuinely resolved by this instrument --
+5.5 bins apart.</p>
+<div class="admonition danger">
+<p class="admonition-title">A constant 0.1 Da axis destroys this data</p>
+<p>It is roughly 19x the peak width at m/z 26, so CN⁻ and C₂H₂⁻ land in the
+same bin along with everything else between them. Constant-width axes suit
+profile MALDI-TOF; they do not suit ToF-SIMS.</p>
+</div>
+<h2 id="previewing-without-decoding-events">Previewing without decoding events<a class="headerlink" href="#previewing-without-decoding-events" title="Permanent link">&para;</a></h2>
+<p><code>preview_msi</code> promises that no spectra are decoded, and passes
+<code>metadata_only=True</code> to the reader to keep that promise. <code>PhiReader</code> used to
+swallow the kwarg, and the extractor called <code>get_peak_counts_per_pixel()</code>,
+which walks every 8-byte event in the file: 0.16 s for a 16 MB acquisition with
+2.02 M events, 0.14 s for a 14 MB one -- linear, so previewing a multi-gigabyte
+SmartSoft file cost what converting it costs.</p>
+<p><code>PhiReader(path, metadata_only=True)</code> now answers from the acquisition header
+and the block chain alone. Everything header-derived is still exact --
+dimensions, coordinate bounds, m/z range, pixel size, and both detector
+verdicts. What it cannot answer is which pixels carry an event, because that is
+a property of the stream rather than the header, so <code>n_spectra</code> comes back as 0
+with <code>n_spectra_counted=False</code> and <code>preview_msi</code> reports <code>n_pixels</code> as <code>None</code>.</p>
+<p>It is reported as unknown rather than as <code>n_x * n_y</code> on purpose. Every other
+reader's <code>n_spectra</code> counts spectra <em>present</em>, cheaply -- imzML the length of
+its coordinate list, Bruker a SQL count -- and filling this one in with the
+raster size would make the same field mean two different things. The raster is
+already reported, as <code>grid_dims</code>.</p>
+<p>A reader built for conversion is unaffected and still counts every pixel.</p>
+<h2 id="pixel-size">Pixel size<a class="headerlink" href="#pixel-size" title="Permanent link">&para;</a></h2>
+<p>Derived as <code>Raster Size (um) / ImagePixels</code>, which for the reference file is
+512 µm over 512 pixels: <strong>1.00 µm</strong>, matching what the operator selected.</p>
+<p>The header also carries <code>Raster Size Calibration</code> (1.550 here). Thyra
+deliberately does <strong>not</strong> apply it: it trims the scan generator so the raster
+achieves the requested pitch, rather than scaling the field of view.
+Multiplying by it would inflate every coordinate by 55%. Override with
+<code>pixel_size_um=</code> if a future instrument configuration needs it; the source is
+recorded in <code>uns["format_specific"]["pixel_size_source"]</code>.</p>
+<hr />
+<h2 id="acquisition-characteristics">Acquisition characteristics<a class="headerlink" href="#acquisition-characteristics" title="Permanent link">&para;</a></h2>
+<p>Some properties of this format are worth knowing before analysis:</p>
+<ul>
+<li><strong>Extremely sparse.</strong> 18.4 million events over 262,144 pixels and 863,670
+  mass channels is 64 occupied channels per pixel on average -- 0.007% density.
+  Counts are low: the mean pixel holds 70 ions, the maximum 491.</li>
+<li><strong>Frames are summed.</strong> <code>NoFrames: 100</code> means 100 passes over the raster,
+  concatenated in the stream and summed into one image. Thyra does not separate
+  them; there is no per-frame counter in the event record.</li>
+<li><strong>Scatter raster.</strong> <code>Raster Pattern=Scatter</code> means pixels are not acquired in
+  raster order, which is why every event carries its own coordinates.</li>
+<li><strong>Empty pixels are possible.</strong> The reference file has 2 pixels that recorded
+  no ions at all. These are skipped by <code>iter_spectra</code> rather than emitted as
+  empty spectra.</li>
+</ul>
+<h2 id="not-yet-exercised-on-real-data">Not yet exercised on real data<a class="headerlink" href="#not-yet-exercised-on-real-data" title="Permanent link">&para;</a></h2>
+<p>These paths are implemented from the format and covered by tests, but those
+tests build <strong>synthetic</strong> <code>.raw</code> files. No real acquisition using them has been
+through the reader, so treat them as untested rather than working:</p>
+<ul>
+<li><strong>Mosaic acquisitions</strong> (block 6 tile origins). The reference file declares
+  <code>Number Of Tiles X=8, Y=2</code> but has mosaic mode off and contains no block 6,
+  so the grid is sized from the tile origins actually encountered, not from the
+  declared counts.</li>
+<li><strong>MS/MS acquisitions</strong>, where events move to block id 8.</li>
+<li><strong>Depth profiling / 3D.</strong> The reference file has <code>NoSputCycles: 0</code>. Thyra
+  treats PHI data as 2D.</li>
+</ul>
+<p>The gap is data, not effort: each was straightforward to write and is
+impossible to confirm without a file that exercises it. Everything Thyra <em>is</em>
+verified on was verified the same way — against the instrument's own exports —
+and the same would be done here.</p>
+<div class="admonition tip">
+<p class="admonition-title">Have one of these acquisitions?</p>
+<p>Please <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra/issues">open an issue</a>
+if you need one of these supported. A single representative file is enough
+to turn any of them from untested into verified, and a <code>.bif6</code> export
+alongside it makes the check exact. Say which acquisition mode you used and
+roughly how large the file is; the data itself does not have to be attached
+to the issue.</p>
+</div>
+<h2 id="related-exports">Related exports<a class="headerlink" href="#related-exports" title="Permanent link">&para;</a></h2>
+<p>PHI's software writes <code>.bif6</code> sidecar files -- a total-ion image, and a peak
+list of operator-selected mass windows. Thyra does <strong>not</strong> read these, because
+they are derived products: the total ion image is reproducible bit-exactly from
+the <code>.raw</code>, and the peak images to 99.7%. They remain useful as ground truth
+when validating a change to the reader.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.instant.progress", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

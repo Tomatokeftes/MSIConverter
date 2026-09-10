@@ -1,0 +1,2137 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A modern Python library for converting Mass Spectrometry Imaging data into SpatialData/Zarr format">
+      
+      
+      
+        <link rel="canonical" href="https://M4i-Imaging-Mass-Spectrometry.github.io/thyra/metadata-schema/">
+      
+      
+        <link rel="prev" href="../output-format/">
+      
+      
+        <link rel="next" href="../coordinate-systems/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Metadata Schema - Thyra</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#metadata-schema" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Thyra" class="md-header__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Thyra
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Metadata Schema
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../explore-the-output/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Explore the Output
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../supported-formats/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Supported Formats
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../cli/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../resampling/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Resampling
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../output-format/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Output Format
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metadata Schema
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../coordinate-systems/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Coordinate Systems
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../imzml-parser-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  imzML Parser Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../phi-tofsims-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PHI ToF-SIMS Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../solarix-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  solariX Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../design-decisions/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Design Decisions
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../api/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../code-of-conduct/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Code of Conduct
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Thyra" class="md-nav__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    Thyra
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../explore-the-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Explore the Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resampling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resampling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../output-format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Schema
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The document
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The document">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-is-auto-populated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is auto-populated
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#processing-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing history
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#psi-cv-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PSI CV alignment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="PSI CV alignment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#candidate-cv-terms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Candidate CV terms
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linkml-rendering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LinkML rendering
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#var-column-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        var column conventions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#versioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Versioning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#thyra-validate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        thyra validate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#thyra-export-metaspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        thyra export-metaspace
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#completing-the-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Completing the metadata
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python API
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coordinate-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinate Systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imzml-parser-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    imzML Parser Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../phi-tofsims-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PHI ToF-SIMS Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../solarix-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solariX Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-of-conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The document
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The document">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-is-auto-populated" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is auto-populated
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#processing-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing history
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#psi-cv-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PSI CV alignment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="PSI CV alignment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#candidate-cv-terms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Candidate CV terms
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linkml-rendering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LinkML rendering
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#var-column-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        var column conventions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#versioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Versioning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#thyra-validate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        thyra validate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#thyra-export-metaspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        thyra export-metaspace
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#completing-the-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Completing the metadata
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#python-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python API
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="metadata-schema">Metadata Schema<a class="headerlink" href="#metadata-schema" title="Permanent link">&para;</a></h1>
+<p>Every store Thyra writes carries a versioned, ontology-mapped metadata
+block: <code>table.uns["msi_metadata"]</code>. Its base fields mirror the
+<a href="https://metaspace2020.org">METASPACE</a> submission form, so the metadata a
+converted dataset carries is, by construction, what a METASPACE submission
+needs -- filling it costs nothing extra.</p>
+<p>The schema exists because MSI has had no structured metadata convention
+the way other spatial omics modalities do. Vendor files spell the same
+fact many ways, imzML metadata is free-form cvParams, and every pipeline
+re-invents its own dictionary. This block fixes the names, maps them to
+ontologies, and ships a validator.</p>
+<div class="admonition info">
+<p class="admonition-title">Where this sits in the format stack</p>
+<p>Raw/archival exchange is the domain of
+<a href="https://github.com/HUPO-PSI/mzPeak">mzPeak</a> (the HUPO-PSI working
+draft succeeding mzML); SpatialData is the analysis-ready layer and
+Thyra's output. Thyra is the bridge between the two, and this
+schema is the analysis-layer metadata contract: PSI CV-anchored
+like the raw layer, so nothing is lost crossing the bridge. Raw
+ragged spectra stay in the raw layer; they are deliberately not
+part of Thyra's output.</p>
+</div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">spatialdata</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sd</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">sdata</span> <span class="o">=</span> <span class="n">sd</span><span class="o">.</span><span class="n">read_zarr</span><span class="p">(</span><span class="s2">"output.zarr"</span><span class="p">)</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">block</span> <span class="o">=</span> <span class="n">sdata</span><span class="o">.</span><span class="n">tables</span><span class="p">[</span><span class="s2">"msi_dataset_z0"</span><span class="p">]</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">"msi_metadata"</span><span class="p">]</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">block</span><span class="p">[</span><span class="s2">"schema_version"</span><span class="p">])</span>                       <span class="c1"># "0.5.0"</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="nb">print</span><span class="p">(</span><span class="n">block</span><span class="p">[</span><span class="s2">"ms_analysis"</span><span class="p">][</span><span class="s2">"pixel_size_um"</span><span class="p">])</span>         <span class="c1"># {"x": 20.0, "y": 20.0}</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="nb">print</span><span class="p">(</span><span class="n">block</span><span class="p">[</span><span class="s2">"ms_analysis"</span><span class="p">][</span><span class="s2">"ionisation_source"</span><span class="p">])</span>     <span class="c1"># "MALDI"</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">block</span><span class="p">[</span><span class="s2">"ms_analysis"</span><span class="p">][</span><span class="s2">"ionisation_source_term"</span><span class="p">])</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="c1"># {"accession": "MS:1000075",</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="c1">#  "name": "matrix-assisted laser desorption ionization"}</span>
+</code></pre></div>
+<hr />
+<h2 id="the-document">The document<a class="headerlink" href="#the-document" title="Permanent link">&para;</a></h2>
+<p>Four sections. <code>ms_analysis</code> and <code>provenance</code> are written by the converter
+for every store; <code>sample</code> and <code>preparation</code> describe things no raw file
+records (what the tissue was, how it was prepared) and are supplied by
+you -- see <a href="#completing-the-metadata">Completing the metadata</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Field</th>
+<th>Type</th>
+<th>Ontology</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>(root)</td>
+<td><code>schema_version</code></td>
+<td><code>MAJOR.MINOR.PATCH</code> string, required</td>
+<td>--</td>
+</tr>
+<tr>
+<td><code>sample</code></td>
+<td><code>organism</code>, <code>organism_term</code></td>
+<td>text + term</td>
+<td>NCBITaxon</td>
+</tr>
+<tr>
+<td></td>
+<td><code>organism_part</code>, <code>organism_part_term</code></td>
+<td>text + term</td>
+<td>UBERON</td>
+</tr>
+<tr>
+<td></td>
+<td><code>condition</code></td>
+<td>text</td>
+<td>--</td>
+</tr>
+<tr>
+<td></td>
+<td><code>sample_growth_conditions</code></td>
+<td>text</td>
+<td>--</td>
+</tr>
+<tr>
+<td><code>preparation</code></td>
+<td><code>sample_stabilisation</code></td>
+<td>text</td>
+<td>--</td>
+</tr>
+<tr>
+<td></td>
+<td><code>tissue_modification</code></td>
+<td>text</td>
+<td>--</td>
+</tr>
+<tr>
+<td></td>
+<td><code>matrix</code>, <code>matrix_term</code></td>
+<td>text + term</td>
+<td>CHEBI</td>
+</tr>
+<tr>
+<td></td>
+<td><code>matrix_application</code></td>
+<td>text</td>
+<td>--</td>
+</tr>
+<tr>
+<td></td>
+<td><code>solvent</code></td>
+<td>text</td>
+<td>--</td>
+</tr>
+<tr>
+<td><code>ms_analysis</code></td>
+<td><code>polarity</code>, <code>polarity_term</code></td>
+<td><code>"positive"</code>/<code>"negative"</code> + term</td>
+<td>PSI-MS</td>
+</tr>
+<tr>
+<td></td>
+<td><code>ionisation_source</code>, <code>ionisation_source_term</code></td>
+<td>text + term</td>
+<td>PSI-MS</td>
+</tr>
+<tr>
+<td></td>
+<td><code>analyzer</code>, <code>analyzer_term</code></td>
+<td>text + term</td>
+<td>PSI-MS</td>
+</tr>
+<tr>
+<td></td>
+<td><code>instrument_model</code></td>
+<td>text</td>
+<td>--</td>
+</tr>
+<tr>
+<td></td>
+<td><code>detector_resolving_power</code></td>
+<td><code>{value, at_mz}</code></td>
+<td>--</td>
+</tr>
+<tr>
+<td></td>
+<td><code>pixel_size_um</code></td>
+<td><code>{x, y}</code>, <strong>required</strong></td>
+<td>--</td>
+</tr>
+<tr>
+<td></td>
+<td><code>ion_mobility</code></td>
+<td><code>{present, separation, separation_term, unit_term, range_lower, range_upper, num_scans, resolved_table, grid}</code></td>
+<td>PSI-MS (<code>MS:1002815</code> / <code>MS:1002476</code>, unit <code>MS:1002814</code>)</td>
+</tr>
+<tr>
+<td></td>
+<td><code>fragmentation</code></td>
+<td><code>{present, ms_level, constant_across_pixels, merges_precursors, dissociation_term, windows, resolved_table}</code></td>
+<td>PSI-MS (<code>MS:1000511</code>; windows <code>MS:1000827</code> / <code>828</code> / <code>829</code>, <code>MS:1000045</code>, <code>MS:1000133</code>)</td>
+</tr>
+<tr>
+<td><code>processing</code></td>
+<td>list of <code>{name, software {name, version, uri}, parameters}</code></td>
+<td>ordered steps, oldest first</td>
+<td>--</td>
+</tr>
+<tr>
+<td><code>provenance</code></td>
+<td><code>thyra_version</code></td>
+<td>text, required</td>
+<td>--</td>
+</tr>
+<tr>
+<td></td>
+<td><code>source_format</code></td>
+<td><code>"imzml"</code>, <code>"bruker"</code>, ...</td>
+<td>--</td>
+</tr>
+<tr>
+<td></td>
+<td><code>source_path</code></td>
+<td>text</td>
+<td>--</td>
+</tr>
+<tr>
+<td></td>
+<td><code>pixel_size_source</code></td>
+<td><code>"automatic"</code> / <code>"manual"</code> / <code>"default"</code></td>
+<td>--</td>
+</tr>
+</tbody>
+</table>
+<p>An ontology term is always the pair
+<code>{"accession": "MS:1000075", "name": "matrix-assisted laser desorption ionization"}</code> --
+a <a href="https://www.w3.org/TR/curie/">CURIE</a> plus the term's label, so the block
+is readable without resolving anything.</p>
+<p><code>pixel_size_um</code> is the one acquisition field that is required: conversion
+refuses to run without a pixel size, so a document without it describes no
+store Thyra ever wrote. It is a pair because a raster need not be square, and
+the same pair now reaches the rest of the store -- the root attrs, the
+coordinate system and its affine, the element transforms and
+<code>obs["spatial_x"]</code>/<code>["spatial_y"]</code>. This block used to be the only place the y
+pitch survived.</p>
+<div class="admonition note">
+<p class="admonition-title">Unknown fields are rejected</p>
+<p>Validation refuses keys the schema does not define, so a typo fails
+loudly instead of becoming an unread field. Anything genuinely
+vendor-specific already has a home in the sections beside this block
+(<code>format_specific</code>, <code>acquisition_params</code>, <code>raw_metadata</code> -- see
+<a href="../output-format/#provenance">Output Format</a>).</p>
+</div>
+<h3 id="what-is-auto-populated">What is auto-populated<a class="headerlink" href="#what-is-auto-populated" title="Permanent link">&para;</a></h3>
+<p>Auto-population is deliberately honest: a field the source does not report
+is left unset, never guessed. The only inferences are facts that follow
+from the format itself.</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>polarity</th>
+<th>ionisation source</th>
+<th>analyzer</th>
+<th>instrument model</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>imzML</td>
+<td>--</td>
+<td>--</td>
+<td>from the <code>&lt;analyzer&gt;</code> component cvParam</td>
+<td>from the instrumentConfiguration (model term or <code>MS:1000031</code> value)</td>
+</tr>
+<tr>
+<td>Bruker <code>.d</code></td>
+<td>--</td>
+<td>MALDI, when the laser tables are present</td>
+<td>TOF (timsTOF-family formats)</td>
+<td>from the DB</td>
+</tr>
+</tbody>
+</table>
+<p>Bruker <code>.d</code> also fills <code>ion_mobility</code>: <code>present: true</code> for a TDF acquisition
+(TIMS engaged), with the acquired 1/K0 range and the ramp length in scans,
+and <code>present: false</code> for TSF. Other formats leave the field unset, which
+means "not reported", not "no mobility". The MSI table is always summed over
+the ramp; how it was summed is the <code>tdf_spectrum</code> parameter of the
+<code>conversion</code> processing step (see <a href="../supported-formats/#bruker-timstof">Supported Formats</a>).
+<code>resolved_table</code> names the mobility-resolved sibling table when one was
+written beside the summed table, and <code>grid</code> (<code>{law, lower, upper,
+n_channels}</code>) describes the common mobility grid such a table was binned onto
+when it was built from per-pixel mobility values (<code>--mobility-grid</code>); both
+are unset otherwise. <code>grid</code> is the only thing in the store that says which of
+the two mechanisms filled that table -- reading it off a shared feature axis
+bins nothing -- and it is a description, not a structural difference: the
+table is the same shape either way.
+The arrays that describe the axis itself and the mass-mobility heatmap live
+outside this block, in <code>uns["mobility_axis"]</code> and <code>uns["mobility_heatmap"]</code>
+(see <a href="../output-format/#ion-mobility">Output Format</a>): this block is versioned
+and carries no arrays.
+| PHI ToF-SIMS | from the header | SIMS | TOF | platform name |
+| Waters <code>.raw</code> | -- | -- | -- | from <code>_HEADER.TXT</code> |</p>
+<p>Bruker <code>.d</code> also fills <code>fragmentation</code> from <code>Frames.MsMsType</code> and whichever
+precursor table the acquisition uses -- <code>PasefFrameMsMsInfo</code> for PASEF frames,
+<code>FrameMsMsInfo</code> for single-precursor ones. <code>present: false</code> records a survey
+acquisition; the field is left unset when the database cannot be asked at all,
+which means "not reported", not "MS1". <code>windows</code> is stored as a JSON string
+(a list of objects does not round-trip through AnnData/zarr) and decoded by
+<code>read_msi_metadata_blocks</code> and <code>thyra validate</code>. The field names and terms are
+mzPeak's, so an archive and a store describe a precursor the same way; see
+<a href="../output-format/#fragmentation-msms">Output Format</a> for the array block
+beside it and for what <code>merges_precursors</code> means for the stored spectrum.
+Waters <code>.raw</code> fills it too, from the precursor m/z MassLynx reports per scan:
+a file whose converted functions carry one reports it here, and a file that
+also holds MS1 functions converts those alone, reports MS1, and lists the
+MS/MS functions it left out under <code>excluded_functions</code> in the Waters-specific
+block. The MS level MassLynx reports is not used on its own, because on a
+raster it split across functions the level is a chunk artefact (see
+<a href="../supported-formats/#which-functions-hold-the-image">Supported Formats</a>).
+<code>resolved_table</code> names the demultiplexed sibling table when one was written,
+mirroring <code>ion_mobility.resolved_table</code>, so both kinds of sibling are
+discoverable from this block alone.</p>
+<p>A precursor's m/z here and in <code>var["precursor_mz"]</code> is the <strong>isolation window
+target</strong> (<code>MS:1000827</code>) -- the m/z the quadrupole was set to -- and not
+<code>MS:1000744</code>, a selected ion whose m/z was measured. mzPeak keeps the two in
+separate files for the same reason; do not read either as a monoisotopic mass.</p>
+<p>Everything else -- organism, tissue, condition, matrix, resolving power --
+cannot come from a raw file and stays empty until you provide it.</p>
+<h3 id="processing-history">Processing history<a class="headerlink" href="#processing-history" title="Permanent link">&para;</a></h3>
+<p><code>processing</code> is the dataset's processing provenance, modeled on
+<a href="https://github.com/HUPO-PSI/mzQC">mzQC</a>: an ordered list of steps, each
+naming the software that performed it and the parameters it ran with.
+The converter records its own steps -- <code>conversion</code> always, and
+<code>mass axis resampling</code> with the resolved resampling parameters when
+resampling was enabled. Downstream tools (normalisation, peak picking,
+annotation) append theirs when they modify the store.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">[</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"conversion"</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>   <span class="s2">"software"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"thyra"</span><span class="p">,</span> <span class="s2">"version"</span><span class="p">:</span> <span class="s2">"3.5.0"</span><span class="p">}},</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"mass axis resampling"</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>   <span class="s2">"software"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"thyra"</span><span class="p">,</span> <span class="s2">"version"</span><span class="p">:</span> <span class="s2">"3.5.0"</span><span class="p">},</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>   <span class="s2">"parameters"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"method"</span><span class="p">:</span> <span class="s2">"nearest_neighbor"</span><span class="p">,</span> <span class="s2">"target_bins"</span><span class="p">:</span> <span class="mi">50000</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>                  <span class="s2">"reference_mz"</span><span class="p">:</span> <span class="mf">1000.0</span><span class="p">}}</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="p">]</span>
+</code></pre></div>
+<p>On disk the list is stored as a JSON string (AnnData/zarr cannot
+round-trip a list of objects -- the same reason <code>uns["regions"]</code> is
+JSON); <code>read_msi_metadata_blocks</code> and <code>validate_document</code> decode it
+transparently.</p>
+<hr />
+<h2 id="psi-cv-alignment">PSI CV alignment<a class="headerlink" href="#psi-cv-alignment" title="Permanent link">&para;</a></h2>
+<p>Beyond the per-document <code>*_term</code> values, every schema <strong>field</strong> that
+instantiates a PSI CV concept is bound to that concept's accession in
+the JSON Schema itself (a <code>cv</code> annotation on the field definition), so
+the claim "Thyra's output is annotated with the same PSI CV terms as
+the raw file it came from" is machine-checkable from the committed
+artifact alone:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>CV concept</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ms_analysis.pixel_size_um.x</code></td>
+<td><code>IMS:1000046</code> pixel size (x)</td>
+</tr>
+<tr>
+<td><code>ms_analysis.pixel_size_um.y</code></td>
+<td><code>IMS:1000047</code> pixel size y</td>
+</tr>
+<tr>
+<td><code>ms_analysis.polarity</code></td>
+<td><code>MS:1000465</code> scan polarity</td>
+</tr>
+<tr>
+<td><code>ms_analysis.ionisation_source</code></td>
+<td><code>MS:1000008</code> ionization type</td>
+</tr>
+<tr>
+<td><code>ms_analysis.analyzer</code></td>
+<td><code>MS:1000443</code> mass analyzer type</td>
+</tr>
+<tr>
+<td><code>ms_analysis.instrument_model</code></td>
+<td><code>MS:1000031</code> instrument model</td>
+</tr>
+<tr>
+<td><code>ms_analysis.detector_resolving_power</code></td>
+<td><code>MS:1000800</code> mass resolving power</td>
+</tr>
+</tbody>
+</table>
+<p>On the input side, every imzML file-description cvParam is preserved in
+<code>uns["raw_metadata"]["cvParams"]</code> <strong>with its accession</strong> (and unit
+accession where the source set one) -- the name alone cannot be resolved
+back to the CV concept. The list is stored as a JSON string (see
+<a href="../output-format/#provenance">Output Format</a> for why); <code>json.loads</code>
+hands back the list of terms. Polarity declared there (<code>MS:1000130</code> /
+<code>MS:1000129</code>) auto-populates the schema field.</p>
+<h3 id="candidate-cv-terms">Candidate CV terms<a class="headerlink" href="#candidate-cv-terms" title="Permanent link">&para;</a></h3>
+<p>Several imaging concepts this schema needs have no CV term yet. They
+are tracked in <code>CANDIDATE_CV_CONCEPTS</code> as the vocabulary to raise in
+the PSI/mzPeak imaging discussions, so this schema and the future
+standard converge:</p>
+<ul>
+<li>pixel size semantics (raster pitch vs laser spot vs binned size)</li>
+<li>pixel size provenance (measured vs user-supplied vs default)</li>
+<li>coordinate origin and axis handedness</li>
+<li>stage offset of the raster origin</li>
+<li>ROI / acquisition region identity</li>
+<li>missing / empty pixel semantics</li>
+<li>continuous-vs-processed source provenance after conversion</li>
+<li>mass axis resampling provenance (method, axis law, target bins)</li>
+</ul>
+<h3 id="linkml-rendering">LinkML rendering<a class="headerlink" href="#linkml-rendering" title="Permanent link">&para;</a></h3>
+<p>The schema is also rendered as LinkML at
+<code>thyra/metadata/schema/msi_metadata.linkml.yaml</code> -- classes, slots,
+required flags, <code>slot_uri</code> CV bindings and the polarity enum with
+<code>meaning:</code> accessions. The pydantic models remain the source of truth
+for what Thyra writes and validates; the YAML is the discussion artifact
+for LinkML-native settings (the PSI/mzPeak imaging work, the planned
+spec repository), and a unit test keeps the two from drifting. A later
+migration to LinkML-as-source changes no field names and nothing on
+disk.</p>
+<hr />
+<h2 id="var-column-conventions">var column conventions<a class="headerlink" href="#var-column-conventions" title="Permanent link">&para;</a></h2>
+<p>The MSI table's <code>.var</code> column names are fixed by the spec so every
+consumer can rely on one spelling:</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Written by</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mz</code></td>
+<td>every converter, <strong>required</strong></td>
+<td>The common mass axis. Numeric, finite, strictly increasing -- except on a sibling table, where the pair is what is unique and sorted: <code>(mz, mobility)</code> on a mobility-resolved one, <code>(precursor_mz, precursor_mobility, mz)</code> on a demultiplexed MS/MS one, where <code>precursor_index</code> identifies the block.</td>
+</tr>
+<tr>
+<td><code>mobility</code></td>
+<td>the converter, on mobility-resolved tables only</td>
+<td>The feature's ion mobility (1/K0 or drift time; see <code>uns["mobility_axis"]</code>). Its presence is what marks the table as mobility-resolved.</td>
+</tr>
+<tr>
+<td><code>precursor_mz</code></td>
+<td>the converter, on demultiplexed MS/MS tables only</td>
+<td>The isolated m/z the feature's fragments came from (see <code>uns["msms_schedule"]</code>). Its presence is what marks the table as demultiplexed; such a table never carries <code>mobility</code> as well.</td>
+</tr>
+<tr>
+<td><code>mz_index</code></td>
+<td>the converter, on sibling tables only</td>
+<td>Column of the feature's m/z on the summed MSI table's axis</td>
+</tr>
+<tr>
+<td><code>mobility_index</code></td>
+<td>the converter, on mobility-resolved tables only</td>
+<td>The feature's position on the table's mobility axis: the rank of its mobility among the distinct values a shared-axis source lists, or the channel it fell in on a common grid (<code>ion_mobility.grid</code>)</td>
+</tr>
+<tr>
+<td><code>precursor_mobility</code></td>
+<td>the converter, on demultiplexed MS/MS tables only</td>
+<td>The 1/K0 the precursor was isolated at (the middle of its mobility window). What tells two precursors sharing an m/z apart -- an isomer pair -- so they are never merged</td>
+</tr>
+<tr>
+<td><code>precursor_index</code></td>
+<td>the converter, on demultiplexed MS/MS tables only</td>
+<td>The precursor's position in <strong>this store's</strong> precursor axis, and the identity of its column block. Means nothing outside the store: align two stores on <code>(precursor_mz, precursor_mobility)</code></td>
+</tr>
+<tr>
+<td><code>formula</code></td>
+<td>annotation tools</td>
+<td>Molecular formula of the annotation</td>
+</tr>
+<tr>
+<td><code>adduct</code></td>
+<td>annotation tools</td>
+<td>Adduct, e.g. <code>+H</code>, <code>-H</code>, <code>+Na</code></td>
+</tr>
+<tr>
+<td><code>annotation_source</code></td>
+<td>annotation tools</td>
+<td>Tool/database that produced the annotation</td>
+</tr>
+<tr>
+<td><code>fdr</code></td>
+<td>annotation tools</td>
+<td>False discovery rate of the annotation</td>
+</tr>
+</tbody>
+</table>
+<p>Readers may add extra per-channel columns (a non-m/z native axis such as
+flight time stays alongside <code>mz</code>), and annotation tools may add columns
+beyond these -- but the reserved names above must never be reused with a
+different meaning. <code>thyra validate</code> checks the <code>mz</code> contract on every
+table of a store.</p>
+<hr />
+<h2 id="storage-contract">Storage contract<a class="headerlink" href="#storage-contract" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The block lives at <code>table.uns["msi_metadata"]</code>, in every table the
+  store has. This location is stable, like <code>uns["essential_metadata"]</code>
+  and the <code>coordinate_systems</code> root attribute; consumers read it from
+  here and nowhere else.</li>
+<li>It is written identically by every converter write path (the uns
+  parity tests assert this), and contains no timestamps, so converting
+  the same input twice produces the same block.</li>
+<li>Sections with nothing in them are omitted rather than written empty,
+  following the store-wide convention.</li>
+</ul>
+<h2 id="versioning">Versioning<a class="headerlink" href="#versioning" title="Permanent link">&para;</a></h2>
+<p><code>schema_version</code> follows semantic-version rules:</p>
+<ul>
+<li>Adding an optional field bumps the <strong>minor</strong> version.</li>
+<li>Renaming, removing, retyping, or making a field required bumps the
+  <strong>major</strong> version.</li>
+<li>A validator implementing major version N rejects documents with a
+  different major version, accepts older minors, and warns on newer
+  minors.</li>
+</ul>
+<p>Versions so far: 0.1.0 (initial), 0.2.0 (<code>ms_analysis.ion_mobility</code>
+added), 0.3.0 (<code>ion_mobility.resolved_table</code> and <code>ion_mobility.grid</code> added),
+0.4.0 (<code>ms_analysis.fragmentation</code> added), 0.5.0
+(<code>fragmentation.resolved_table</code> added).</p>
+<p>The JSON Schema rendering is committed at
+<code>thyra/metadata/schema/msi_metadata_schema_v0_5.json</code> and ships in the
+wheel, so non-Python consumers can validate documents without importing
+Thyra:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">importlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">resources</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">schema</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">resources</span><span class="o">.</span><span class="n">files</span><span class="p">(</span><span class="s2">"thyra.metadata.schema"</span><span class="p">)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="o">.</span><span class="n">joinpath</span><span class="p">(</span><span class="s2">"msi_metadata_schema_v0_5.json"</span><span class="p">)</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="o">.</span><span class="n">read_text</span><span class="p">()</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">)</span>
+</code></pre></div>
+<p>A unit test keeps the artifact in sync with the models; regenerate it with
+<code>python -m thyra.metadata.schema.generate</code> after a model change.</p>
+<hr />
+<h2 id="thyra-validate"><code>thyra validate</code><a class="headerlink" href="#thyra-validate" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>thyra validate PATH [--merge USER.json] [--json]
+</code></pre></div>
+<p><code>PATH</code> is a converted <code>.zarr</code> store or a standalone metadata <code>.json</code>
+document. Only the metadata block (and, for stores, the <code>var</code> axis) is
+read -- validating a 100 GB store is instant. For stores it also checks
+the <a href="#var-column-conventions">var column contract</a> and that every table
+carries a metadata block. Exit status is <code>0</code> when every document
+conforms (warnings allowed) and <code>1</code> otherwise, so it can gate CI.</p>
+<p>On Windows, a store whose files sit past the 260-character path limit is
+read through an extended-length path automatically; without that, Zarr
+would return empty terms for the keys it cannot open and the document
+would fail validation for the wrong reason (see
+<a href="../getting-started/#windows-long-paths">long paths</a>).</p>
+<p>Errors mean the document does not conform: structural violations, unknown
+PSI-MS/IMS/UO accessions, version incompatibility. Warnings mean it
+conforms but says something suspicious: a term label that does not match
+its accession, or a term from an unexpected ontology.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>thyra<span class="w"> </span>validate<span class="w"> </span>output.zarr
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># msi_dataset_z0: OK</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>thyra<span class="w"> </span>validate<span class="w"> </span>output.zarr<span class="w"> </span>--json<span class="w">   </span><span class="c1"># machine-readable report on stdout</span>
+</code></pre></div>
+<h2 id="thyra-export-metaspace"><code>thyra export-metaspace</code><a class="headerlink" href="#thyra-export-metaspace" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>thyra export-metaspace PATH [--merge USER.json] [--table NAME] [-o OUT.json]
+</code></pre></div>
+<p>Writes the METASPACE submission metadata JSON (default:
+<code>&lt;input&gt;.metaspace.json</code> next to the input; <code>-o -</code> for stdout). Required
+fields the store cannot know are emitted empty and reported as warnings on
+stderr -- the output is a truthful starting point, never a fabricated
+record. The one inference: matrix-free sources (DESI, SIMS) truthfully get
+<code>MALDI_Matrix: "none"</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>thyra<span class="w"> </span>export-metaspace<span class="w"> </span>output.zarr
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># warning: Sample_Information.Organism is required ... and is not set</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="c1"># Wrote METASPACE metadata for msi_dataset_z0 to output.metaspace.json</span>
+</code></pre></div>
+<h2 id="completing-the-metadata">Completing the metadata<a class="headerlink" href="#completing-the-metadata" title="Permanent link">&para;</a></h2>
+<p>The fields only you can know go in a small JSON overlay, merged at
+validation or export time with <code>--merge</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p">{</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">"sample"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="nt">"organism"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Mus musculus"</span><span class="p">,</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="nt">"organism_term"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"accession"</span><span class="p">:</span><span class="w"> </span><span class="s2">"NCBITaxon:10090"</span><span class="p">,</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Mus musculus"</span><span class="p">},</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span><span class="nt">"organism_part"</span><span class="p">:</span><span class="w"> </span><span class="s2">"liver"</span><span class="p">,</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span><span class="nt">"organism_part_term"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"accession"</span><span class="p">:</span><span class="w"> </span><span class="s2">"UBERON:0002107"</span><span class="p">,</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"liver"</span><span class="p">},</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">    </span><span class="nt">"condition"</span><span class="p">:</span><span class="w"> </span><span class="s2">"wildtype"</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">  </span><span class="nt">"preparation"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">    </span><span class="nt">"sample_stabilisation"</span><span class="p">:</span><span class="w"> </span><span class="s2">"fresh frozen"</span><span class="p">,</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">    </span><span class="nt">"matrix"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2,5-dihydroxybenzoic acid (DHB)"</span><span class="p">,</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="w">    </span><span class="nt">"matrix_term"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"accession"</span><span class="p">:</span><span class="w"> </span><span class="s2">"CHEBI:17189"</span><span class="p">,</span><span class="w"> </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2,5-dihydroxybenzoic acid"</span><span class="p">},</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="w">    </span><span class="nt">"matrix_application"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ImagePrep"</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="w">  </span><span class="nt">"ms_analysis"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="w">    </span><span class="nt">"detector_resolving_power"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">130000</span><span class="p">,</span><span class="w"> </span><span class="nt">"at_mz"</span><span class="p">:</span><span class="w"> </span><span class="mi">400</span><span class="p">}</span>
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="p">}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>thyra<span class="w"> </span>validate<span class="w"> </span>output.zarr<span class="w"> </span>--merge<span class="w"> </span>sample.json
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>thyra<span class="w"> </span>export-metaspace<span class="w"> </span>output.zarr<span class="w"> </span>--merge<span class="w"> </span>sample.json
+</code></pre></div>
+<p>The overlay merges key-by-key over the stored block, so it only needs the
+fields you are adding. Keep it next to the store; it applies unchanged to
+every dataset from the same study.</p>
+<h2 id="python-api">Python API<a class="headerlink" href="#python-api" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">thyra.metadata.schema</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="n">MSIMetadata</span><span class="p">,</span>             <span class="c1"># the pydantic model</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">read_msi_metadata_blocks</span><span class="p">,</span>  <span class="c1"># {table_name: block} from a store</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="n">validate_document</span><span class="p">,</span>       <span class="c1"># (model | None, issues)</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">to_metaspace</span><span class="p">,</span>            <span class="c1"># (submission_dict, warnings)</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="p">)</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="n">blocks</span> <span class="o">=</span> <span class="n">read_msi_metadata_blocks</span><span class="p">(</span><span class="s2">"output.zarr"</span><span class="p">)</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="n">meta</span><span class="p">,</span> <span class="n">issues</span> <span class="o">=</span> <span class="n">validate_document</span><span class="p">(</span><span class="n">blocks</span><span class="p">[</span><span class="s2">"msi_dataset_z0"</span><span class="p">])</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="n">submission</span><span class="p">,</span> <span class="n">warnings</span> <span class="o">=</span> <span class="n">to_metaspace</span><span class="p">(</span><span class="n">meta</span><span class="p">)</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.instant.progress", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

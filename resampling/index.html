@@ -1,0 +1,2474 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A modern Python library for converting Mass Spectrometry Imaging data into SpatialData/Zarr format">
+      
+      
+      
+        <link rel="canonical" href="https://M4i-Imaging-Mass-Spectrometry.github.io/thyra/resampling/">
+      
+      
+        <link rel="prev" href="../cli/">
+      
+      
+        <link rel="next" href="../output-format/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Resampling - Thyra</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#resampling" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Thyra" class="md-header__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Thyra
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Resampling
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../explore-the-output/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Explore the Output
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../supported-formats/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Supported Formats
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../cli/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Resampling
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../output-format/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Output Format
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../metadata-schema/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metadata Schema
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../coordinate-systems/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Coordinate Systems
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../imzml-parser-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  imzML Parser Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../phi-tofsims-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PHI ToF-SIMS Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../solarix-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  solariX Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../design-decisions/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Design Decisions
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../api/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../code-of-conduct/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Code of Conduct
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Thyra" class="md-nav__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    Thyra
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../explore-the-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Explore the Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resampling
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resampling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-resampling-exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why resampling exists
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-automatic-choice-is-made" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the automatic choice is made
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How the automatic choice is made">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-thyra-looks-at" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Thyra looks at
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#which-detector-wins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which detector wins
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#overriding-the-detector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overriding the detector
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Methods
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#nearest_neighbor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nearest_neighbor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tic_preserving" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        tic_preserving
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="tic_preserving">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gaps-in-the-source-mz-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gaps in the source m/z values
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-in-range-means" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What "in range" means
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#axis-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Axis types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Axis types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-two-term-tof-law" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The two-term TOF law
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bin-count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bin count
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bin count">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-10-million-bin-cap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The 10 million bin cap
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#overriding-the-automatic-choice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overriding the automatic choice
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#checking-what-was-used" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checking what was used
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#practical-guidance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Practical guidance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../output-format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coordinate-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinate Systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imzml-parser-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    imzML Parser Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../phi-tofsims-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PHI ToF-SIMS Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../solarix-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solariX Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-of-conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-resampling-exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why resampling exists
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-automatic-choice-is-made" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the automatic choice is made
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How the automatic choice is made">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-thyra-looks-at" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Thyra looks at
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#which-detector-wins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which detector wins
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#overriding-the-detector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overriding the detector
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Methods
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#nearest_neighbor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nearest_neighbor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tic_preserving" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        tic_preserving
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="tic_preserving">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gaps-in-the-source-mz-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gaps in the source m/z values
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-in-range-means" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What "in range" means
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#axis-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Axis types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Axis types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-two-term-tof-law" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The two-term TOF law
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bin-count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bin count
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bin count">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-10-million-bin-cap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The 10 million bin cap
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#overriding-the-automatic-choice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overriding the automatic choice
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#checking-what-was-used" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checking what was used
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#practical-guidance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Practical guidance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="resampling">Resampling<a class="headerlink" href="#resampling" title="Permanent link">&para;</a></h1>
+<p>Mass axis resampling maps every spectrum in a dataset onto one shared m/z axis.
+It is <strong>enabled by default</strong>, and by default every parameter is chosen
+automatically from the acquisition metadata.</p>
+<p>This page explains what that automatic choice is, how it is made, and how to
+override it. For the list of flags alone, see the
+<a href="../cli/#resampling-advanced">CLI Reference</a>.</p>
+<hr />
+<h2 id="why-resampling-exists">Why resampling exists<a class="headerlink" href="#why-resampling-exists" title="Permanent link">&para;</a></h2>
+<p>An imzML file comes in one of two storage modes:</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>m/z arrays</th>
+<th>Consequence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>continuous</strong></td>
+<td>one shared array for the whole dataset</td>
+<td>pixels are already comparable bin-for-bin</td>
+</tr>
+<tr>
+<td><strong>processed</strong></td>
+<td>a separate array per spectrum</td>
+<td>pixel 1's column 500 and pixel 2's column 500 are <em>different masses</em></td>
+</tr>
+</tbody>
+</table>
+<p>For processed data -- which includes most centroided vendor exports -- you
+cannot build a pixel x m/z matrix at all without first agreeing on a common
+axis. Thyra reports this as <code>needs_resampling</code>, and it is the reason resampling
+defaults to on rather than off.</p>
+<p>Even for continuous data, resampling is often still what you want: it lets you
+impose a physically sensible bin spacing, restrict the mass range, or match the
+axis convention of another tool.</p>
+<p>To keep the original per-spectrum axes untouched, disable it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span>--no-resample
+</code></pre></div>
+<p>Note that with <code>--no-resample</code> on processed data, each pixel keeps its own m/z
+values, and most downstream tools will not be able to treat the table as a
+matrix of comparable features.</p>
+<hr />
+<h2 id="how-the-automatic-choice-is-made">How the automatic choice is made<a class="headerlink" href="#how-the-automatic-choice-is-made" title="Permanent link">&para;</a></h2>
+<p>Three things are decided: the <strong>method</strong> (how intensity moves onto the new
+axis), the <strong>axis type</strong> (how bin widths scale with m/z), and the <strong>bin count</strong>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>  acquisition metadata
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>          │
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>          ▼
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  DataCharacteristics        storage mode, spectrum type, instrument
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>          │                  name/type/manufacturer, peak density
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>          ▼
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>  InstrumentDetectorChain    first matching detector wins
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>          │
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>          ├──────────────► resampling method   (nearest_neighbor | tic_preserving)
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>          ├──────────────► axis type           (constant | *_tof | orbitrap | fticr)
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>          └──────────────► bin count           from a target width at a reference m/z
+</code></pre></div>
+<h3 id="what-thyra-looks-at">What Thyra looks at<a class="headerlink" href="#what-thyra-looks-at" title="Permanent link">&para;</a></h3>
+<p><code>DataCharacteristics</code> collects, from the metadata:</p>
+<ul>
+<li>whether there is a shared mass axis (continuous) or not (processed)</li>
+<li>spectrum type -- <code>centroid spectrum</code> (<code>MS:1000127</code>) or <code>profile spectrum</code> (<code>MS:1000128</code>)</li>
+<li>instrument name, instrument type, and manufacturer</li>
+<li>average peaks per spectrum; above <strong>5000</strong> the data is recorded as high-density profile</li>
+<li>format flags for Rapiflex, timsTOF, PHI, and Waters</li>
+</ul>
+<p>Spectrum type is whatever the file <strong>declares</strong> -- <code>MS:1000127</code> or
+<code>MS:1000128</code> -- read from the file description first and then from the rest of
+the document. Only when a file declares neither does Thyra fall back to
+guessing centroid from processed storage mode, and it says so in a warning
+when it does. Processed and centroid are independent: processed means each
+spectrum carries its own m/z array, which says nothing about whether its peaks
+are centroided.</p>
+<p>Peak density is reported but does <strong>not</strong> select a method or an axis type. It
+describes how finely the spectra were sampled, not what acquired them, and a
+dense profile spectrum can come from a MALDI-TOF, a TOF-SIMS, or an Orbitrap
+run in profile mode. SCiLS Lab does not guess modality either -- its importer
+takes it as an argument (<code>--project TIMSTOF|TOF|FT</code>).</p>
+<p>The timsTOF flag is a case-insensitive substring match on the instrument name,
+because Bruker names the family many ways (<code>timsTOF fleX MALDI-2</code>,
+<code>timsTOF Pro 2</code>, <code>timsTOF SCP</code>, and so on). The name comes from the Bruker
+<code>.d</code>'s <code>GlobalMetadata</code> when there is one, and otherwise from the instrument
+model the imzML itself declares -- so a timsTOF exported to imzML rides the
+same match, as long as the export names the instrument (see the info box
+below for the one common exporter that does not).</p>
+<h3 id="which-detector-wins">Which detector wins<a class="headerlink" href="#which-detector-wins" title="Permanent link">&para;</a></h3>
+<p>Detectors are tried in a fixed priority order and the first match wins:
+timsTOF, Rapiflex, FT-ICR, Orbitrap, PHI, Waters, generic centroid, then a
+catch-all default. This table is the actual observed behaviour of that chain:</p>
+<table>
+<thead>
+<tr>
+<th>Metadata</th>
+<th>Detector</th>
+<th>Method</th>
+<th>Axis type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>timsTOF, centroid</td>
+<td>timsTOF</td>
+<td><code>nearest_neighbor</code></td>
+<td><code>reflector_tof</code></td>
+</tr>
+<tr>
+<td>timsTOF, profile high-density</td>
+<td>timsTOF</td>
+<td><code>nearest_neighbor</code></td>
+<td><code>reflector_tof</code></td>
+</tr>
+<tr>
+<td>Rapiflex, profile</td>
+<td>Rapiflex MALDI-TOF</td>
+<td><code>tic_preserving</code></td>
+<td><code>constant</code></td>
+</tr>
+<tr>
+<td>Bruker MALDI-TOF</td>
+<td>Rapiflex MALDI-TOF</td>
+<td><code>tic_preserving</code></td>
+<td><code>constant</code></td>
+</tr>
+<tr>
+<td>imzML declaring an FT-ICR analyzer or model</td>
+<td>FT-ICR</td>
+<td><code>nearest_neighbor</code></td>
+<td><code>fticr</code></td>
+</tr>
+<tr>
+<td>solariX <code>.d</code> (native, peaks.sqlite)</td>
+<td>FT-ICR</td>
+<td><code>nearest_neighbor</code></td>
+<td><code>fticr</code></td>
+</tr>
+<tr>
+<td>imzML declaring an Orbitrap analyzer or model</td>
+<td>Orbitrap</td>
+<td><code>nearest_neighbor</code></td>
+<td><code>orbitrap</code></td>
+</tr>
+<tr>
+<td>PHI SmartSoft-TOF <code>.raw</code></td>
+<td>PHI SmartSoft-TOF (ToF-SIMS)</td>
+<td><code>nearest_neighbor</code></td>
+<td><code>linear_tof</code></td>
+</tr>
+<tr>
+<td>Waters MassLynx <code>.raw</code>, profile trace (the SELECT SERIES MRT default)</td>
+<td>Waters MassLynx (profile trace)</td>
+<td><code>tic_preserving</code></td>
+<td><code>linear_tof</code></td>
+</tr>
+<tr>
+<td>Waters MassLynx <code>.raw</code>, SELECT SERIES MRT vendor centroid</td>
+<td>Waters SELECT SERIES MRT (vendor centroid)</td>
+<td><code>nearest_neighbor</code></td>
+<td><code>tof</code></td>
+</tr>
+<tr>
+<td>Waters MassLynx <code>.raw</code>, vendor centroid or undeclared, other instruments</td>
+<td>Waters MassLynx</td>
+<td><code>nearest_neighbor</code></td>
+<td><code>reflector_tof</code></td>
+</tr>
+<tr>
+<td>unknown vendor, profile (any density)</td>
+<td>Unknown (default)</td>
+<td><code>nearest_neighbor</code></td>
+<td><code>constant</code></td>
+</tr>
+<tr>
+<td>unknown, centroid</td>
+<td>ImzML Centroid</td>
+<td><code>nearest_neighbor</code></td>
+<td><code>reflector_tof</code></td>
+</tr>
+<tr>
+<td>no usable metadata</td>
+<td>Unknown (default)</td>
+<td><code>nearest_neighbor</code></td>
+<td><code>constant</code></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Why PHI needs its own row</p>
+<p>Without it PHI reaches the catch-all default and is reported as
+<code>constant</code>. Thyra's own answer would still be <code>nearest_neighbor</code>, so
+nothing breaks inside Thyra -- but <code>preview_msi</code> hands that axis type
+to callers, and a caller that maps <code>constant</code> to profile-MALDI
+conventions arrives at <code>tic_preserving</code> onto an equidistant axis. That
+combination is destructive here: a PHI pixel holds a median of 44
+measured points across m/z 0.5--1850, and interpolating between them
+fabricates intensity in every bin in the gaps, with the TIC rescale
+hiding it behind a total that still balances. The detector reports the
+law the data actually follows -- <code>PhiMassAxis</code> steps at a constant
+flight time, so spacing goes as <code>sqrt(m/z)</code> -- which is <code>linear_tof</code>.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title"><code>tic_preserving</code> is gated on the source and target axis laws matching</p>
+<p>A detector may only ask for <code>tic_preserving</code> if it knows the spacing law
+of the grid the spectra <em>arrive</em> on, and that law is the one it is asking
+the target axis to use. Two routes qualify. <code>RapiflexReader</code> lays every
+spectrum out with <code>np.linspace</code>, so the source is uniform in m/z, and the
+axis it requests is <code>constant</code> -- the same law. The Waters profile trace
+is the digitiser's own record, sampled at a fixed clock rate and so
+spaced as <code>sqrt(m/z)</code> (measured <code>(m/z)^0.494</code> on a SELECT SERIES MRT and
+<code>(m/z)^0.498</code> on a Synapt G2-Si), and the axis it requests is
+<code>linear_tof</code> -- again the same law.</p>
+<p>Anything else is refused and gets <code>nearest_neighbor</code> instead, with a log
+line saying so. This is the rule SCiLS Lab applies: TIC-preserving
+resampling "if all axis types are identical", otherwise interpolation
+(2026b User Guide, p.80). It is also exactly when Thyra's
+interpolate-then-rescale operator is exact -- see the <code>!!! danger</code> box
+below for what it costs off the diagonal.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">How an imzML reaches the Orbitrap and FT-ICR rows</p>
+<p>Both detectors match on an <code>instrument_type</code> of <code>"Orbitrap"</code> or
+<code>"FT-ICR"</code>, which the imzML metadata extractor resolves from the file's
+own instrumentConfiguration, in declaration-strength order: the
+<code>&lt;analyzer&gt;</code> component cvParam (<code>MS:1000484</code> orbitrap, <code>MS:1000079</code>
+FT-ICR) first, then a recognised instrument-model term (the solariX,
+apex, LTQ FT, and Orbitrap/Exactive/Exploris families), then a
+family-identifying product name in free-form model text. A file that
+declares none of the three stays untyped and falls through to the
+generic rows below -- an unstated analyzer stays unstated.</p>
+<p>The native solariX <code>.d</code> route needs none of this: its extractor stamps
+<code>instrument_type = "FT-ICR"</code> directly from the instrument identity in
+<code>peaks.sqlite</code>, so the same FT-ICR row is reached without an export
+step (see <a href="../supported-formats/#bruker-solarix">Supported Formats</a>).</p>
+<p>One known gap: SCiLS Lab-lineage imzML exports of timsTOF data stamp the
+generic <code>MS:1001534 Bruker Daltonics flex series</code> term rather than a
+timsTOF model term. That term genuinely covers the axial flex series
+too, so Thyra does not attribute it to a timsTOF; a centroid export
+still lands on the right pair via the centroid row, but a profile export
+falls to the default. <code>--mass-axis-type</code> remains the explicit override
+for files whose metadata is silent or too generic.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title"><code>tic_preserving</code> is selected for profile MALDI-TOF, not for high resolution</p>
+<p>It is easy to assume the high-resolution analysers get the more elaborate
+method. They do not. <code>tic_preserving</code> is chosen for <strong>profile</strong> data, where
+a peak is spread over many points and rebinning would otherwise change the
+total ion count. Orbitrap and FT-ICR data is normally centroided, so it gets
+<code>nearest_neighbor</code>, which is the correct choice for discrete peaks. If you
+have <em>profile</em> Orbitrap or FT-ICR data, set
+<code>--resample-method tic_preserving</code> yourself.</p>
+</div>
+<div class="admonition danger">
+<p class="admonition-title">Do not combine <code>tic_preserving</code> with a non-uniform axis type</p>
+<p><code>tic_preserving</code> interpolates onto the target axis and then applies a
+single scaling factor to the whole spectrum. A single factor cannot
+account for bin widths that vary across the mass range, so pairing it with
+<code>linear_tof</code>, <code>reflector_tof</code>, <code>orbitrap</code> or <code>fticr</code> suppresses high-m/z
+ions relative to low-m/z ones. Measured across 300-1100 m/z, two ions of
+equal abundance come back with their ratio distorted by 1.9x on
+<code>linear_tof</code>, 3.7x on <code>reflector_tof</code>, 7.0x on <code>orbitrap</code> and 13.4x on
+<code>fticr</code>.</p>
+<p>Auto-selection cannot produce these pairings. <code>tic_preserving</code> is only
+ever chosen alongside an axis whose law the source grid itself follows --
+<code>constant</code> for the Rapiflex, <code>linear_tof</code> for the Waters profile trace --
+which is what makes it exact; the detector chain enforces that. You have
+to ask for a mismatched combination with two explicit flags, and Thyra
+takes you at your word.</p>
+<p>If you want a non-uniform axis, use <code>nearest_neighbor</code>, which moves each
+peak into a single bin and is unaffected by bin width.</p>
+</div>
+<p>The chosen detector, method, and axis type are all logged:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>INFO - Detected instrument type: timsTOF
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>INFO - Selected resampling method: NEAREST_NEIGHBOR
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>INFO - Selected axis type: REFLECTOR_TOF
+</code></pre></div>
+<h3 id="overriding-the-detector">Overriding the detector<a class="headerlink" href="#overriding-the-detector" title="Permanent link">&para;</a></h3>
+<p><code>--resample-method</code> overrules the detector, and the detector is still asked
+what it would have picked. When the two disagree, the conversion says so and
+carries on:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>WARNING - Resampling method TIC_PRESERVING was given explicitly, but this
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>source's detector chose NEAREST_NEIGHBOR for it. Interpolating a source the
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>detector reads as sparse fills the whole axis: [...] Pass
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>--resample-gap-tolerance to discard bins no measured m/z vouches for, or drop
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>the override.
+</code></pre></div>
+<p>Nothing about the output changes -- the method you asked for is the method
+used. The warning exists because the failure it points at is invisible in the
+totals: on a 713-frame PASEF acquisition, <code>--resample-method tic_preserving</code>
+stored <strong>423,386,757</strong> non-zeros against 302,106 for the detector's choice, a
+583 MB table against 7.6 MB, and per-pixel TIC identical to the last digit.
+Adding <code>--resample-gap-tolerance 0.01</code> to the same command brings it down to
+4,801,946. See <a href="#gaps-in-the-source-mz-values">Gaps in the source m/z values</a>.</p>
+<hr />
+<h2 id="methods">Methods<a class="headerlink" href="#methods" title="Permanent link">&para;</a></h2>
+<h3 id="nearest_neighbor"><code>nearest_neighbor</code><a class="headerlink" href="#nearest_neighbor" title="Permanent link">&para;</a></h3>
+<p>Each target bin takes the intensity of the nearest original m/z value. Peaks
+stay sharp and stay put, and no intensity is invented between them. This is the
+right choice for <strong>centroid</strong> data, where a peak is a single discrete mass and
+smearing it across neighbouring bins would be wrong.</p>
+<p>Consequence worth knowing: on a target axis finer than the source spacing, most
+bins receive nothing. A dataset resampled from 4,000 source points onto 190,000
+bins has exactly 4,000 populated bins per spectrum, and the rest are zero. This
+is why you should extract ion images by <strong>summing over an m/z window</strong> rather
+than picking the single nearest bin -- see
+<a href="../tutorial/#step-7-ion-images">the tutorial</a>.</p>
+<h3 id="tic_preserving"><code>tic_preserving</code><a class="headerlink" href="#tic_preserving" title="Permanent link">&para;</a></h3>
+<p>Linear interpolation onto the target axis, followed by rescaling so the
+spectrum's total ion current matches the original. This is the right choice for
+<strong>profile</strong> data: a peak spans many points, interpolation reconstructs its shape
+on the new grid, and the rescaling step stops rebinning from quietly changing
+quantitation.</p>
+<p>Use it whenever the total ion count per pixel has to stay comparable before and
+after conversion.</p>
+<p>The total that is preserved is the share of the spectrum inside the axis range.
+If you crop with <code>--resample-min-mz</code> or <code>--resample-max-mz</code>, intensity outside
+the window is dropped rather than redistributed over the bins you kept, so the
+per-pixel total falls by whatever you cropped out -- a cropped window should not
+claim ions from the parts that were cut away. That share is measured by area, so
+a window narrower than the spacing between source points still keeps a
+proportionate amount instead of collapsing to zero.</p>
+<p>With the default axis, which spans the dataset's own mass range, nothing is
+dropped and the total is preserved exactly.</p>
+<h4 id="gaps-in-the-source-mz-values">Gaps in the source m/z values<a class="headerlink" href="#gaps-in-the-source-mz-values" title="Permanent link">&para;</a></h4>
+<p>Interpolation has no notion of a gap. Between the last source point before an
+empty stretch and the first one after it, <code>np.interp</code> draws a straight line,
+and every target bin in between gets an intensity that was never measured. On
+sparse or thresholded m/z arrays that is most of the axis: forcing
+<code>tic_preserving</code> onto <code>bellini.imzML</code> -- 2,222 points per spectrum, median
+source spacing 0.0072 Da, largest gap 1,269 Da -- puts <strong>80.6%</strong> of the output
+total ion current more than 0.5 Da from any measured point.</p>
+<p><code>--resample-gap-tolerance</code> sets how far a target bin may sit from the nearest
+source m/z before its interpolated value is discarded instead of trusted. It is
+the same parameter Cardinal calls <code>tolerance</code> and matter calls <code>tol</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>thyra<span class="w"> </span>data.imzML<span class="w"> </span>out.zarr<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--resample-method<span class="w"> </span>tic_preserving<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>--resample-gap-tolerance<span class="w"> </span><span class="m">0</span>.1
+</code></pre></div>
+<p>Masking happens <strong>before</strong> the TIC rescale, so the intensity returns to the
+bins that do have measurements behind them rather than being deleted; the
+per-pixel total is still preserved.</p>
+<p>Sizing it: on a source grid of uniform step <code>s</code>, no target bin is ever more
+than <code>s/2</code> from a source point, so <strong>any tolerance above half the widest gap in
+your source m/z values changes nothing</strong>. Continuous profile data is dense and
+evenly sampled, which is why the default is <em>no</em> limit -- there is nothing to
+refuse. Set it when your m/z arrays are sparse or peak-picked and you are
+asking for <code>tic_preserving</code> anyway.</p>
+<p><code>nearest_neighbor</code> needs no such parameter: it only ever fills a bin some peak
+was snapped into.</p>
+<hr />
+<h2 id="what-in-range-means">What "in range" means<a class="headerlink" href="#what-in-range-means" title="Permanent link">&para;</a></h2>
+<p>Both methods keep a peak when it lies inside the <strong>declared</strong> mass range --
+<code>--resample-min-mz</code> and <code>--resample-max-mz</code>, or the source's own range when you
+set neither. Peaks outside it are <strong>discarded</strong>, not folded into the first or
+last bin.</p>
+<p>The declared range is not quite the same as the span of the axis points. Every
+physics axis type lays its bins as <code>target_bins + 1</code> edges across the range and
+stores the <strong>centres</strong>, so the first and last centre sit half a bin inside the
+range you asked for: a source declaring 50-1000 m/z builds an axis running
+<code>50.0001</code> to <code>999.9975</code>. A peak at exactly 50.0 belongs in the first bin, and
+until v3.24.0 it was thrown away instead. That mattered most for sources whose
+declared range <em>is</em> their first and last sample -- PHI ToF-SIMS takes its mass
+range from the first and last detector channel, so both channels were lost in
+every pixel.</p>
+<p><code>constant</code> axes are unaffected either way: they are laid out with
+<code>np.linspace(min_mz, max_mz, n)</code>, whose end points already are the declared
+bounds. <code>--no-resample</code> is unaffected too -- the axis there is the source's own
+values.</p>
+<p>Dropping is deliberate and is reported once per conversion:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>WARNING - Dropping peaks that fall outside the target mass range
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>[250.0000, 1200.0000] m/z -- 2 of 20 in the first spectrum affected. They are
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>discarded, not folded into the edge bins. Widen the resampling range to keep
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>them.
+</code></pre></div>
+<p>Folding them in instead would be worse, and used to happen: clamping every
+out-of-range peak onto the nearest edge bin put 654,158 counts in bin 0 of
+<code>pea.imzML</code> cropped to 400-800 m/z, where a real peak there is around 80. The
+total was conserved exactly, so no TIC check could see it.</p>
+<hr />
+<h2 id="axis-types">Axis types<a class="headerlink" href="#axis-types" title="Permanent link">&para;</a></h2>
+<p>The axis type sets how bin width grows with m/z. Each corresponds to the
+physics of a mass analyser, so that bins track the instrument's real resolving
+power instead of over-sampling the low end and under-sampling the high end.</p>
+<table>
+<thead>
+<tr>
+<th>Axis type</th>
+<th>In SCiLS Lab</th>
+<th>Bin width scales as</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>constant</code></td>
+<td>Constant (equidistant)</td>
+<td>constant Da</td>
+<td>Equidistant bins</td>
+</tr>
+<tr>
+<td><code>linear_tof</code></td>
+<td><strong>Axial TOF</strong></td>
+<td><code>sqrt(m/z)</code></td>
+<td>Linear TOF: flight time <code>t ∝ sqrt(m/z)</code>, so equal time bins give <code>sqrt(m/z)</code> mass bins</td>
+</tr>
+<tr>
+<td><code>reflector_tof</code></td>
+<td><strong>Orthogonal TOF</strong></td>
+<td><code>m/z</code></td>
+<td>Constant <em>relative</em> resolution <code>R = m/Δm</code>; bins are uniform in <code>ln(m/z)</code></td>
+</tr>
+<tr>
+<td><code>tof</code></td>
+<td>--</td>
+<td><code>sqrt(A m + B m^2)</code></td>
+<td>A measured TOF peak width; <code>linear_tof</code> and <code>reflector_tof</code> are its two limits. See <a href="#the-two-term-tof-law">The two-term TOF law</a></td>
+</tr>
+<tr>
+<td><code>orbitrap</code></td>
+<td>Orbitrap</td>
+<td><code>m/z^1.5</code></td>
+<td>Orbitrap frequency <code>f ∝ 1/sqrt(m/z)</code>, so equal frequency bins give <code>m/z^1.5</code> mass bins</td>
+</tr>
+<tr>
+<td><code>fticr</code></td>
+<td><strong>MRMS</strong> (Fourier-transform)</td>
+<td><code>m/z^2</code></td>
+<td>Cyclotron frequency <code>f ∝ 1/(m/z)</code>, so equal frequency bins give <code>m/z^2</code> mass bins</td>
+</tr>
+</tbody>
+</table>
+<p>The five types, and their scaling laws, are the ones SCiLS Lab offers for the
+common mass axis (2026b User Guide, p.75). <strong>Thyra's names are SCiLS's older
+ones</strong>: <code>linear_tof</code> and <code>reflector_tof</code> were "Linear TOF" and "Reflector TOF"
+in earlier SCiLS versions and are now Axial TOF and Orthogonal TOF, and the
+FT-ICR type is now called MRMS. The laws are unchanged; only the labels moved.</p>
+<p><code>reflector_tof</code> is the most broadly useful of these: constant relative
+resolution means constant relative mass accuracy across the whole range, which
+is what most MS workflows assume.</p>
+<h3 id="the-two-term-tof-law">The two-term TOF law<a class="headerlink" href="#the-two-term-tof-law" title="Permanent link">&para;</a></h3>
+<p>A time-of-flight peak's width in flight time has a constant part (detector
+and digitiser response, pusher timing) and a part proportional to the flight
+time (energy spread, turnaround time), added in quadrature. In m/z:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>FWHM(m) = sqrt(A * m + B * m^2)        m in Da, FWHM in mDa
+</code></pre></div>
+<p><code>A</code> is in mDa<sup>2</sup>/Da and <code>B</code> is dimensionless. <code>linear_tof</code> is the
+<code>B = 0</code> limit (width grows as <code>sqrt(m)</code>), <code>reflector_tof</code> the <code>A = 0</code> limit
+(width grows as <code>m</code>, constant ppm, with <code>1/sqrt(B)</code> the resolving power). Real
+instruments sit between, and where they sit is measurable from a few hundred
+isolated peaks by least squares on <code>FWHM^2 = A m + B m^2</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Instrument</th>
+<th><code>A</code></th>
+<th><code>B</code></th>
+<th><code>1/sqrt(B)</code></th>
+<th>Fitted from</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SELECT SERIES MRT</td>
+<td>0.0185</td>
+<td>9.1e-6</td>
+<td>331,000</td>
+<td>229 peaks, m/z 300-1000 (R<sup>2</sup> 0.36 on FWHM<sup>2</sup>: the peaks scatter, the trend does not)</td>
+</tr>
+<tr>
+<td>timsTOF fleX</td>
+<td>0.0877</td>
+<td>8.74e-4</td>
+<td>34,000</td>
+<td>180 peaks, m/z 300-1000 (R<sup>2</sup> 0.89)</td>
+</tr>
+</tbody>
+</table>
+<p>The MRT pair reproduces the measured 2.97 / 3.79 / 4.54 mDa at m/z 400 / 600 /
+800; a log-log fit of the same peaks gives an exponent of 0.67, between the
+0.5 and 1.0 the two single-term laws allow, which is why neither of them fits
+an MRT centroid list exactly. The timsTOF pair is within 10% of the
+<code>reflector_tof</code> shape over m/z 400-1000 (7% at 400, 3% at 600; the constant
+term shows below that and the gap reaches 10% at m/z 300), so nothing changes
+for timsTOF by default and the pair is opt-in.</p>
+<p>The axis lays bins at <code>FWHM(m) / k</code> for <code>k</code> bins per peak width (default 3).
+The cumulative bin count has a closed form, <code>(2/sqrt(B)) asinh(sqrt(B m / A))</code>,
+so the axis is a uniform grid in that variable and the count is exact.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># An MRT centroid conversion: this is the default, no flags needed</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>thyra<span class="w"> </span>mrt_run.raw<span class="w"> </span>out.zarr<span class="w"> </span>--waters-spectrum<span class="w"> </span>centroid
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># A timsTOF opting in to its measured pair (the default stays reflector_tof)</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>thyra<span class="w"> </span>run.d<span class="w"> </span>out.zarr<span class="w"> </span>--mass-axis-type<span class="w"> </span>tof
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># A TOF instrument Thyra has no pair for, fitted from its own peaks</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>thyra<span class="w"> </span>run.imzML<span class="w"> </span>out.zarr<span class="w"> </span>--mass-axis-type<span class="w"> </span>tof<span class="w"> </span>--tof-law<span class="w"> </span><span class="m">0</span>.0185<span class="w"> </span><span class="m">9</span>.1e-6
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="c1"># Finer bins: the width at the reference m/z sets k, as on any other axis</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>thyra<span class="w"> </span>run.d<span class="w"> </span>out.zarr<span class="w"> </span>--mass-axis-type<span class="w"> </span>tof<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="w">    </span>--resample-width-at-mz<span class="w"> </span><span class="m">0</span>.005<span class="w"> </span>--resample-reference-mz<span class="w"> </span><span class="m">1000</span>
+</code></pre></div>
+<p><code>--mass-axis-type tof</code> takes the pair the detected instrument declares (MRT
+centroid, timsTOF); <code>--tof-law A B</code> supplies one for an instrument that has
+none, and it is an error to have neither. There is no separate flag for the
+bins per peak width: <code>--resample-width-at-mz</code> at <code>--resample-reference-mz</code>
+fixes it, since <code>k</code> is whatever puts a bin of that width at the reference m/z.
+The Python API's <code>ResamplingConfig</code> also accepts <code>bins_per_fwhm</code> directly.</p>
+<p><strong>Centroid axes follow peak width; profile axes follow the sample grid.</strong> The
+law describes how wide a peak is, which is what the bins of a <em>centroid</em> list
+should track. A <em>profile</em> trace is a set of samples on the digitiser's own
+grid, and its bins should track that grid instead -- the Waters profile
+default uses <code>linear_tof</code> because that is how its samples are spaced (see
+<a href="../supported-formats/#waters-masslynx">Supported Formats</a>), not because of how
+wide its peaks are. The two-term law is never applied to profile data, nor to
+FT-ICR or Orbitrap data, whose widths are not time-of-flight quantities.</p>
+<hr />
+<h2 id="bin-count">Bin count<a class="headerlink" href="#bin-count" title="Permanent link">&para;</a></h2>
+<p>You can set the bin count directly, or specify a target bin <strong>width at a
+reference m/z</strong> and let Thyra derive the count from the axis physics. The two
+are mutually exclusive.</p>
+<p>When you specify neither, the detected instrument may declare a width; failing
+that, the axis type's default applies:</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Default width</th>
+<th>At reference m/z</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Waters SELECT SERIES MRT vendor centroid</td>
+<td><code>tof</code> law at 3 bins per FWHM (1.75 mDa)</td>
+<td>1000</td>
+</tr>
+<tr>
+<td>Waters vendor centroid, other instruments</td>
+<td>2 mDa</td>
+<td>1000</td>
+</tr>
+<tr>
+<td>Waters SELECT SERIES MRT profile trace</td>
+<td>1.3 mDa</td>
+<td>1000</td>
+</tr>
+<tr>
+<td>Waters profile trace, other instruments</td>
+<td>1.14 x the run's predicted sample spacing</td>
+<td>1000</td>
+</tr>
+<tr>
+<td>any other source, <code>linear_tof</code></td>
+<td>17 mDa</td>
+<td>300</td>
+</tr>
+<tr>
+<td>any other source, everything else</td>
+<td>5 mDa</td>
+<td>1000</td>
+</tr>
+</tbody>
+</table>
+<p>The Waters figures are measured, not conventional. 2 mDa is the coarsest
+centroid setting that clears two bins per measured peak width at m/z 800 on an
+MRT (2.8 bins per FWHM of 4.48 mDa; the earlier 5 mDa gave 1.1). 1.3 mDa is
+about 1.14 times the MRT digitiser's sample spacing at m/z 1000, pinned rather
+than derived so every MRT run with the same mass range shares one axis; see
+<a href="../supported-formats/#waters-masslynx">Supported Formats</a>. An instrument's
+width applies only on the fully automatic path -- set <code>--mass-axis-type</code> and
+the width defaults revert to the axis type's, since a width tuned for one law
+is not a sensible default for another.</p>
+<p>The 17 mDa / m/z 300 pairing for <code>linear_tof</code> was chosen to be close to the
+axis SCiLS Lab produces for FlexImaging data. Treat it as a working default
+rather than a reproduction: <strong>the figure does not appear in the SCiLS Lab
+2026b User Guide</strong>, and no version that states it has been identified, so
+nothing here is a claim of exact equivalence. The code comment implementing it
+says "SCiLS-like ~17 mDa", which is the accurate description. If you need to
+match a particular SCiLS project, set <code>--resample-width-at-mz</code> and
+<code>--resample-reference-mz</code> from that project's own axis.</p>
+<p>The count is then derived per axis type:</p>
+<table>
+<thead>
+<tr>
+<th>Axis type</th>
+<th>Bin count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>reflector_tof</code></td>
+<td><code>ln(max/min) * (ref_mz / width)</code></td>
+</tr>
+<tr>
+<td><code>linear_tof</code></td>
+<td><code>(2/k) * (sqrt(max) - sqrt(min))</code>, <code>k = width / sqrt(ref_mz)</code></td>
+</tr>
+<tr>
+<td><code>orbitrap</code></td>
+<td><code>2 * (1/sqrt(min) - 1/sqrt(max)) * (ref_mz^1.5 / width)</code></td>
+</tr>
+<tr>
+<td><code>fticr</code></td>
+<td><code>(1/min - 1/max) * (ref_mz^2 / width)</code></td>
+</tr>
+<tr>
+<td><code>constant</code></td>
+<td><code>(max - min) / width</code></td>
+</tr>
+</tbody>
+</table>
+<p>Each is the integral of <code>1 / width(m)</code> across the mass range, so the bin width
+the axis actually realizes at your reference m/z is the width you asked for.
+The result is floored at 100 bins.</p>
+<p>A worked example, from the <a href="../tutorial/">tutorial</a>'s synthetic dataset --
+250-1200 Da, <code>constant</code> axis, default 5 mDa width:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>(1200 - 250) / 0.005 = 190000 bins
+</code></pre></div>
+<p>which is what the log reports:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>INFO - Calculating bins for 5.0 mDa width at m/z 1000.0
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>INFO - Calculated 190000 bins for constant axis type
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>INFO - Building resampled mass axis: 250.00 - 1200.00 m/z, 190000 bins
+</code></pre></div>
+<p>190,000 bins from 4,000 source points sounds extravagant, and on the
+<code>nearest_neighbor</code> path -- which is what <code>auto</code> picks for this dataset -- it
+very nearly is free. Each source point lands in exactly one bin, so the
+non-zero count does not depend on the bin width at all and only the index
+arrays lengthen: the tutorial store comes out at roughly 31 MB, and going from
+4,000 bins to 190,000 costs about +0.8% on disk.</p>
+<div class="admonition warning">
+<p class="admonition-title">That only holds for <code>nearest_neighbor</code>, and for zero-suppressed profiles</p>
+<p><code>tic_preserving</code> interpolates, so on a continuous profile it populates
+essentially every bin. The matrix comes out 99.998% dense and the store
+becomes <code>n_pixels x target_bins x ~7.5 bytes</code> -- independent of how sparse
+the source was. Measured on this same 4,000-point source: at 190,000 bins
+it costs 1.44 MB per pixel, so 400 pixels take 574 MB against 6.93 MB at
+4,000 bins, an 82.9x blowup, and the 1,728-pixel tutorial dataset would
+take roughly 2.5 GB.</p>
+<p>The exception is a source that stores explicit zeros around its peaks and
+nothing in between, like the Waters profile trace. Interpolation between
+two zeros is zero, so only the bins under the stored clusters are
+populated -- and only those are evaluated, which is what keeps the MRT
+default's conversion time in line with nearest-neighbour binning.</p>
+<p>On that path the default bin count is a decision rather than a detail.</p>
+</div>
+<p>Pass <code>--resample-bins</code> or <code>--no-resample</code> if you would rather not upsample.</p>
+<h3 id="the-10-million-bin-cap">The 10 million bin cap<a class="headerlink" href="#the-10-million-bin-cap" title="Permanent link">&para;</a></h3>
+<p><code>--no-resample</code> on a processed-mode imzML does not build a physics axis at all.
+It builds the <strong>raw</strong> axis: every distinct m/z value in the whole dataset, one
+column each. When the peak lists genuinely share m/z values that is small. When
+they do not -- which is the normal case for centroided peak picking, where two
+pixels almost never report a peak at the same double -- it grows to roughly one
+column per peak in the entire dataset, and there is no natural stopping point.</p>
+<p>Thyra gives up once that axis passes <strong>10 million</strong> unique m/z values, and says
+what to do instead:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>ValueError: Common mass axis exceeded 10,000,000 unique m/z values after
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>12,400 of 918,855 spectra (10,004,112 so far). The peak lists in this dataset
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>do not share m/z values, so a raw axis grows to roughly one column per peak,
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>which is not usable downstream. Convert with resampling instead (it is the
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>default; --no-resample disables it), or raise max_mass_axis_length.
+</code></pre></div>
+<p>10 million is SCiLS Lab's own limit on the same quantity: "Data sets in SCiLS
+Lab are limited to a maximum of 10 million bins on the common mass axis" (2026b
+User Guide, p.76).</p>
+<p>The cap is Python-API only, through <code>reader_options</code>, and applies to the imzML
+reader:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">thyra</span><span class="w"> </span><span class="kn">import</span> <span class="n">convert_msi</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">convert_msi</span><span class="p">(</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="s2">"data.imzML"</span><span class="p">,</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    <span class="s2">"out.zarr"</span><span class="p">,</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>    <span class="n">reader_options</span><span class="o">=</span><span class="p">{</span><span class="s2">"max_mass_axis_length"</span><span class="p">:</span> <span class="mi">50_000_000</span><span class="p">},</span>  <span class="c1"># or None for no cap</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="p">)</span>
+</code></pre></div>
+<p>It has no effect when resampling is on, which is the default: a resampled axis
+has the bin count you asked for.</p>
+<p>The value is a count, so it must be a positive integer or <code>None</code>. Anything
+else is refused before the file is opened. It used to be accepted and then
+used: a cap of <code>-1</code> or <code>0</code> turned every file into a refusal for "exceeding"
+a limit it could not satisfy, in a message that named the caller's own value
+back at them as if the data were at fault.</p>
+<hr />
+<h2 id="overriding-the-automatic-choice">Overriding the automatic choice<a class="headerlink" href="#overriding-the-automatic-choice" title="Permanent link">&para;</a></h2>
+<p>Every part is independently overridable; anything you leave alone stays
+automatic.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">CLI</label><label for="__tabbed_1_2">Python</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Method and axis type. nearest_neighbor is the pairing to use with a</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="c1"># non-uniform axis -- see the warning under "Selection" above.</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span>--resample-method<span class="w"> </span>nearest_neighbor<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span>--mass-axis-type<span class="w"> </span>orbitrap
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="c1"># Fixed bin count</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span>--resample-bins<span class="w"> </span><span class="m">50000</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="c1"># Target width at a reference m/z instead of a bin count</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="w">    </span>--resample-width-at-mz<span class="w"> </span><span class="m">0</span>.01<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="w">    </span>--resample-reference-mz<span class="w"> </span><span class="m">500</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="c1"># Restrict the mass range</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a><span class="w">    </span>--resample-min-mz<span class="w"> </span><span class="m">400</span><span class="w"> </span>--resample-max-mz<span class="w"> </span><span class="m">1000</span>
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>
+<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a><span class="c1"># Off entirely</span>
+<a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>thyra<span class="w"> </span>input.imzML<span class="w"> </span>output.zarr<span class="w"> </span>--no-resample
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">thyra</span><span class="w"> </span><span class="kn">import</span> <span class="n">convert_msi</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="n">convert_msi</span><span class="p">(</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>    <span class="s2">"input.imzML"</span><span class="p">,</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="s2">"output.zarr"</span><span class="p">,</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="n">resampling_config</span><span class="o">=</span><span class="p">{</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>        <span class="s2">"method"</span><span class="p">:</span> <span class="s2">"nearest_neighbor"</span><span class="p">,</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>        <span class="s2">"axis_type"</span><span class="p">:</span> <span class="s2">"orbitrap"</span><span class="p">,</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>        <span class="s2">"width_at_mz"</span><span class="p">:</span> <span class="mf">0.01</span><span class="p">,</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>        <span class="s2">"reference_mz"</span><span class="p">:</span> <span class="mf">500.0</span><span class="p">,</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>    <span class="p">},</span>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="p">)</span>
+</code></pre></div>
+</div>
+</div>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">The Python API does not resample by default</p>
+<p><code>convert_msi()</code> called without <code>resampling_config</code> keeps the original mass
+axis, whereas the <code>thyra</code> command-line tool resamples by default. Pass a
+<code>resampling_config</code> explicitly if you want the CLI's behaviour from Python.</p>
+</div>
+<hr />
+<h2 id="checking-what-was-used">Checking what was used<a class="headerlink" href="#checking-what-was-used" title="Permanent link">&para;</a></h2>
+<p>The decision is recorded in the output store, so a converted dataset is
+self-describing:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">spatialdata</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sd</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="n">sdata</span> <span class="o">=</span> <span class="n">sd</span><span class="o">.</span><span class="n">read_zarr</span><span class="p">(</span><span class="s2">"output.zarr"</span><span class="p">)</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="n">table</span> <span class="o">=</span> <span class="n">sdata</span><span class="o">.</span><span class="n">tables</span><span class="p">[</span><span class="s2">"msi_dataset_z0"</span><span class="p">]</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="n">mz</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">var</span><span class="p">[</span><span class="s2">"mz"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">mz</span><span class="p">)</span><span class="si">}</span><span class="s2"> bins, </span><span class="si">{</span><span class="n">mz</span><span class="o">.</span><span class="n">min</span><span class="p">()</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> -- </span><span class="si">{</span><span class="n">mz</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> m/z"</span><span class="p">)</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="c1"># Bin width across the range tells you the axis type in practice:</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="c1"># flat -&gt; constant, growing linearly -&gt; reflector_tof, and so on.</span>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="n">d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">mz</span><span class="p">)</span>
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"bin width: </span><span class="si">{</span><span class="n">d</span><span class="o">.</span><span class="n">min</span><span class="p">()</span><span class="o">*</span><span class="mi">1000</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2"> -- </span><span class="si">{</span><span class="n">d</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">*</span><span class="mi">1000</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2"> mDa"</span><span class="p">)</span>
+</code></pre></div>
+<p>For the tutorial dataset this prints a flat 5.000 mDa across the range,
+confirming a <code>constant</code> axis at the default width.</p>
+<hr />
+<h2 id="practical-guidance">Practical guidance<a class="headerlink" href="#practical-guidance" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Leave it alone</strong> unless you have a reason. The detected settings are right for the common Bruker and imzML cases.</li>
+<li><strong>Disable it</strong> (<code>--no-resample</code>) when you want the untouched vendor axis -- your own peak picking, centroiding, or calibration downstream.</li>
+<li><strong>Set <code>tic_preserving</code></strong> if quantitation matters and your data is profile, especially profile data from a high-resolution analyser, which the automatic choice will not pick it for.</li>
+<li><strong>Set <code>--resample-bins</code></strong> any time you need to match another tool's axis exactly.</li>
+<li><strong>Narrow the mass range</strong> (<code>--resample-min-mz</code> / <code>--resample-max-mz</code>) before increasing bin counts; it is usually the cheaper way to get the resolution you need where you need it.</li>
+</ul>
+<hr />
+<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong><a href="../cli/#resampling-advanced">CLI Reference</a></strong> -- the flags</li>
+<li><strong><a href="../tutorial/">Tutorial</a></strong> -- resampling in the context of a full conversion</li>
+<li><strong><a href="../output-format/">Output Format</a></strong> -- where the m/z axis lives in the store</li>
+<li><strong><a href="../api/">API Reference</a></strong> -- <code>ResamplingConfig</code>, <code>ResamplingDecisionTree</code></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.instant.progress", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

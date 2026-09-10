@@ -1,0 +1,1851 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A modern Python library for converting Mass Spectrometry Imaging data into SpatialData/Zarr format">
+      
+      
+      
+        <link rel="canonical" href="https://M4i-Imaging-Mass-Spectrometry.github.io/thyra/coordinate-systems/">
+      
+      
+        <link rel="prev" href="../metadata-schema/">
+      
+      
+        <link rel="next" href="../imzml-parser-notes/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Coordinate Systems - Thyra</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#coordinate-systems" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Thyra" class="md-header__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Thyra
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Coordinate Systems
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../explore-the-output/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Explore the Output
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../supported-formats/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Supported Formats
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../cli/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../resampling/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Resampling
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../output-format/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Output Format
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../metadata-schema/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metadata Schema
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Coordinate Systems
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../imzml-parser-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  imzML Parser Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../phi-tofsims-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PHI ToF-SIMS Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../solarix-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  solariX Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../design-decisions/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Design Decisions
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../api/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../code-of-conduct/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Code of Conduct
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Thyra" class="md-nav__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    Thyra
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../explore-the-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Explore the Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resampling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resampling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../output-format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinate Systems
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinate Systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-contract-in-one-sentence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The contract in one sentence
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The schema
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-z-axis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The z axis
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-global-is-in-each-thyra-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What "global" is in each Thyra mode
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What &#34;global&#34; is in each Thyra mode">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mode-a-standalone-no-optical-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mode A: standalone (no optical alignment)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mode-b-with-fleximaging-optical-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mode B: with FlexImaging optical alignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-the-coordinate-system-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the coordinate-system metadata
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-two-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why two conventions?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verifying-the-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verifying the contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-modality-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-modality registration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-if-i-open-a-zarr-that-doesnt-have-this-attr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What if I open a zarr that doesn't have this attr?
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imzml-parser-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    imzML Parser Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../phi-tofsims-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PHI ToF-SIMS Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../solarix-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solariX Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-of-conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-contract-in-one-sentence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The contract in one sentence
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The schema
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-z-axis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The z axis
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-global-is-in-each-thyra-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What "global" is in each Thyra mode
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What &#34;global&#34; is in each Thyra mode">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mode-a-standalone-no-optical-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mode A: standalone (no optical alignment)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mode-b-with-fleximaging-optical-alignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mode B: with FlexImaging optical alignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-the-coordinate-system-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the coordinate-system metadata
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-two-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why two conventions?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verifying-the-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verifying the contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-modality-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-modality registration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-if-i-open-a-zarr-that-doesnt-have-this-attr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What if I open a zarr that doesn't have this attr?
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="coordinate-systems">Coordinate Systems<a class="headerlink" href="#coordinate-systems" title="Permanent link">&para;</a></h1>
+<p>Every SpatialData zarr Thyra writes carries a small but crucial promise:
+<strong>all elements within the zarr resolve to the same physical frame at the
+<code>"global"</code> coordinate system, and that frame is documented in the
+zarr metadata.</strong> This page explains the contract so consumers (Ousia,
+registration tooling, custom analysis scripts) can render and compute
+without guessing what the numbers mean.</p>
+<hr />
+<h2 id="the-contract-in-one-sentence">The contract in one sentence<a class="headerlink" href="#the-contract-in-one-sentence" title="Permanent link">&para;</a></h2>
+<p>In every Thyra-produced zarr,</p>
+<blockquote>
+<p>the <code>"global"</code> coordinate system is one self-consistent frame, its
+unit and pixel-size calibration are recorded under
+<code>zarr.attrs["coordinate_systems"]["global"]</code>, and every element
+registers a transform that lands in that frame.</p>
+</blockquote>
+<p>If you only remember one thing, remember that.</p>
+<p>One thing the contract deliberately does <strong>not</strong> cover: ion mobility. A
+TIMS acquisition has a third measured dimension, but it is a coordinate on a
+<em>feature</em> -- like m/z, it says what was measured, not where. Thyra never
+writes mobility into a coordinate system, a transform, <code>obs</code>, or a z axis; it
+lives in <code>var</code> (on a mobility-resolved table) and in the summed table's
+<code>uns["mobility_axis"]</code> / <code>uns["mobility_heatmap"]</code>, see
+<a href="../output-format/#ion-mobility">Output Format</a>. Anything that reads
+<code>coordinate_systems</code> can ignore mobility entirely.</p>
+<hr />
+<h2 id="the-schema">The schema<a class="headerlink" href="#the-schema" title="Permanent link">&para;</a></h2>
+<p>At the zarr top level Thyra writes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">zarr</span><span class="o">.</span><span class="n">attrs</span><span class="p">[</span><span class="s2">"coordinate_systems"</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="s2">"global"</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>        <span class="s2">"unit"</span><span class="p">:</span> <span class="s2">"micrometer"</span> <span class="o">|</span> <span class="s2">"pixel"</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>        <span class="s2">"pixel_size_um_x"</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>        <span class="s2">"pixel_size_um_y"</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>        <span class="s2">"reference_element"</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        <span class="s2">"convention_version"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        <span class="s2">"produced_by"</span><span class="p">:</span> <span class="s2">"thyra/&lt;version&gt;"</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        <span class="s2">"raster_to_global_affine"</span><span class="p">:</span> <span class="p">[[</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">tx</span><span class="p">],</span> <span class="p">[</span><span class="n">c</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="n">ty</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]],</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>        <span class="c1"># Only when the reader reports raw coordinate offsets</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>        <span class="s2">"coordinate_offsets_px"</span><span class="p">:</span> <span class="p">[</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span><span class="p">],</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>        <span class="s2">"stage_offset_um"</span><span class="p">:</span> <span class="p">[</span><span class="n">x_um</span><span class="p">,</span> <span class="n">y_um</span><span class="p">],</span>  <span class="c1"># micrometer variant only</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>        <span class="c1"># Multi-slice volumes only -- see "The z axis" below</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>        <span class="s2">"z_spacing_um"</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>        <span class="s2">"z_spacing_source"</span><span class="p">:</span> <span class="s2">"manual"</span> <span class="o">|</span> <span class="s2">"automatic"</span> <span class="o">|</span> <span class="s2">"assumed_isotropic"</span><span class="p">,</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="p">}</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>unit</code></td>
+<td>Unit of one step in <code>"global"</code> -- either <code>"micrometer"</code> or <code>"pixel"</code>.</td>
+</tr>
+<tr>
+<td><code>pixel_size_um_x</code>, <code>pixel_size_um_y</code></td>
+<td>Conversion factor: micrometers per one <code>"global"</code> unit. <code>1.0</code> when <code>unit="micrometer"</code>; physical pixel size when <code>unit="pixel"</code>. <code>None</code> if the producer cannot calibrate (e.g. an uncalibrated optical photo).</td>
+</tr>
+<tr>
+<td><code>reference_element</code></td>
+<td>Name of the canonical raster element that defines pixel space, when <code>unit="pixel"</code>. <code>None</code> otherwise.</td>
+</tr>
+<tr>
+<td><code>convention_version</code></td>
+<td>Schema version; bump when the shape of this attr changes. Currently <code>1</code>.</td>
+</tr>
+<tr>
+<td><code>produced_by</code></td>
+<td><code>"thyra/&lt;version&gt;"</code> for Thyra-produced zarrs.</td>
+</tr>
+<tr>
+<td><code>raster_to_global_affine</code></td>
+<td>Explicit 3x3 row-major affine from TIC raster indices to <code>"global"</code> -- the same mapping the TIC element's transform expresses, duplicated here so a consumer that reads only attrs still gets the full placement. A pure pixel-size scale in the micrometer variant; the optical alignment matrix in the pixel variant. Purely additive (<code>convention_version</code> stays 1, same reasoning as the z fields below).</td>
+</tr>
+<tr>
+<td><code>coordinate_offsets_px</code></td>
+<td>The source's raw acquisition-index offsets <code>[x, y, z]</code>, which 0-based normalisation otherwise erases. <strong>Only present when the reader reports them.</strong></td>
+</tr>
+<tr>
+<td><code>stage_offset_um</code></td>
+<td><code>coordinate_offsets_px</code> times the pixel size: where the raster origin sat, in micrometers, relative to the source's index origin. <strong>Only written when <code>unit="micrometer"</code></strong>, so it cannot be misread in the optical-pixel variant.</td>
+</tr>
+<tr>
+<td><code>z_spacing_um</code></td>
+<td>Micrometers between consecutive slices. <strong>Only present on multi-slice volumes.</strong> Always an absolute micrometer distance, even when <code>unit="pixel"</code>: the optical affine governs only x and y, while z is always scaled directly.</td>
+</tr>
+<tr>
+<td><code>z_spacing_source</code></td>
+<td>Where <code>z_spacing_um</code> came from. <strong>Only present on multi-slice volumes.</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="the-z-axis">The z axis<a class="headerlink" href="#the-z-axis" title="Permanent link">&para;</a></h2>
+<p>A 2D store has no slice-to-slice distance, so it carries neither z field. Their
+<strong>absence is the signal</strong> that there is no z axis — which is also why adding
+them did not move <code>convention_version</code>: they are purely additive, and a
+consumer that never reads volumes sees exactly the schema it already knew.</p>
+<p><code>z_spacing_source</code> is the field that matters:</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>"manual"</code></td>
+<td>The caller supplied it (<code>--z-spacing</code> / <code>z_spacing_um=</code>). Trust it.</td>
+</tr>
+<tr>
+<td><code>"automatic"</code></td>
+<td>The source metadata reported it. Trust it.</td>
+</tr>
+<tr>
+<td><code>"assumed_isotropic"</code></td>
+<td><strong>Nobody supplied one.</strong> The in-plane pixel pitch was reused, which asserts that slices sit exactly one pixel width apart. Treat the depth as unknown.</td>
+</tr>
+</tbody>
+</table>
+<p>Section thickness is set by the microtome that cut the sections; the in-plane
+pitch is set by the stage that rastered them. The two agree only by coincidence,
+and for 3D MSI usually do not — often by an order of magnitude. A volume whose
+<code>z_spacing_source</code> is <code>"assumed_isotropic"</code> has correct voxel <em>values</em> and an
+unreliable <em>depth</em>, so rendering it in micrometers stretches or squashes the
+stack along z.</p>
+<p>Thyra cannot detect this: imzML has no standard term for slice spacing, and 3D
+acquisitions are frequently non-consecutive sections, so the value has to be
+supplied by whoever prepared them.</p>
+<p>Consumers that don't know the schema can still open the zarr; they
+just won't be able to render distances in micrometers without
+making assumptions. Consumers that do know it (Ousia, the EscDat
+registration script, this project's tests) read this attr first and
+trust it.</p>
+<hr />
+<h2 id="what-global-is-in-each-thyra-mode">What <code>"global"</code> is in each Thyra mode<a class="headerlink" href="#what-global-is-in-each-thyra-mode" title="Permanent link">&para;</a></h2>
+<p>Thyra operates in two modes depending on whether the input came with
+FlexImaging optical alignment data. The two modes pick different
+<code>"global"</code> conventions because they have different <em>canonical
+references</em>.</p>
+<h3 id="mode-a-standalone-no-optical-alignment">Mode A: standalone (no optical alignment)<a class="headerlink" href="#mode-a-standalone-no-optical-alignment" title="Permanent link">&para;</a></h3>
+<p>When there is no optical photo to align against, the only naturally
+meaningful frame is <strong>physical micrometers of the imaged tissue</strong>.</p>
+<ul>
+<li>TIC / ion images: stored intrinsically in raster pixel indices,
+  with a transform <code>Scale([pixel_size_x_um, pixel_size_y_um])</code> to
+  <code>"global"</code>.</li>
+<li>Pixel-polygon shapes: stored intrinsically in micrometers
+  (<code>spatial_x = x * pixel_size_x_um</code>, <code>spatial_y = y *
+  pixel_size_y_um</code>), with <code>Identity</code> to <code>"global"</code>.</li>
+<li><code>zarr.attrs["coordinate_systems"]["global"]</code> declares
+  <code>unit="micrometer"</code> and fills <code>pixel_size_um_x/y</code> with the
+  MSI grid pixel size.</li>
+</ul>
+<p>The two pitches are equal on a square raster and are <em>not</em> assumed to be:
+an anisotropic acquisition (a DESI method with <code>DesiXStep !=
+DesiYStep</code>) scales each axis by its own, here and in every other block
+of the store that states a pitch.</p>
+<p>Both elements resolve to the same micrometer extent at <code>"global"</code>.</p>
+<p>For a <strong>multi-slice volume</strong> (<code>--handle-3d</code> over more than one plane) the
+promise holds in x and y, and is <strong>deliberately silent in z for the shapes
+element</strong>. The TIC volume carries the depth on its <code>Scale</code>, and every table
+row carries it in <code>obs["spatial_z"]</code>; the pixel polygons stay
+two-dimensional and make no claim about depth at all.</p>
+<p>So a volume's elements agree like this:</p>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>x, y at <code>"global"</code></th>
+<th>z at <code>"global"</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TIC volume</td>
+<td><code>Scale([pixel_size_x_um, pixel_size_y_um])</code></td>
+<td><code>Scale([z_spacing_um])</code></td>
+</tr>
+<tr>
+<td>Table</td>
+<td><code>spatial_x</code>, <code>spatial_y</code></td>
+<td><code>spatial_z</code></td>
+</tr>
+<tr>
+<td>Pixel shapes</td>
+<td>micrometres, <code>Identity</code></td>
+<td><strong>absent</strong> — join via <code>spatial_z</code></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Why the footprints carry no depth</p>
+<p>They briefly did. v3.2.0 made them <code>POLYGON Z</code> at the depth of their
+slice, which is the geometrically honest representation, and it broke
+<code>spatialdata</code>'s spatial queries: a bounding box enclosing an entire test
+volume returned 26 of 30 footprints and 26 of 30 table rows, silently. A
+z-restricted query returned the same rows whether z was inside or far
+outside the data.</p>
+<p>Upstream asks for 2D here. <code>ShapesModel.validate</code> warns that a
+3-dimensional geometry column "could led to unexpected behaviors" and
+names <code>force_2d()</code> as the remedy — the query result above is that
+behaviour. 3D shapes are not on the spatialdata roadmap
+(<a href="https://github.com/scverse/spatialdata/issues/109">#109</a>, idle since
+June 2023, covers images, labels and transformations), and the live 2.5D
+discussion (<a href="https://github.com/scverse/spatialdata/issues/961">#961</a>)
+scopes itself to points, images and labels. Serial-section MSI is 2.5D in
+that taxonomy.</p>
+<p>Expressing the depth as a <code>Translation</code> on flat geometry — the obvious
+remaining alternative — does <strong>not</strong> work either: the transform silently
+drops z, leaving a depth that exists only in metadata.</p>
+<p>Both negative results are pinned by
+<code>tests/unit/converters/test_3d_pixel_shapes_z.py</code>. If either starts
+passing, upstream has changed and this decision should be reopened.</p>
+</div>
+<h3 id="mode-b-with-fleximaging-optical-alignment">Mode B: with FlexImaging optical alignment<a class="headerlink" href="#mode-b-with-fleximaging-optical-alignment" title="Permanent link">&para;</a></h3>
+<p>When the input includes a <code>.mis</code> <code>ImageFile</code> and registration
+landmarks, Thyra picks a different canonical reference: <strong>the
+optical photo itself</strong>. The natural frame is then <em>that image's
+pixel grid</em>, because the photo can be drawn with no transform.</p>
+<ul>
+<li>TIC / ion images: stored intrinsically in raster pixel indices,
+  with an <code>Affine</code> transform mapping into the optical pixel
+  grid.</li>
+<li>Pixel-polygon shapes: stored directly in optical pixels, with
+  <code>Identity</code> to <code>"global"</code>.</li>
+<li>Primary optical image: <code>Identity</code> to <code>"global"</code>.</li>
+<li>Other optical images (overview, etc.): a <code>Scale</code> to align with
+  the primary image's pixel grid.</li>
+<li><code>zarr.attrs["coordinate_systems"]["global"]</code> declares
+  <code>unit="pixel"</code> with <code>reference_element</code> set to the primary
+  optical filename; <code>pixel_size_um_x/y</code> is typically <code>None</code>
+  because FlexImaging photos do not generally carry a um-per-pixel
+  calibration.</li>
+</ul>
+<p>Note that the two modes pick the right convention for what is
+actually known about the data; consumers should look at
+<code>unit</code> rather than assuming Thyra always uses one or the other.</p>
+<hr />
+<h2 id="reading-the-coordinate-system-metadata">Reading the coordinate-system metadata<a class="headerlink" href="#reading-the-coordinate-system-metadata" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">zarr_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">"output.zarr"</span><span class="p">)</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">zarr_path</span> <span class="o">/</span> <span class="s2">"zarr.json"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">attrs</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)[</span><span class="s2">"attributes"</span><span class="p">]</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">cs</span> <span class="o">=</span> <span class="n">attrs</span><span class="p">[</span><span class="s2">"coordinate_systems"</span><span class="p">][</span><span class="s2">"global"</span><span class="p">]</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"global unit:        </span><span class="si">{</span><span class="n">cs</span><span class="p">[</span><span class="s1">'unit'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"pixel size (um):    </span><span class="si">{</span><span class="n">cs</span><span class="p">[</span><span class="s1">'pixel_size_um_x'</span><span class="p">]</span><span class="si">}</span><span class="s2"> x </span><span class="si">{</span><span class="n">cs</span><span class="p">[</span><span class="s1">'pixel_size_um_y'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"reference element:  </span><span class="si">{</span><span class="n">cs</span><span class="p">[</span><span class="s1">'reference_element'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"schema version:     </span><span class="si">{</span><span class="n">cs</span><span class="p">[</span><span class="s1">'convention_version'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+<p>To resolve a <code>"global"</code> coordinate to micrometers, multiply by the
+<code>pixel_size_um_x/y</code> factors. When <code>unit="micrometer"</code> those
+factors are <code>1.0</code> and the multiplication is a no-op; when
+<code>unit="pixel"</code> they perform the px-to-um conversion.</p>
+<hr />
+<h2 id="why-two-conventions">Why two conventions?<a class="headerlink" href="#why-two-conventions" title="Permanent link">&para;</a></h2>
+<p>Picking <code>unit="micrometer"</code> for everything would be simpler, but
+also wrong:</p>
+<ul>
+<li>In <strong>Mode B</strong> there is a canonical raster image (the optical
+  photo). Putting <code>"global"</code> in micrometers would force that
+  image to carry a transform, since its data is intrinsically in
+  pixels. With <code>unit="pixel"</code>, the canonical image carries
+  <code>Identity</code> and downstream tools can blit it without thinking.</li>
+<li>In <strong>Mode A</strong> there is no canonical raster image - the MSI
+  itself is the data. There's no privileged pixel grid to use as
+  <code>"global"</code>, so <code>unit="micrometer"</code> is the natural and
+  unambiguous choice.</li>
+</ul>
+<p>The rule generalises: <strong><code>"global"</code> is whichever frame is most
+natural for that dataset's canonical reference, and the metadata
+declares which one was picked.</strong></p>
+<p>This matches how the broader spatial-omics ecosystem works:
+<code>spatialdata-io</code>'s Xenium reader, for example, uses
+<code>unit="pixel"</code> because Xenium has a canonical morphology image;
+its MERFISH-style readers use <code>unit="micrometer"</code> because they
+do not.</p>
+<hr />
+<h2 id="verifying-the-contract">Verifying the contract<a class="headerlink" href="#verifying-the-contract" title="Permanent link">&para;</a></h2>
+<p>Because the contract is just metadata, it can drift if a producer
+has a bug. Every Thyra release has a unit-test guard that:</p>
+<ol>
+<li>Runs a representative conversion end-to-end.</li>
+<li>Reads the resulting zarr.</li>
+<li>Asserts the bbox of the TIC image and the pixel-polygon shapes
+   resolve to the same <code>"global"</code> extent within a half-pixel
+   tolerance.</li>
+<li>Asserts the <code>coordinate_systems.global</code> attr is present and
+   self-consistent.</li>
+</ol>
+<p>See <code>tests/unit/converters/test_coordinate_systems.py</code>.</p>
+<p>A consumer can run the same check at load time. The recommended
+pattern is to compute the bbox at <code>"global"</code> for every element
+and warn if any pair differs by more than ~10x; that catches the
+<code>Scale(1/pixel_size)</code> vs identity unit-confusion class of bug
+without flagging legitimate small-vs-large element pairs (e.g.
+a small ROI within a full-tissue dataset).</p>
+<hr />
+<h2 id="cross-modality-registration">Cross-modality registration<a class="headerlink" href="#cross-modality-registration" title="Permanent link">&para;</a></h2>
+<p>When a Thyra zarr is later registered against another modality
+(e.g. Xenium via the EscDat registration pipeline), the
+registration step rewrites every Thyra element's transform to
+<code>"global"</code> so that the merged zarr's <code>"global"</code> matches the
+other modality's convention. The merged zarr's
+<code>coordinate_systems.global</code> attr is rewritten to declare the new
+unit and reference element.</p>
+<p>That is, <strong>the coordinate-system contract is per-zarr, not
+per-element-or-modality</strong>. A standalone Thyra zarr can have
+<code>unit="micrometer"</code> while a merged Thyra+Xenium zarr produced
+from the same data will have <code>unit="pixel"</code>. Both are correct
+for their respective zarrs.</p>
+<hr />
+<h2 id="what-if-i-open-a-zarr-that-doesnt-have-this-attr">What if I open a zarr that doesn't have this attr?<a class="headerlink" href="#what-if-i-open-a-zarr-that-doesnt-have-this-attr" title="Permanent link">&para;</a></h2>
+<p>Two kinds of Thyra output lack the <code>coordinate_systems</code> attr, and
+the second is more recent than it looks:</p>
+<ul>
+<li><strong>Anything written before v1.22.0</strong>, which introduced the schema.</li>
+<li><strong>Anything written between v1.22.0 and v2.3.1 by the streaming
+  route</strong>, which in those releases was one of four converters and
+  hand-wrote its own Zarr root attributes. Its copy was short: 7
+  attrs against the 10 the other three produced, missing
+  <code>coordinate_systems</code>, <code>format_specific_metadata</code> and
+  <code>msi_dataset_info</code>. Fixed in v3.0.0. This is the awkward one,
+  because that route was chosen by estimated size -- so the biggest
+  datasets are exactly the ones that lost it, and nothing in the
+  store records which route wrote it. There is no live setting to
+  check: the four converters became one in v3.23 (design decision
+  D11) and every store written since v3.0.0 carries the attr.</li>
+</ul>
+<p>Either way the store is still readable, but you have to infer the
+convention from element layouts and accept some risk that two
+elements disagree silently.</p>
+<p>If you control the data: <strong>regenerate</strong>. The schema is cheap to
+write and the resulting zarrs are self-describing forever after.
+If you do not control the data, the best fallback is to write a
+producer-specific heuristic (see Ousia's coordinate-system loader
+for an example: it recognises Xenium-from-spatialdata-io zarrs by
+their <code>morphology_focus</code> image and assumes Xenium's documented
+pixel size).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.instant.progress", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

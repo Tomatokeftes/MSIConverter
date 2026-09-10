@@ -1,0 +1,3672 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A modern Python library for converting Mass Spectrometry Imaging data into SpatialData/Zarr format">
+      
+      
+      
+        <link rel="canonical" href="https://M4i-Imaging-Mass-Spectrometry.github.io/thyra/design-decisions/">
+      
+      
+        <link rel="prev" href="../solarix-notes/">
+      
+      
+        <link rel="next" href="../api/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/favicon.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Design Decisions - Thyra</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#design-decisions" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Thyra" class="md-header__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Thyra
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Design Decisions
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../explore-the-output/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Explore the Output
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../supported-formats/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Supported Formats
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../cli/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  CLI Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../resampling/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Resampling
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../output-format/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Output Format
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../metadata-schema/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metadata Schema
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../coordinate-systems/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Coordinate Systems
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../imzml-parser-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  imzML Parser Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../phi-tofsims-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PHI ToF-SIMS Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../solarix-notes/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  solariX Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Design Decisions
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../api/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../code-of-conduct/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Code of Conduct
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Thyra" class="md-nav__button md-logo" aria-label="Thyra" data-md-component="logo">
+      
+  <img src="../assets/thyra-logomark.svg" alt="logo">
+
+    </a>
+    Thyra
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/M4i-Imaging-Mass-Spectrometry/thyra" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    M4i-Imaging-Mass-Spectrometry/thyra
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../explore-the-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Explore the Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported Formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resampling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resampling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../output-format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coordinate-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinate Systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../imzml-parser-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    imzML Parser Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../phi-tofsims-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PHI ToF-SIMS Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../solarix-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solariX Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#d1-which-spectrum-a-reader-takes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D1. Which spectrum a reader takes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d2-the-msms-table-is-written-by-default-when-the-schedule-qualifies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D2. The MS/MS table is written by default when the schedule qualifies
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="D2. The MS/MS table is written by default when the schedule qualifies">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-five-more-acquisitions-showed-2026-09-07" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What five more acquisitions showed (2026-09-07)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-share-census" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The share census
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d3-the-mobility-grid-stays-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D3. The mobility grid stays opt in
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d4-the-grids-feature-ceiling-is-a-memory-guard-not-a-format-limit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D4. The grid's feature ceiling is a memory guard, not a format limit
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d5-one-raw-read-per-frame-per-pass-serves-every-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D5. One raw read per frame per pass serves every table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d6-the-msms-fragment-axis-is-the-ms1-mass-axis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D6. The MS/MS fragment axis is the MS1 mass axis
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d7-waters-which-functions-hold-the-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D7. Waters: which functions hold the image
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="D7. Waters: which functions hold the image">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-the-first-version-decided-and-why-it-was-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the first version decided, and why it was wrong
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-real-files-say" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the real files say
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-catch-the-tail-chunk-cannot-be-centroided" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The catch: the tail chunk cannot be centroided
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#objections-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Objections considered
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-waters-demultiplexed-table-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No Waters demultiplexed table yet
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d8-the-var-frame-is-the-memory-peak-and-stays-so" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D8. The var frame is the memory peak, and stays so
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d9-one-streaming-route" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D9. One streaming route
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d10-csc-is-the-only-layout-and-sparse_format-is-gone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D10. CSC is the only layout, and sparse_format is gone
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d11-one-converter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D11. One converter
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d12-an-anisotropic-raster-is-carried-not-refused" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D12. An anisotropic raster is carried, not refused
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d13-a-peak-on-a-declared-mass-range-bound-lands-in-the-edge-bin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D13. A peak on a declared mass-range bound lands in the edge bin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d14-a-0-based-imzml-folds-its-base-down-a-cropped-one-does-not-move" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D14. A 0-based imzML folds its base down; a cropped one does not move
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d15-an-override-that-contradicts-the-detector-warns-it-does-not-refuse-or-self-correct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D15. An override that contradicts the detector warns; it does not refuse or self-correct
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d16-a-preview-that-cannot-count-spectra-says-so-rather-than-reporting-the-raster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D16. A preview that cannot count spectra says so rather than reporting the raster
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d17-the-docs-deploy-builds-main-and-the-ibd-uuid-warns-rather-than-refuses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D17. The docs deploy builds main, and the .ibd UUID warns rather than refuses
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="D17. The docs deploy builds main, and the .ibd UUID warns rather than refuses">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-docs-deploy-pins-its-ref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The docs deploy pins its ref
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#an-ibd-uuid-that-disagrees-warns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        An .ibd UUID that disagrees warns
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d18-main-stays-unprotected-until-a-release-credential-exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D18. main stays unprotected until a release credential exists
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-of-conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#d1-which-spectrum-a-reader-takes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D1. Which spectrum a reader takes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d2-the-msms-table-is-written-by-default-when-the-schedule-qualifies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D2. The MS/MS table is written by default when the schedule qualifies
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="D2. The MS/MS table is written by default when the schedule qualifies">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-five-more-acquisitions-showed-2026-09-07" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What five more acquisitions showed (2026-09-07)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-share-census" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The share census
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d3-the-mobility-grid-stays-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D3. The mobility grid stays opt in
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d4-the-grids-feature-ceiling-is-a-memory-guard-not-a-format-limit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D4. The grid's feature ceiling is a memory guard, not a format limit
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d5-one-raw-read-per-frame-per-pass-serves-every-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D5. One raw read per frame per pass serves every table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d6-the-msms-fragment-axis-is-the-ms1-mass-axis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D6. The MS/MS fragment axis is the MS1 mass axis
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d7-waters-which-functions-hold-the-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D7. Waters: which functions hold the image
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="D7. Waters: which functions hold the image">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-the-first-version-decided-and-why-it-was-wrong" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the first version decided, and why it was wrong
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-real-files-say" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the real files say
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-catch-the-tail-chunk-cannot-be-centroided" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The catch: the tail chunk cannot be centroided
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#objections-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Objections considered
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-waters-demultiplexed-table-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No Waters demultiplexed table yet
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d8-the-var-frame-is-the-memory-peak-and-stays-so" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D8. The var frame is the memory peak, and stays so
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d9-one-streaming-route" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D9. One streaming route
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d10-csc-is-the-only-layout-and-sparse_format-is-gone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D10. CSC is the only layout, and sparse_format is gone
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d11-one-converter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D11. One converter
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d12-an-anisotropic-raster-is-carried-not-refused" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D12. An anisotropic raster is carried, not refused
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d13-a-peak-on-a-declared-mass-range-bound-lands-in-the-edge-bin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D13. A peak on a declared mass-range bound lands in the edge bin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d14-a-0-based-imzml-folds-its-base-down-a-cropped-one-does-not-move" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D14. A 0-based imzML folds its base down; a cropped one does not move
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d15-an-override-that-contradicts-the-detector-warns-it-does-not-refuse-or-self-correct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D15. An override that contradicts the detector warns; it does not refuse or self-correct
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d16-a-preview-that-cannot-count-spectra-says-so-rather-than-reporting-the-raster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D16. A preview that cannot count spectra says so rather than reporting the raster
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d17-the-docs-deploy-builds-main-and-the-ibd-uuid-warns-rather-than-refuses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D17. The docs deploy builds main, and the .ibd UUID warns rather than refuses
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="D17. The docs deploy builds main, and the .ibd UUID warns rather than refuses">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-docs-deploy-pins-its-ref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The docs deploy pins its ref
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#an-ibd-uuid-that-disagrees-warns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        An .ibd UUID that disagrees warns
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#d18-main-stays-unprotected-until-a-release-credential-exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D18. main stays unprotected until a release credential exists
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="design-decisions">Design Decisions<a class="headerlink" href="#design-decisions" title="Permanent link">&para;</a></h1>
+<p>This page records the decisions behind Thyra's defaults where a reasonable
+person could have chosen otherwise. Each entry gives the decision, the
+reason, the strongest objection that was raised against it and why it did
+not win, and the known limit. The goal is that someone who disagrees can see
+exactly which premise to argue with, and open an issue against that premise
+rather than against a number in a table.</p>
+<p>Every measurement quoted here was taken on real acquisitions on the date
+given, so a future maintainer can repeat it.</p>
+<p><strong>Status vocabulary.</strong> <em>Implemented</em> means the code on <code>main</code> does this.
+<em>Accepted</em> means the decision is made and recorded but the change has not
+shipped yet. <em>Deferred</em> means no change, with the condition that would reopen
+it stated.</p>
+<hr />
+<h2 id="d1-which-spectrum-a-reader-takes">D1. Which spectrum a reader takes<a class="headerlink" href="#d1-which-spectrum-a-reader-takes" title="Permanent link">&para;</a></h2>
+<p><strong>Decision.</strong> Thyra reads the instrument's sparse record when the file holds
+one, otherwise the vendor's picked spectrum. It applies no peak picking of
+its own.</p>
+<p><strong>Status:</strong> Implemented 2026-09-07. The Bruker TDF default changed from
+<code>vendor_centroid</code> to <code>scan_sum</code>; the centroid stays available through
+<code>--tdf-spectrum vendor_centroid</code>. Every other row of the table below was
+already what the code does.</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>What the file holds</th>
+<th>What Thyra reads</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bruker TDF (TIMS on)</td>
+<td>per-scan digitizer-index counts for every mobility scan, plus a vendor centroid on request</td>
+<td>the scans, summed per index (<code>scan_sum</code>)</td>
+<td>the sparse record; equals Bruker's own frame total</td>
+</tr>
+<tr>
+<td>Bruker TSF (TIMS off)</td>
+<td>a vendor line spectrum, plus a raw digitizer trace</td>
+<td>the line spectrum</td>
+<td>the trace is a continuum with a baseline, not a peak list</td>
+</tr>
+<tr>
+<td>Bruker solariX</td>
+<td>centroided peak lists in <code>peaks.sqlite</code>; raw transients</td>
+<td>the peak lists</td>
+<td>the only sparse record; transients need an FT</td>
+</tr>
+<tr>
+<td>Bruker rapifleX</td>
+<td>profile spectra</td>
+<td>the profile, resampled</td>
+<td>nothing else exists; the resampler conserves current</td>
+</tr>
+<tr>
+<td>Waters SELECT SERIES MRT</td>
+<td>a zero-suppressed digitiser trace, plus a vendor centroid on demand</td>
+<td>the trace, onto a digitiser-matched axis</td>
+<td>the picker merges 8 to 9 mDa doublets the trace resolves; see <a href="../supported-formats/#waters-masslynx">Supported Formats</a></td>
+</tr>
+<tr>
+<td>every other Waters instrument</td>
+<td>the same trace, plus a vendor centroid on demand</td>
+<td>the centroid (profile on request)</td>
+<td>measured on a Synapt G2-Si, the picker keeps everything the trace resolves, so the trace would cost 2 to 3 times the store for nothing</td>
+</tr>
+<tr>
+<td>imzML, mzPeak, PHI</td>
+<td>whatever was exported</td>
+<td>as exported</td>
+<td>the export already made the choice</td>
+</tr>
+</tbody>
+</table>
+<p>The line between TDF and TSF is the whole decision, so it was measured
+rather than assumed.</p>
+<p><strong>Measured on TDF</strong> (2026-09-07; 30 frames of a 26k-pixel MALDI-2 slide and
+10 frames of a 20 um biofilm set):</p>
+<table>
+<thead>
+<tr>
+<th>Quantity</th>
+<th>Slide</th>
+<th>Biofilm</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scan_sum</code> total against Bruker's quasi-profile export (<code>tims_extract_profile_for_frame</code>)</td>
+<td>identical</td>
+<td>identical</td>
+</tr>
+<tr>
+<td><code>scan_sum</code> total against Bruker's per-frame TIC column (<code>Frames.SummedIntensities</code>)</td>
+<td>1.0000</td>
+<td>0.9992</td>
+</tr>
+<tr>
+<td>vendor centroid total against the same TIC column</td>
+<td>0.8748</td>
+<td>0.9644</td>
+</tr>
+<tr>
+<td>centroid intensity of a strong peak against the summed indices under it</td>
+<td>0.97 to 0.99</td>
+<td>0.98 to 0.99</td>
+</tr>
+<tr>
+<td>points per frame, <code>scan_sum</code> over centroid</td>
+<td>2.9x</td>
+<td>1.5x</td>
+</tr>
+<tr>
+<td>raw pair intensities equal to 1</td>
+<td>none</td>
+<td>none</td>
+</tr>
+</tbody>
+</table>
+<p>Three things are therefore true at once. The vendor centroid reports peak
+<em>areas</em> and conserves the current inside each peak it picks. What it drops
+is every index bin that its picker assigned to no peak: 12.5 percent of the
+slide's current and 3.6 percent of the biofilm's. And Bruker's own
+definition of a frame's total ion current is the scan sum, not the centroid.
+The earlier description of the loss as "single-count noise" was wrong: these
+files contain no single counts, and the dropped current is sub-threshold
+signal.</p>
+<p><strong>Measured on TSF</strong> (2026-09-07; two files from different acquisitions): the
+line spectrum's intensity equals the maximum of the digitizer trace under
+the peak exactly (ratio 1.000 on every peak checked), so TSF intensities are
+peak <em>heights</em>, and <code>Frames.SummedIntensities</code> is the sum of those heights.
+The trace has a baseline of 18 on every sample, peaks 15 to 150 samples
+wide, and a total 3.4 to 3.7 times the line sum. Summing it would import a
+baseline and change the meaning of intensity from height to area. That is a
+different kind of data, so TSF stays on the vendor's line spectrum. The
+Waters trace is not the same kind: it is zero-suppressed, so it carries no
+baseline, and it is the digitiser's record. Which side of the rule a Waters
+instrument falls on is therefore decided by whether its peak picker has been
+shown to lose what the trace keeps, which is the MRT measurement in the
+next row of the table.</p>
+<p><strong>Why <code>scan_sum</code> is the TDF default.</strong> Thyra's one invariant everywhere
+else is that ion current is conserved: the resampler is TIC-preserving and
+every sibling table is checked against an exact identity. The vendor
+centroid was the single place where a closed, unversioned algorithm removed
+current before the store was written. Under <code>scan_sum</code> every identity holds
+by construction: the mobility heatmap's marginal is the mean spectrum, the
+mobility grid's marginal is the summed table, and the MS/MS blocks add back
+up to the summed table. And the number a reader calls TIC is the number the
+vendor calls TIC.</p>
+<p><strong>Objections considered.</strong></p>
+<ul>
+<li><em>The dropped current is noise, and keeping it raises the noise floor.</em>
+  Some of it is. Removing it is analysis, reproducible downstream by any
+  method the user chooses and documented in their own pipeline. Removing it
+  at conversion is irreversible and undocumented.</li>
+<li><em>Users comparing with SCiLS Lab or TSF exports will see different
+  numbers.</em> True. The mode is recorded in
+  <code>msi_metadata.processing[0].parameters.tdf_spectrum</code>, and
+  <code>--tdf-spectrum vendor_centroid</code> restores the vendor numbers exactly.</li>
+<li><em>It changes the numbers of every existing TDF pipeline.</em> True, and the
+  real cost. It ships as a minor release with a changelog entry, and an old
+  store can be told from a new one by the provenance field.</li>
+<li><em>Then TSF should sum its profile for consistency.</em> No. The TSF profile
+  is a continuum with a baseline, and its line intensities are heights by
+  Bruker's own definition. The rule is about sparse records, not about
+  reading the largest array available.</li>
+<li><em>Then Waters should stay on its centroid, as this page first said.</em> The
+  first version of this table put every Waters instrument on the centroid
+  and called its profile "the same kind of data" as the TSF trace. That was
+  wrong on both counts, and the correction came from the measurements
+  behind the MRT profile default rather than from this page: the Waters
+  trace has no baseline, and on the MRT the picker merges near-isobars the
+  trace resolves. The rule did not change; the row did.</li>
+</ul>
+<p><strong>Known limits.</strong> The summed table holds about three times the points per
+pixel on a short-ramp slide, half again on a long-ramp one. Measured on
+the whole 26,087-pixel slide (2026-09-07, default mass axis, optical image
+left out, same machine):</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>vendor_centroid</code></th>
+<th><code>scan_sum</code></th>
+<th>ratio</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>non-zeros in the summed table</td>
+<td>282,223,487</td>
+<td>893,289,573</td>
+<td>3.2x</td>
+</tr>
+<tr>
+<td>store on disk</td>
+<td>1.36 GB</td>
+<td>2.50 GB</td>
+<td>1.8x</td>
+</tr>
+<tr>
+<td>conversion, warm</td>
+<td>438 s</td>
+<td>528 s</td>
+<td>1.2x</td>
+</tr>
+</tbody>
+</table>
+<p>The store grows less than the point count because the sharded chunks
+compress the low counts well. That is the price of the default, and the
+flag buys the old size back.</p>
+<hr />
+<h2 id="d2-the-msms-table-is-written-by-default-when-the-schedule-qualifies">D2. The MS/MS table is written by default when the schedule qualifies<a class="headerlink" href="#d2-the-msms-table-is-written-by-default-when-the-schedule-qualifies" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Implemented 2026-09-07. <code>--msms-table</code> is the default; the
+table is written for a Bruker PASEF acquisition with a constant,
+non-overlapping schedule of at least two precursors and refused, with the
+reason logged, on everything else. <code>--no-msms-table</code> opts out.</p>
+<p><strong>Reason.</strong> A scheduled PASEF acquisition fragments each precursor in turn
+at every pixel. The one-spectrum-per-pixel summed table of such a pixel is
+therefore a mixture of unrelated fragment spectra. It is not a spectrum of
+anything, and writing only that mixture is the inaccurate representation.
+The split is parameter-free, since the schedule is the instrument's own
+list, and lossless, since every recorded point falls in exactly one
+isolation window; under D1 its blocks add back to the summed table exactly.
+The refusals for a schedule that varies across pixels, overlapping windows,
+or a single precursor already fall back silently to the summed table, so the
+default never breaks a conversion. The prior-art survey in
+<a href="../output-format/#fragmentation-msms">Output Format</a> found no open
+analysis-layer convention to defer to.</p>
+<p><strong>Objections considered.</strong></p>
+<ul>
+<li><em>It has run on one dataset: 713 pixels, 15 precursors, one schedule
+  shape.</em> True when it shipped, and stated as a limit. Answered on
+  2026-09-07 by four more acquisitions, below: a second schedule of 13
+  precursors in the other polarity, sharing no precursor with the first,
+  found by walking the lab share. The assembly engine underneath is the one
+  verified on the 26k-pixel mobility grid, and the MS/MS count span is
+  tiny, so scale is not where it would fail; the schedule shape was, and
+  now there are two of them measured plus a third made by deleting a window
+  from a copy.</li>
+<li><em>A default-on writes an element the user did not ask for and consumers
+  must recognise.</em> The sibling is discriminated by its <code>uns</code> block exactly
+  as the mobility sibling already is, and the summed table remains the
+  primary element.</li>
+</ul>
+<h3 id="what-five-more-acquisitions-showed-2026-09-07">What five more acquisitions showed (2026-09-07)<a class="headerlink" href="#what-five-more-acquisitions-showed-2026-09-07" title="Permanent link">&para;</a></h3>
+<p>Every file in <code>TIMS-test-data\01_tiny_msms_315px</code>, and the two negative-mode
+images the share search below turned up, converted with the defaults and
+<code>--no-optical</code> on both write routes (<code>--streaming true</code> and <code>false</code>). The
+two routes agreed exactly on every table they wrote -- same <code>var</code> labels,
+same <code>obs</code>, and the same CSR <code>indices</code>, <code>indptr</code> and <code>data</code> arrays -- so
+only one set of numbers is given:</p>
+<table>
+<thead>
+<tr>
+<th>acquisition</th>
+<th>pixels</th>
+<th><code>MsMsType</code></th>
+<th>precursor table</th>
+<th>tables written</th>
+<th>windows</th>
+<th><code>current_ratio</code></th>
+<th>MS/MS <code>var</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>220425_MSMS_pos_brain1.d</code></td>
+<td>713</td>
+<td>8</td>
+<td><code>PasefFrameMsMsInfo</code>, 10,695 rows</td>
+<td>summed + <code>_msms</code></td>
+<td>15</td>
+<td>1.0 (per pixel 1.0 to 1.0)</td>
+<td>713 x 264,006, 302,460 nnz</td>
+</tr>
+<tr>
+<td><code>220425_MSMS_pos_brain1_2.d</code></td>
+<td>668</td>
+<td>8</td>
+<td><code>PasefFrameMsMsInfo</code>, 10,020 rows</td>
+<td>summed + <code>_msms</code></td>
+<td>15</td>
+<td>1.0 (per pixel 1.0 to 1.0)</td>
+<td>668 x 284,235, 335,840 nnz</td>
+</tr>
+<tr>
+<td><code>220425_MSMS_neg.d</code></td>
+<td>487</td>
+<td>8</td>
+<td><code>PasefFrameMsMsInfo</code>, 6,331 rows</td>
+<td>summed + <code>_msms</code></td>
+<td>13</td>
+<td>1.0 (per pixel 1.0 to 1.0)</td>
+<td>487 x 162,829, 169,079 nnz</td>
+</tr>
+<tr>
+<td><code>220425_MSMS_neg_test.d</code></td>
+<td>519</td>
+<td>8</td>
+<td><code>PasefFrameMsMsInfo</code>, 6,747 rows</td>
+<td>summed + <code>_msms</code></td>
+<td>13</td>
+<td>1.0 (per pixel 1.0 to 1.0)</td>
+<td>519 x 93,926, 96,046 nnz</td>
+</tr>
+<tr>
+<td><code>220425_MSMS_pos.d</code></td>
+<td>315</td>
+<td>2</td>
+<td><code>FrameMsMsInfo</code>, 315 rows</td>
+<td>summed only</td>
+<td>1</td>
+<td>--</td>
+<td>--</td>
+</tr>
+</tbody>
+</table>
+<p>Conversion took 6 to 19 s per file per route. The summed axis is 599,146
+bins on the positive files and 635,610 on the negative ones, which acquired
+to m/z 1200 rather than 1000 -- the default grid follows the acquisition
+range, so <strong>two runs share an axis only when they share that range.</strong></p>
+<p><strong>The refusal on <code>220425_MSMS_pos.d</code> is the right answer.</strong> Its 315 frames
+are all <code>MsMsType = 2</code>, single-precursor MS/MS, and it has no
+<code>PasefFrameMsMsInfo</code> at all: <code>FrameMsMsInfo</code> carries one row per frame,
+every one of them <code>TriggerMass</code> 1046.54 at <code>IsolationWidth</code> 1.5 and
+<code>CollisionEnergy</code> 57.327. The whole mobility ramp of every frame fragments
+that one precursor, so the summed table already <em>is</em> its fragment spectrum
+and there is nothing to separate. This is the acquisition the "one
+precursor" refusal was written for, met for the first time.</p>
+<p><strong>Two pixel sets of one method align on the labels.</strong> <code>brain1</code> and
+<code>brain1_2</code> share 38,453 of their 264,006 and 284,235 feature labels, and
+every shared label agrees on <code>precursor_mz</code>, <code>mz</code>, <code>mz_index</code> <em>and</em>
+<code>precursor_index</code>; <code>anndata.concat</code> gives 1,381 x 509,788 with per-pixel
+totals preserved and no column holding two precursors. <code>precursor_mobility</code>
+does <strong>not</strong> agree between those two: they carry their own TIMS
+calibration and the same window comes out up to 4.0e-3 apart in 1/K0. The
+two negative-mode runs, acquired back to back, agree on it <em>bitwise</em>. So
+the coordinate is reproducible when the calibration is and not otherwise,
+which is why aligning on <code>(precursor_mz, precursor_mobility)</code> means
+matching the pair rather than comparing it with <code>==</code>.</p>
+<p><strong>A second schedule, acquired as such.</strong> The negative-mode pair isolates 13
+precursors from 519.182 to 1179.731 -- a list with <strong>nothing in common</strong>
+with the positive-mode 15 from 313.275 to 936.578. Concatenating a negative
+store with a positive one shares <strong>zero</strong> labels, which is the whole point:
+two unrelated acquisitions must not merge. Had the labels been named after
+the rank, the two would have shared <strong>5,262</strong> labels and <em>every one of them</em>
+would have named two different precursors -- <code>p0_mz31749</code> is 519.182 in one
+and 313.275 in the other -- and the different mass axes would not have
+saved it, because both axes start at m/z 50 and their low bins line up. The
+two negative runs, which do share a schedule, share 7,155 labels and agree
+on every column of <code>var</code> including the rank.</p>
+<p><strong>And a third shape, made from the data at hand.</strong> A copy of <code>brain1_2</code>
+with the lowest-m/z window (313.275) deleted from all 668 frames -- from
+every frame, so <code>constant_across_pixels</code> still holds and only the shape
+changes. The result is 14 precursors, each one rank lower than in <code>brain1</code>:
+353.32 is <code>precursor_index</code> 1 there and 0 here. The alignment survives it.
+36,912 labels are shared and all of them agree on <code>precursor_mz</code>, <code>mz</code> and
+<code>mz_index</code>; <code>precursor_index</code> does not, and
+<code>anndata.concat(join="inner", merge="unique")</code> drops that column while
+keeping the other three -- anndata itself finding the rank disagrees. The
+15,741 labels of the deleted precursor are <code>brain1</code>-only and the reduced
+sample contributes exactly 0 to them; a rank-named scheme would have merged
+all 27,145 labels the two stores would then have shared.</p>
+<p><strong>And the current block says what was removed.</strong> The reduced copy's summed
+table is untouched, so its split now misses exactly the deleted window's
+ion current: <code>current_ratio</code> 0.9717425865942857 against
+1 - 0.028257413405714304 = 0.9717425865942857, equal to the last digit.</p>
+<h3 id="the-share-census">The share census<a class="headerlink" href="#the-share-census" title="Permanent link">&para;</a></h3>
+<p>Every <code>analysis.tdf</code> on the lab share was opened read-only and asked what it
+is: <strong>1,021</strong> of them, plus the nine in the local corpus. The share's timsTOF
+instrument directory holds 25 -- most <code>.d</code> folders there are TSF, TIMS off --
+and the other twenty instrument directories hold none.
+Of the 1,021, 230 are imaging acquisitions (they have <code>MaldiFrameInfo</code>) and
+95 carry <code>PasefFrameMsMsInfo</code>, but only <strong>six are both</strong>, and those six are
+the four positive-mode files above (two of them duplicate copies) plus the
+two negative-mode ones. Every other PASEF file on the share is an LC run
+with no MALDI geometry at all, so the converter stops there long before the
+tables -- a clean conversion failure, not a crash.</p>
+<p>Their <em>schedules</em> are still worth reading, and reading them exercised two
+refusals no real file had reached before.</p>
+<ul>
+<li><strong>Data-dependent PASEF.</strong> The datasets registered as <code>tims_dda_pro2_2026</code>
+  are fourteen DDA runs on a timsTOF Pro 2. One
+  (<code>tims_dda_pro2_2026_741</code>) has 1,840 survey and 9,912 fragment
+  frames and <strong>14,952 distinct isolation windows, each in 1 to 8 frames</strong>;
+  across the share the count reaches 90,915. The precursors are chosen per
+  frame, so there is no global feature axis, and the windows overlap on the
+  ramp as well. Refused on the first of those, which is the right one: the
+  overlap is a consequence of the design, the varying schedule <em>is</em> the
+  design.</li>
+<li><strong>diaPASEF.</strong> 654 files interleave survey and DIA fragment frames -- 1,786
+  and about 28,566 of them in one -- with their windows in
+  <code>DiaFrameMsMsWindows</code>.</li>
+</ul>
+<p><strong>Reading a diaPASEF one found a refusal that lied.</strong>
+<code>DiaFrameMsMsWindows</code> is not one of the two tables the TDF reader looks in,
+so such a file yields a schedule with an empty window list, and
+<code>constant_across_pixels</code> false because the frame types are mixed.
+<code>demultiplex_refusal</code> asked the window count before the constancy and
+answered <em>"the acquisition isolates a single precursor"</em> about a run that
+isolates 32. It now asks the conditions in order of what each says about
+the acquisition -- not MS/MS, then not constant, then no precursor
+recorded, then one precursor, then overlapping -- so that file is refused
+as non-constant, which is true, and an empty window list has a reason of
+its own. The <code>INFO</code> line about a <code>current_ratio</code> off 1 was likewise
+attributing every deviation to <code>vendor_centroid</code>; a schedule whose windows
+do not cover every scan carrying current is the other direction, as the
+reduced copy above measures.</p>
+<p><strong>Known limits.</strong> Tested on four MALDI PASEF images across <strong>two
+independently acquired schedules</strong> -- 15 precursors in positive mode over
+m/z 50-1000, 13 in negative over 50-1200 -- at 487 to 713 pixels, plus a
+third shape made by deleting one window from a copy, the single-precursor
+refusal on a real <code>MsMsType = 2</code> acquisition, and the varying-schedule
+refusal on real DDA-PASEF. All four come from the same instrument and the
+same method family, and none exceeds 713 pixels: the assembly engine
+underneath is the one verified on the 26k-pixel mobility grid, but this
+table has not itself been run at that scale.</p>
+<hr />
+<h2 id="d3-the-mobility-grid-stays-opt-in">D3. The mobility grid stays opt in<a class="headerlink" href="#d3-the-mobility-grid-stays-opt-in" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Implemented. <code>--mobility-grid</code> is off by default.</p>
+<p><strong>Reason.</strong> This is the opposite case to D2. Summing a TIMS pixel's
+mobility scans gives an ordinary MS1 spectrum; nothing about it is
+inaccurate. The grid is the same data unfolded along a second axis with
+choices the summed table does not need: how many mobility channels, and a
+channel width that then depends on each acquisition's ramp. Anything with
+free parameters is a derived product, and derived products are written when
+asked, with their parameters recorded, so that nobody later finds a 256 in a
+store and wonders who chose it. The lossless summary of the mobility
+dimension, the mass-mobility heatmap plus the mobility axis metadata, is
+written by default, and under D1 the heatmap's marginal equals the stored
+mean spectrum exactly.</p>
+<p>The sentence that decides D2 and D3 together: the default store contains
+what is accurate without any parameter beyond the mass axis, plus a
+lossless summary of every extra dimension. Grids over an extra dimension
+are opt in and carry their parameters.</p>
+<p><strong>Objections considered.</strong></p>
+<ul>
+<li><em>The mass axis is also a parameterised, derived choice, and it is
+  default.</em> A mass axis is necessary to build any table at all; the grid is
+  optional on top of a complete table. This is the thinnest argument on the
+  page and is recorded as such.</li>
+<li><em>Users will not discover it.</em> The conversion log says the source has
+  mobility, and this page exists.</li>
+<li><em>Practical costs are secondary but real.</em> On 400 frames the store is six
+  times larger and the conversion about five times slower warm; at the
+  default mass axis the whole 26k-pixel slide is refused (see D4). A
+  default that refuses the flagship dataset is not a default anyone can
+  rely on.</li>
+</ul>
+<p><strong>Known limits.</strong> None beyond D4.</p>
+<hr />
+<h2 id="d4-the-grids-feature-ceiling-is-a-memory-guard-not-a-format-limit">D4. The grid's feature ceiling is a memory guard, not a format limit<a class="headerlink" href="#d4-the-grids-feature-ceiling-is-a-memory-guard-not-a-format-limit" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Implemented 2026-09-07. The fixed ceiling of 20,000,000 occupied
+(m/z bin, mobility channel) pairs became a projection of the <code>var</code> frame's
+memory (330 bytes per feature, measured) against the machine's free memory,
+warning past a quarter of it and refusing past half, with an absolute cap of
+100,000,000 kept as a statement of what downstream tools can be expected to
+open rather than as the operative guard.</p>
+<p><strong>Reason.</strong> Both sibling tables are built out of core, so the remaining
+peak is the <code>var</code> frame, measured at roughly 330 bytes per feature including
+the AnnData copies. The ceiling exists to protect that build. Raising the
+constant from 20M to 25M because the flagship slide occupies 21.1M pairs at
+the default axis would be fitting a constant to one dataset, and the
+objection to that is immediate. The honest guard is the one the grid used
+once before and that was accepted then: project bytes from the count and
+compare with what the machine has. Fractions rather than sizes, because a
+table that is routine on a workstation is fatal on a laptop.</p>
+<p><strong>Objections considered.</strong></p>
+<ul>
+<li><em>The per-feature constant is version and machine dependent.</em> It is
+  measured and documented, and a guess wrong by a factor of two still
+  refuses at half of free memory.</li>
+</ul>
+<p><strong>Measured on the whole slide</strong> (2026-09-07, 26,087 pixels at the default
+138,629-bin axis, <code>--mobility-grid --no-optical</code>, warm, no optical image).
+The conversion the fixed ceiling refused now runs: 21,101,151 occupied
+<code>(m/z bin, mobility channel)</code> pairs, 1,627,659,585 non-zeros through 18.19 GB
+of scratch, 239 of 256 channels occupied, a marginal of exactly 1.0 in every
+pixel, an 8.0 GB store (2.5 GB summed, 5.6 GB grid). The guard neither warned
+nor refused, which is what a projection of 6.5 GB against 90 GB free should
+do.</p>
+<p>The constant held: peak private bytes were 6.38 GB, which over 21,101,151
+features is <strong>302 bytes per feature</strong>, 8 percent under the 330 the guard
+projects with and measured the way that number was, as the whole process's
+private peak over the feature count. The <code>var</code> frame's own step is narrower
+-- private sat at 2.49 GB through both passes and both column sorts and rose
+to 6.38 GB over three seconds while the frame was built, so 184 bytes per
+feature is what the frame alone costs -- and the guard is conservative under
+either reading, on a grid 1.6 times the one the constant was measured on. It
+stays at 330.</p>
+<p><strong>Known limits.</strong> The <code>var</code> frame is still the peak (D8), and the grid at the
+default axis is 5.6 GB of store for a slide whose summed table is 2.5 GB.</p>
+<hr />
+<h2 id="d5-one-raw-read-per-frame-per-pass-serves-every-table">D5. One raw read per frame per pass serves every table<a class="headerlink" href="#d5-one-raw-read-per-frame-per-pass-serves-every-table" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Implemented 2026-09-07, the same day it was deferred. It was
+deferred on a 400-frame warm measurement that put the grid's extra read at
+about 4 percent of wall time; the whole-slide logs from the D1 measurement
+then showed the mobility heatmap's own pass at 201 s of a 528 s conversion
+under <code>scan_sum</code> and 272 s of 438 s under the vendor centroid. The extra
+reads were 38 to 62 percent of a default conversion, not 4, and the reopen
+condition was met on the same afternoon. The mapping this left as the next
+lever was taken the same week, by the frame's own unique indices; see below.</p>
+<p><strong>Decision.</strong> A Bruker TDF reader hands each frame over once, as a record
+of its raw scan read, from which the summed spectrum, the mobility point
+cloud and the fragment spectrum of each precursor are all derived. On the
+streaming route the two passes the summed table already takes, count then
+scatter, feed the heatmap, the mobility grid and the MS/MS table from that
+same read. Two raw reads of the source per conversion, whatever is written;
+a default conversion used to take three, a grid four, a grid with the MS/MS
+split six. The engine's two passes are still inherent, so "one pass" was
+never the right name; "one read per pass" is.</p>
+<p><strong>What makes it safe.</strong> Every derivation goes through the very helpers the
+reader's three iterators use, and every sink is the same accumulator the
+standalone passes feed, so the fused route cannot see different numbers.
+That was checked rather than assumed: stores written by the committed code
+and by the fused code were compared table by table on five configurations
+(the 400-frame slide with and without the grid on both write routes, and
+the 713-pixel PASEF set with its split on both routes) and were identical
+in every array, every <code>var</code> and <code>obs</code> frame and every <code>uns</code> block, index
+dtypes included. A stub source that answers both the iterators and the
+records pins the same identity in the unit tests, and pins that the fused
+route reads it exactly twice and never through the iterators.</p>
+<p><strong>Measured</strong> (2026-09-07, warm, optical image left out):</p>
+<table>
+<thead>
+<tr>
+<th>conversion</th>
+<th>before</th>
+<th>after</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>400 frames, default (heatmap)</td>
+<td>13 s</td>
+<td>11 s</td>
+</tr>
+<tr>
+<td>400 frames, <code>--mobility-grid</code></td>
+<td>32 s</td>
+<td>21 s</td>
+</tr>
+<tr>
+<td>713-pixel PASEF, MS/MS split</td>
+<td>12 s</td>
+<td>9 s</td>
+</tr>
+<tr>
+<td>whole 26,087-pixel slide, default</td>
+<td>528 s</td>
+<td>454 s</td>
+</tr>
+<tr>
+<td>whole slide, <code>--mobility-grid --resample-bins 40000</code></td>
+<td>1,400 s</td>
+<td>858 s</td>
+</tr>
+</tbody>
+</table>
+<p>The grid row's "before" was measured on an earlier commit, before the
+engine's column sort was made six times faster, so part of that gain is
+the sort's; the 400-frame row above is the clean comparison for the grid.
+On the whole slide the heatmap's own pass (201 s) became part of the count
+pass, which grew from about 120 s to 266 s: what was saved is the read and
+the index-to-m/z conversion of every frame, about 55 s, plus the second
+scatter-side read. What remains is the mapping of every raw point onto the
+mass axis, 51,000 points per frame on this slide, which the heatmap and
+the grid need and the summed spectrum does not. That mapping was the next
+lever, not another read, and it was taken the same week.</p>
+<p><strong>The mapping, by the frame's unique indices</strong> (implemented 2026-09-07). A
+TDF frame is read as digitizer indices, and the reader already converts the
+unique ones: measured on this slide, 28,560 unique of 49,070 points, 58
+percent. Both halves of the mapping -- nearest bin, and in range or not --
+are elementwise in the m/z, so mapping the unique values and gathering by
+the frame's own inverse gives the same bins, the same mask and the same drop
+count for 58 percent of the binary searches. The record offers that view as
+<code>mobility_points_indexed</code>, the fused passes prefer it, and a record that
+does not offer it is mapped point by point as before; the iterators and the
+standalone passes are untouched.</p>
+<p><strong>Measured</strong> (2026-09-07, the same slide, warm, local disk, no optical
+image; each pair one session, v3.19.0 against the branch):</p>
+<table>
+<thead>
+<tr>
+<th>whole 26,087-pixel slide</th>
+<th>v3.19.0</th>
+<th>indexed mapping</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>default, wall</td>
+<td>420 s</td>
+<td>343 s</td>
+</tr>
+<tr>
+<td>default, pass 1 (maps every point, for the heatmap)</td>
+<td>250 s</td>
+<td>171 s</td>
+</tr>
+<tr>
+<td>default, pass 2 (no mobility sink)</td>
+<td>137 s</td>
+<td>139 s</td>
+</tr>
+<tr>
+<td><code>--mobility-grid</code> at the default axis, wall</td>
+<td>1,201 s</td>
+<td>724 s</td>
+</tr>
+<tr>
+<td>grid, pass 1 (heatmap and discovery)</td>
+<td>401 s</td>
+<td>237 s</td>
+</tr>
+<tr>
+<td>grid, pass 2 (grid scatter)</td>
+<td>627 s</td>
+<td>357 s</td>
+</tr>
+</tbody>
+</table>
+<p>The pass that maps points is a third faster, and where both passes map, the
+conversion is 40 percent faster; the default's second pass, which has no
+mobility sink to map for, is unchanged, which is the control. Taking 42
+percent of the searches out of the default's mapping pass took 79 s off it,
+which puts the searches at roughly 190 s of that pass's 250 and roughly 110 s
+of its 171 now -- still the largest single item in it, and the gather and
+the mask that remain are proportional to the points however few searches
+they cost.</p>
+<p>Identity was checked the way the fused passes were: stores written by
+v3.19.0 and by the branch, compared array by array (X data, indices and
+indptr with dtypes, <code>var</code>, <code>obs</code> and <code>uns</code>), on the 400-frame slice with and
+without the grid and on the 713-pixel PASEF set, and then on the whole slide
+in both configurations by hashing every array of every table in chunks.
+Identical throughout, the heatmap's <code>counts</code> included.</p>
+<p><strong>Cold cache on the lab share</strong> (2026-09-07, the deferral D5 left open).
+The same slide copied to the SMB share, default conversion, branch code, the
+file pushed out of the machine's standby list before the first run so the
+read is genuinely cold: 365 s cold against 342 s warm, pass 1 178 s against
+170 s, pass 2 143 s against 138 s. The first read of a never-read file costs
+about 5 percent of the pass; a conversion's second pass is warm either way,
+since the first pulls the acquisition into the cache. The share is not the
+bottleneck the deferral suspected -- on this machine a cold network read is
+within seconds of a warm local one (171 s for the same pass), so the mapping
+and not the read is what a conversion of this shape spends its time on,
+wherever the file lives.</p>
+<p><strong>Objections considered.</strong></p>
+<ul>
+<li><em>The in-memory route still runs the standalone passes.</em> True at the
+  time, and left so: that route held the whole matrix in RAM and was taken
+  by small files, where the passes cost seconds. Moot since D11 folded it
+  into the streaming route, which feeds the sinks from its own passes.</li>
+<li><em>Under <code>vendor_centroid</code> the summed spectrum cannot be derived from the
+  raw scans.</em> Correct; in that mode the record asks the library for the
+  centroid as a second call per frame, and the raw read still serves the
+  sinks. That mode is the opt-in.</li>
+<li><em>The record contract grew a method for one reader's convenience.</em> The
+  indexed view is reached with <code>getattr</code> and a record that does not offer
+  it is mapped point by point, which the stub records in the tests pin. It
+  is a view of the read every record already has, not a new obligation.</li>
+<li><em>Mapping every unique value maps ones that are then dropped as out of
+  range.</em> It does, and it costs a few searches more on a frame whose points
+  overhang the axis -- 8,328 points of 1.65 billion on this slide. The
+  alternative, masking before mapping, would need the mask expanded to the
+  points first, which is the work the factoring exists to avoid.</li>
+</ul>
+<p><strong>Known limits.</strong> Only the Bruker TDF reader hands frames over as records;
+every other source keeps its iterators and its standalone passes, which for
+an imzML mobility export is one pass over an already sparse file.</p>
+<hr />
+<h2 id="d6-the-msms-fragment-axis-is-the-ms1-mass-axis">D6. The MS/MS fragment axis is the MS1 mass axis<a class="headerlink" href="#d6-the-msms-fragment-axis-is-the-ms1-mass-axis" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Implemented. A condition attached to it on 2026-09-07, to refuse
+the table on an unresampled axis, was withdrawn the same day; see below.</p>
+<p><strong>Reason.</strong> Fragments and precursors pass through the same TOF and have the
+same resolving power, so one mass axis per store is the accurate
+representation. A separate fragment axis would invent a second resolution
+for the same analyser. The coupling is also what makes <code>mz_index</code>
+meaningful and the conservation check exact.</p>
+<p><strong>Objections considered.</strong></p>
+<ul>
+<li><em>On a raw, unresampled axis fragments snap to MS1-only m/z values, and
+  any fragment outside the axis range is dropped.</em> This objection was
+  raised, accepted, implemented as a refusal, and then found to be wrong
+  by the existing PASEF test, which relies on the raw axis for an exact
+  equality. The premise fails because on a scheduled MS/MS acquisition the
+  summed table holds no intact ions: its spectra are the same fragment
+  peaks the split re-reads, so the raw axis is the union of the fragment
+  m/z values themselves and the mapping is exact. The refusal was removed
+  and a test now pins the raw axis as exact on both write routes.</li>
+</ul>
+<p><strong>Known limits.</strong> The resampling grid chosen for the summed table sets
+fragment resolution. That is a consequence of the decision, not an
+accident.</p>
+<hr />
+<h2 id="d7-waters-which-functions-hold-the-image">D7. Waters: which functions hold the image<a class="headerlink" href="#d7-waters-which-functions-hold-the-image" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Implemented 2026-09-07, then <strong>restated the same day against
+real files, which contradicted its premise.</strong> The first version is kept
+below because the correction is the point.</p>
+<h3 id="what-the-first-version-decided-and-why-it-was-wrong">What the first version decided, and why it was wrong<a class="headerlink" href="#what-the-first-version-decided-and-why-it-was-wrong" title="Permanent link">&para;</a></h3>
+<p>The Waters reader classifies acquisition functions and then yields every
+scan of every MS-classified function as a pixel spectrum, keyed by laser
+coordinate. A two-function acquisition -- MSe low and high energy, or a
+data-dependent run -- would therefore emit two spectra at the same
+coordinate, one MS1 and one MS2, and the per-scan MS level MassLynx reports
+was parsed and then ignored. Summing an intact-ion and a fragment spectrum
+into one pixel makes a spectrum of nothing, so the fix was to convert the
+functions MassLynx labelled MS level 1 and record the rest under
+<code>excluded_functions</code>. No Waters MS/MS imaging file was available; the
+objection <em>no test data</em> was answered with "the filter is on a field already
+parsed and is testable with a synthetic scan record".</p>
+<p>That answer was wrong, and the entry said so itself without noticing: a
+synthetic record can only confirm that the code reads the field it was
+written to read. It cannot say what the field <strong>means</strong>.</p>
+<h3 id="what-the-real-files-say">What the real files say<a class="headerlink" href="#what-the-real-files-say" title="Permanent link">&para;</a></h3>
+<p>7,486 Waters <code>.raw</code> directories were found on the lab share (its six Waters
+instrument folders, plus one user directory);
+1,396 hold more than one <code>_FUNC*.DAT</code>, and the multi-function ones were
+opened. <strong>Every multi-function MALDI imaging run is a single-function raster
+that MassLynx split across functions</strong>, because it caps a <code>_FUNC*.DAT</code> file
+at about 1.6 GB and opens a new <em>function</em> when a long run reaches it. In
+each of those files:</p>
+<ul>
+<li><code>_extern.inf</code> declares exactly <strong>one</strong> acquisition function -- "MALDI TOF
+  MS FUNCTION", or "MALDI MOBILITY TOF MS FUNCTION" on the G2-Si -- however
+  many functions the file holds. <code>_FUNCTNS.INF</code> carries one 416-byte record
+  per stored chunk (10,400 bytes for the 25-function file).</li>
+<li>The chunks <strong>tile</strong> the stage and the run: consecutive, non-overlapping y
+  bands and retention-time ranges, and <strong>zero</strong> shared pixels between any
+  two functions. Their positioned scans sum exactly to the file's distinct
+  laser positions (7,682 on <code>180814_EVO_Fresh_image.raw</code>, which is also
+  exactly its 167 x 46 grid).</li>
+<li>MassLynx reports MS level 1 for the first chunk, 2 for the middle ones and
+  <strong>0</strong> for the last, and <code>getLockmassFunction</code> names that last chunk as the
+  file's lockmass function (it returns -1 only when the file has one
+  function). <code>isMsFunction</code> is 1 for every chunk, including the one it calls
+  lockmass, and <strong>no chunk carries a precursor m/z</strong>.</li>
+</ul>
+<p>So on these files the level filter dropped every chunk after the first, and
+the lockmass classification -- which predates this decision -- dropped the
+last one on top of that. Pixels converted, against the pixels the file
+holds:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Instrument</th>
+<th>Functions</th>
+<th>v3.19.0</th>
+<th>Now (centroid)</th>
+<th>In the file</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>20140509_ZF_No13.raw</code></td>
+<td>Synapt G1</td>
+<td>25</td>
+<td>1,657</td>
+<td>36,633</td>
+<td>37,033</td>
+</tr>
+<tr>
+<td><code>20140513_ZF_No16.raw</code></td>
+<td>Synapt G1</td>
+<td>11</td>
+<td>2,496</td>
+<td>20,438</td>
+<td>21,788</td>
+</tr>
+<tr>
+<td><code>20141003 MTB_04.raw</code></td>
+<td>Synapt G1</td>
+<td>8</td>
+<td>1,700</td>
+<td>12,110</td>
+<td>12,972</td>
+</tr>
+<tr>
+<td><code>140903_trypsin_vs_no.raw</code></td>
+<td>Synapt G1</td>
+<td>5</td>
+<td>2,284</td>
+<td>8,843</td>
+<td>9,221</td>
+</tr>
+<tr>
+<td><code>180814_EVO_Fresh_image.raw</code></td>
+<td>Synapt G1</td>
+<td>3</td>
+<td>3,200</td>
+<td>6,408</td>
+<td>7,682</td>
+</tr>
+<tr>
+<td><code>20201209_BCtumor_left Analyte 2.raw</code></td>
+<td>Synapt G2-Si</td>
+<td>4</td>
+<td>15,790</td>
+<td>49,096</td>
+<td>61,108</td>
+</tr>
+<tr>
+<td><code>20201223_BCTumor_Eva MDA_468.raw</code></td>
+<td>Synapt G2-Si</td>
+<td>3</td>
+<td>5,837</td>
+<td>11,413</td>
+<td>17,550</td>
+</tr>
+<tr>
+<td><code>20201218_MDA468_slide20201208 Analyte 5.raw</code></td>
+<td>Synapt G2-Si</td>
+<td>2</td>
+<td>7,355</td>
+<td>7,355</td>
+<td>8,547</td>
+</tr>
+</tbody>
+</table>
+<p>The two-function G2-Si run is the mildest case and still lost 14 percent of
+the image; the 25-function one kept 4.5 percent of it. Nothing in the store
+said so: the reader logged a warning about "MS level 2" functions and the
+conversion looked healthy. The middle column is what the rule below converts
+by default; the gap that remains is one chunk per file, and the next section
+is why.</p>
+<p><strong>One real multi-function acquisition was found</strong>, and it is what makes the
+rule below decidable rather than a guess:
+the dataset registered as <code>waters_dda_neg_16func</code>, a fast-DDA run on a Xevo
+DESI. Its
+<code>_extern.inf</code> declares <strong>16</strong> functions -- one "TOF FAST DDA FUNCTION" and
+15 "TOF SURVEY FUNCTION"s -- against the one function the chunked files
+declare. Function 0 is MS1 with no precursor; functions 1 to 15 are level 2
+and report a <em>different</em> precursor per scan, 28 distinct values each. And
+every one of the 16 lands on the <strong>same</strong> position. So the two cases
+separate cleanly on the positions: a chunked raster tiles them, a real
+parallel acquisition repeats them.</p>
+<p>(That file grids to 1x1 -- one unique x, one unique y -- and the reader now
+refuses it rather than converting the whole acquisition onto a single pixel
+with a 0.0 um pitch (issue #213). The refusal is right for this file: it is a
+single-spot DDA run, not an image. It is <em>not</em> a DESI gap, as that issue
+first supposed. Surveying the whole share settled it: real DESI images do
+carry stage coordinates in the same laser fields and grid normally --
+401x401, 247x140, 200x63 -- while 76 of the 105 <code>.raw</code> dirs there collapse
+to one pixel and every one of those is a calibration, a tuning run, a lysis
+test or a single-spot acquisition. Not one is an image.)</p>
+<h3 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h3>
+<p>Decide from the <strong>laser positions</strong>, the same measurement the pixel grid is
+already built from.</p>
+<ul>
+<li>A function landing on pixels no earlier function covers <strong>extends the
+  raster</strong> and is converted, whatever level MassLynx reports for it and
+  whether or not MassLynx calls it the lockmass function. Only ever widens a
+  file that already has an MS-classified function, so a run with no MS
+  function is still refused.</li>
+<li>Functions <strong>competing for the same pixels</strong> were acquired in parallel.
+  Only one of them can be the pixel's spectrum, so among those the MS1 ones
+  win when the group has any, and the rest are listed with their level,
+  precursor m/z, scan count and the reason they stayed out under
+  <code>excluded_functions</code>. That is the original decision, kept -- scoped to the
+  functions it was actually about.</li>
+</ul>
+<p><code>format_specific.function_types</code> keeps MassLynx's own classification next to
+<code>format_specific.ms_functions</code>, so a rescued chunk is visible in the store.</p>
+<h3 id="the-catch-the-tail-chunk-cannot-be-centroided">The catch: the tail chunk cannot be centroided<a class="headerlink" href="#the-catch-the-tail-chunk-cannot-be-centroided" title="Permanent link">&para;</a></h3>
+<p>The library will not centroid the function <code>getLockmassFunction</code> names.
+Measured on <code>180814_EVO_Fresh_image.raw</code>, sampling scans from each chunk:</p>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th><code>setCentroid(1)</code></th>
+<th><code>setCentroid(0)</code></th>
+<th><code>isRawSpectrumContinuum</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0 (MS)</td>
+<td>7,408 points, TIC 3.35e4</td>
+<td>82,876 points</td>
+<td>continuum</td>
+</tr>
+<tr>
+<td>1 (MS, "level 2")</td>
+<td>8,508 points, TIC 3.60e4</td>
+<td>91,274 points</td>
+<td>continuum</td>
+</tr>
+<tr>
+<td>2 (named lockmass)</td>
+<td><strong>112,594 points, TIC 1.11e5</strong></td>
+<td>112,594 points</td>
+<td>continuum</td>
+</tr>
+</tbody>
+</table>
+<p>All three are acquired as continuum, and the request is honoured for the
+first two and ignored for the third: it returns the same profile trace
+either way. <code>ScanInfo.isProfile</code> reports this faithfully (0, 0, 1), since it
+is read after <code>setCentroid</code>. There is no per-function centroid entry point
+in the library to work around it.</p>
+<p>Converting that chunk into a store of centroids therefore lays a band of
+profile rows across the top of the image. It was converted that way once, by
+accident, and the TIC image shows it: rows 0 to 37 average 3.1e4 to 3.7e4 and
+rows 39 to 45 -- exactly the rescued chunk -- average 8.6e4 to 9.3e4, a
+sharp 2.3x step at the chunk boundary and not a feature of the sample.</p>
+<p>So the rule takes the representation into account: while the run is read as
+centroids, a chunk the library will not centroid <strong>stays out</strong>, and
+<code>excluded_functions</code> records it with its scan count, the pixels it would
+have added and the reason. Reading the run as the profile trace
+(<code>--waters-spectrum profile</code>, and the default on an MRT) selects every
+chunk, because then all of them come back the same way. The warning names
+the cost and the flags:</p>
+<div class="highlight"><pre><span></span><code>Function(s) 2 hold 1274 pixels (16.6% of the image) that no other
+function covers, but MassLynx names them the lockmass function and will
+not centroid them. They stay out rather than put profile rows in a table
+of centroids: pass --waters-spectrum profile to convert the whole image.
+</code></pre></div>
+<p><code>--streaming true</code> was in that sentence until D11 because, when it was written,
+<code>--streaming auto</code> did not notice how large the profile store is: its
+estimate assumed 10,000 peaks per spectrum whatever the source, which is
+0.57 GB for this run, while the streaming converter's own estimate once
+running is <strong>74.1 GB</strong> (7,682 pixels x 2,590,447 bins). Left on <code>auto</code> the
+conversion stayed in memory and died at 72 percent asking for a 24.5 GiB
+array on a 128 GB machine.</p>
+<p>That was a general defect, not a Waters one, and it is fixed (issue #214).
+Two things were wrong with the old estimate and both had to go, which the
+measurements below settled:</p>
+<table>
+<thead>
+<tr>
+<th>what <code>auto</code> scores this run at</th>
+<th>GB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>the old fixed 10,000 peaks per spectrum, 8 bytes each</td>
+<td>0.57</td>
+</tr>
+<tr>
+<td>the source's own measured width (85,117 points per spectrum), 16 bytes each</td>
+<td>9.7</td>
+</tr>
+<tr>
+<td>the same, against the axis the run is resampled onto (2,590,447 bins)</td>
+<td>296.5</td>
+</tr>
+</tbody>
+</table>
+<p>The first fix is to stop guessing the width. <code>total_peaks</code> divided by the
+spectrum count is <em>measured</em> by every extractor, and it is the profile bin
+count on profile data and the peak count on centroided data. The second is
+to count the 16 bytes a value costs the standard converter's COO arrays
+(<code>int32</code> row, <code>int32</code> column, <code>float64</code> value) rather than 8.</p>
+<p>Those two alone give 9.7 GB, which is still under the 10 GB threshold --
+so they do not fix this run, and that is why the axis is consulted as well.
+Interpolating a contiguous trace onto an axis 30x finer than it (2,590,447
+bins against 85,117 points) fills the bins in between, and the array the
+conversion died on says by how much: 24.5 GiB of <code>float64</code> is 3.3e9 values,
+about 428,000 per spectrum, five times the source width. So a <em>profile</em>
+source is sized at the axis it will be written onto and a centroid source
+at its own peak count, since peaks stay peaks and a finer axis does not
+multiply them. The bin count comes from the converter's own planner rather
+than a second copy of that arithmetic, which is what issue #87 was.</p>
+<p>This run then scored 296.5 GB and upgraded itself, so <code>--streaming true</code>
+became belt-and-braces rather than required. That over-stated what the
+conversion really needed -- those 3.3e9 values are about 49 GB across the
+three COO arrays -- and deliberately so: the decision was one-sided, since
+under-estimating kept a conversion in memory that had to stream and it
+died there, while over-estimating cost at most a streaming run that would
+also have fit. The estimate lasted one day: D11 removed the in-memory
+converter, and with it the gate, so every conversion streams and the flag
+selects nothing.</p>
+<p>The alternative -- forcing the whole run to the profile trace whenever a
+chunk cannot be centroided -- would keep the image whole automatically, but
+it silently overrides D1's measured choice for a whole vendor and turns a
+241 MB store into a 74 GB one, on every chunked file, of which this share
+holds 1,396. Better to convert what is consistent, say what is missing, and
+leave the trade to the flags that already exist.</p>
+<p>The <code>fragmentation</code> block follows the <strong>precursor</strong>, not the level: a
+converted function holds fragment spectra when MassLynx reports a precursor
+m/z for it. A reported level with no precursor behind it is the chunk
+artefact above, and reads as MS1.</p>
+<p><strong>Verified on real data</strong> (2026-09-07):</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>180814_EVO_Fresh_image.raw</code> converted, default centroid</td>
+<td>6,408 pixels against v3.19.0's 3,200, no duplicate coordinates, no empty pixel, <code>ms_functions [0, 1]</code>, <code>excluded_functions["2"]</code> carrying <code>n_unique_pixels 1274</code> and its reason, <code>fragmentation</code> MS1. The TIC image is continuous across the chunk boundary at row 19</td>
+</tr>
+<tr>
+<td>the same run with <code>--waters-spectrum profile --streaming true --resample-bins 60000</code></td>
+<td>all three chunks, <strong>7,682 pixels</strong> -- the whole 167 x 46 raster, no duplicate coordinate, no empty pixel -- and the TIC image is continuous across both chunk boundaries, so the band above was the representation and nothing else. 109M non-zeros, 870 MB. The axis was coarsened only to keep the store off a full disk; the default axis is the 74.1 GB estimate above</td>
+</tr>
+<tr>
+<td><code>20170818_08.raw</code>, a real single-precursor MS/MS run</td>
+<td><code>fragmentation</code> MS level 2, one window at m/z 377.4, collision energy 35.0, CID; the converter declines a demultiplexed table because one precursor needs none</td>
+</tr>
+<tr>
+<td><code>waters_dda_neg_16func</code>, the real DDA run</td>
+<td>functions 1 to 15 recorded under <code>excluded_functions</code> with their per-scan precursors, function 0 converted, <code>fragmentation</code> MS1</td>
+</tr>
+<tr>
+<td>every file in the table above</td>
+<td>no two converted functions share a pixel, and converted plus recorded pixels equal the file's distinct laser positions</td>
+</tr>
+</tbody>
+</table>
+<h3 id="objections-considered">Objections considered<a class="headerlink" href="#objections-considered" title="Permanent link">&para;</a></h3>
+<ul>
+<li><em>The level is what MassLynx says; the chunking is its bug to report, not
+  ours to work around.</em> It is not a bug that can be worked around later:
+  there is no other field that separates a chunk from a high-energy
+  function, and the level is wrong in both directions at once (0 for a
+  chunk that holds image data, 2 for one that holds MS1 data). The
+  positions are a direct measurement of the thing the rule is about --
+  whether two spectra land on the same pixel -- so they are the better
+  signal even if MassLynx were fixed tomorrow.</li>
+<li><em>A lockmass function could legitimately carry laser positions, and would
+  now be converted.</em> A reference function is acquired <strong>alongside</strong> the
+  image, so its scans land on pixels the MS function already covers and it
+  is excluded by the same rule. The one real parallel lockmass function
+  found (<code>050517_BILE ACIDS 01.raw</code>) sits at a single constant position for
+  the whole run, which no raster chunk does.</li>
+<li><em>Two functions covering complementary mass ranges at one pixel should be
+  summed, not filtered.</em> They still are: functions competing for a pixel and
+  reporting the same level are all kept and summed, exactly as before. Only
+  a mixed-level group is filtered.</li>
+</ul>
+<p><strong>Known limit.</strong> A raster chunk is recognised by covering new pixels, so a
+chunked acquisition whose stage revisits a position -- a re-scan of the same
+area in a later function -- would have that function read as a parallel one
+and excluded. No such file was found, and the acquisition would be
+ambiguous anyway: the store holds one spectrum per pixel.</p>
+<h3 id="no-waters-demultiplexed-table-yet">No Waters demultiplexed table yet<a class="headerlink" href="#no-waters-demultiplexed-table-yet" title="Permanent link">&para;</a></h3>
+<p>The second half of the original entry -- "a demultiplexed Waters table waits
+until a scheduled Waters acquisition exists to look at" -- still waits. Of
+the 506 methods whose <code>_extern.inf</code> was read, <strong>113 declare a "MALDI TOF
+MSMS FUNCTION"</strong>, and every one of them has exactly <strong>one</strong> function isolating
+<strong>one</strong> precursor, 224 KB to 3.9 MB, 9 to 60 scans on five or fewer distinct
+positions: spot acquisitions, not images. A Waters demultiplexer needs a
+file whose MS/MS functions each isolate a <em>different</em> constant precursor
+over one raster, and no such file exists here, so it was not built.</p>
+<p>What those files do establish, which the synthetic tests could not: MassLynx
+reports the precursor faithfully when there is one (377.4, 482.0, 476.16,
+each matching <code>Set Mass</code> in <code>_extern.inf</code>) together with a real collision
+energy (35.0, and a 6 -&gt; 30 eV ramp on one), so <code>precursor_mz</code> is the field
+to trust. <code>quadIsolationStart</code>/<code>End</code> stay 0.0 even on these, so the
+isolation window has no offsets from this API and only a target.</p>
+<hr />
+<h2 id="d8-the-var-frame-is-the-memory-peak-and-stays-so">D8. The <code>var</code> frame is the memory peak, and stays so<a class="headerlink" href="#d8-the-var-frame-is-the-memory-peak-and-stays-so" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Accepted limit.</p>
+<p>With both sibling tables out of core, memory is proportional to the number
+of features, not to the number of non-zeros. That is the intended shape;
+D4 is the guard on it.</p>
+<hr />
+<h2 id="d9-one-streaming-route">D9. One streaming route<a class="headerlink" href="#d9-one-streaming-route" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Accepted (2026-09-08).</p>
+<p>The streaming converter had two write routes. PCS (pre-calculated scatter)
+counts entries per column in one pass and scatters straight into
+memory-mapped CSC arrays in the second, so the matrix is never a scipy
+object in RAM. COO counted non-zeros per row, wrote CSR components to a
+temporary Zarr, read them back whole into a <code>scipy.sparse.csr_matrix</code> and
+called <code>.tocsc()</code> on it. A size threshold sent anything estimated under
+30 GB to COO on the assumption that PCS bought memory safety at a cost in
+speed.</p>
+<p>Measured on the mock reader, peak process RSS sampled at 20 ms, one
+subprocess per route, that trade did not exist:</p>
+<table>
+<thead>
+<tr>
+<th>nnz</th>
+<th>PCS</th>
+<th>COO</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>16M</td>
+<td>7.4 s / 540 MB</td>
+<td>10.4 s / 655 MB</td>
+</tr>
+<tr>
+<td>64M</td>
+<td>35.6 s / 1.1 GB</td>
+<td>58.5 s / 1.9 GB</td>
+</tr>
+</tbody>
+</table>
+<p>Both routes read the source twice, so the whole gap was the
+materialise-then-convert step, and it widened with the dataset. v3.19
+made PCS the unconditional default and left COO as an opt-in escape hatch.
+Nothing reachable from <code>convert()</code> or the CLI could select it, Ousia's
+wizard pinned <code>use_csc=True</code>, and its own bug class (the 79.5 GiB temp
+directory leak, the missing out-of-grid guard, the pandas 3 string
+failure) was the only thing it still produced. It is gone: about 750 lines
+of <code>streaming_converter.py</code>, the <code>chunk_size</code> and <code>temp_dir</code> constructor
+arguments that served only it, and its half of nine test modules.</p>
+<p><strong>What stayed, for a day.</strong> <code>use_csc</code> stays as a keyword because Ousia
+passes it; <code>True</code> and <code>"auto"</code> mean the one route, <code>False</code> raises and says
+why. The in-memory 2D and 3D converters stayed too, and for reasons rather
+than inertia: only they wrote depth (the PCS scatter had no z term and
+refused <code>n_z &gt; 1</code>), they made one pass where PCS resamples every spectrum
+twice, and they went through spatialdata's own writer, which is what caught
+the five layout drifts the hand-written PCS store had (phantom rows,
+missing root attrs, missing obs column, invented provenance, missing
+encoding attrs). Deleting the route that used the real writer would have
+left the hand-written layout with no oracle. Each of those three reasons
+was a piece of work rather than a permanent argument; D11 did the work and
+removed them.</p>
+<p><strong>One thing this settled by accident.</strong> <code>sparse_format="csr"</code> was only
+honoured by COO; PCS ignored it and stored CSC. Since COO was unreachable
+from <code>convert()</code>, a streaming CSR request had been silently producing CSC
+for a release. The streaming converter now refuses <code>csr</code> and names the
+in-memory converter as the one that writes it.</p>
+<p><strong>Not decided here.</strong> Whether PCS should grow a z term and route its table
+through spatialdata's writer, at which point the in-memory converters and
+the parity tests both become removable, and whether <code>--sparse-format</code>
+earns its place as a flag at all. Both were filed as issues and both are
+decided below: D10 (#219) and D11 (#218).</p>
+<hr />
+<h2 id="d10-csc-is-the-only-layout-and-sparse_format-is-gone">D10. CSC is the only layout, and <code>sparse_format</code> is gone<a class="headerlink" href="#d10-csc-is-the-only-layout-and-sparse_format-is-gone" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Implemented (2026-09-08).</p>
+<p><strong>Decision.</strong> Every converter writes CSC. <code>--sparse-format</code> and the
+<code>sparse_format</code> keyword on <code>convert_msi</code> and the converters are removed,
+and passing the keyword is answered rather than ignored. A caller who
+wants row-major access calls <code>.tocsr()</code> on the matrix they read back.</p>
+<p><strong>How it is answered, exactly.</strong> The converter class raises
+<code>ConversionRefused</code>. <code>convert_msi</code> does not re-raise it: its
+<code>except ConversionRefused</code> logs the message once at <code>ERROR</code> and returns
+<code>False</code>, which is what it does for <em>every</em> refusal since issue #234, and
+what the CLI turns into exit 1. This paragraph used to say the keyword
+"raises", full stop, which was true of the class and not of the front
+door most callers use -- the discrepancy is issue #261's first item.
+Both behaviours are pinned by tests
+(<code>tests/unit/test_api_argument_gaps.py</code>,
+<code>tests/unit/converters/test_spatialdata_converter.py</code>). What the decision
+requires is that the removal is not <em>silent</em>; whether the caller learns
+it from an exception or from <code>False</code> plus a logged reason is
+<code>convert_msi</code>'s convention, not this decision's.</p>
+<p><strong>Why.</strong> After D9 the flag was honoured by the in-memory converters only.
+That made it a flag whose effect depended on a second flag: <code>csr</code> did
+something with <code>--streaming false</code> and was refused with it on. One option
+per concept, and no option whose meaning changes with another, is the rule
+the flag review of 2026-09-07 set; this was the clearest violation of it
+left in the CLI. The layout it selected is also not one anybody here asked
+for. Every consumer of a Thyra store reads columns -- an ion image is one
+m/z across all pixels, which is one contiguous CSC column -- and Ousia,
+the only shipped consumer, never passed the keyword at all.</p>
+<p><strong>The alternative, and why it lost.</strong> The honest version of keeping the
+flag is to teach the streaming route a row-wise scatter, mirroring the
+column one, so <code>csr</code> means the same thing on both routes. That is a second
+two-pass write path, with its own count-then-scatter arithmetic and its own
+half of every parity test, carried for a layout with no requester. The
+conversion it replaces costs one <code>.tocsr()</code> in memory on data the caller
+has already read.</p>
+<p><strong>Why the keyword is answered instead of being accepted as a no-op.</strong>
+Unknown keyword arguments fall through <code>**kwargs</code> into
+<code>BaseMSIConverter.options</code> without a word. Dropping <code>sparse_format</code> from the signature and stopping
+there would mean <code>sparse_format="csr"</code> silently producing CSC -- which is
+exactly the failure D9 found and this decision is meant to end. So the
+base converter names it: the message says the keyword is gone, that CSC is
+what is written, and what to call for rows. <code>"csc"</code> is refused on the same
+terms, because a keyword that is accepted and does nothing is the shape of
+option being cleared out here.</p>
+<p><strong>The CLI differs, and deliberately.</strong> <code>--sparse-format</code> is deleted
+outright rather than kept as a hidden no-op the way <code>--optimize-chunks</code>
+was. The precedents point in the same direction once the difference is
+named: <code>--optimize-chunks</code> never had an effect, so accepting it could not
+mislead anyone, while <code>--tof-a</code>/<code>--tof-b</code>/<code>--bins-per-fwhm</code> did have
+effects and were removed outright. <code>--sparse-format csr</code> had an effect, and
+the docs told people to pass it together with <code>--streaming false</code>; those
+command lines have to fail loudly rather than quietly write the opposite
+layout. Click's unknown-option error is that failure, and it arrives
+before any data is read.</p>
+<p><strong>Known limit.</strong> A script passing <code>--sparse-format csc</code>, which asked for
+what it would have got anyway, also stops working and needs the argument
+deleted. That is the cost of not having a value that is accepted and
+ignored.</p>
+<hr />
+<h2 id="d11-one-converter">D11. One converter<a class="headerlink" href="#d11-one-converter" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Implemented (2026-09-08).</p>
+<p>The in-memory 2D and 3D converters are folded into the streaming one.
+There is one converter: two passes over the source, every table scattered
+into memory-mapped CSC arrays (<code>csc_assembly.CscAssembly</code>, the engine the
+sibling tables already used, with every m/z bin a column) and written
+through spatialdata's writer as an AnnData over those memmaps. <code>handle_3d</code>
+decides the shape of the store, one table per z plane or one for the
+volume, exactly as it used to pick between the two in-memory converters.
+<code>SpatialData2DConverter</code> and <code>SpatialData3DConverter</code> are gone;
+<code>SpatialDataConverter</code> is the registered name of the one converter and
+<code>StreamingSpatialDataConverter</code> the class, kept because Ousia imports it.</p>
+<p><strong>The measurement D9 asked for.</strong> Whether small datasets convert faster in
+memory had never been measured. On the real files in <code>test_data/</code> and the
+registry, warm, <code>--no-optical</code>, one subprocess per conversion, peak RSS
+summed over the process tree and sampled at 50 ms (2026-09-08, before the
+fold, so both routes are the shipped code):</p>
+<table>
+<thead>
+<tr>
+<th>dataset</th>
+<th>spectra</th>
+<th>one pass, in memory</th>
+<th>two passes, streaming</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pea.imzML</code></td>
+<td>12,737</td>
+<td>12.2 s / 4.0 GB</td>
+<td>15.7 s / 1.0 GB</td>
+</tr>
+<tr>
+<td><code>bellini.imzML</code> (36M nnz)</td>
+<td></td>
+<td>8.3 s / 1.1 GB</td>
+<td>10.8 s / 0.6 GB</td>
+</tr>
+<tr>
+<td>a TSF slide</td>
+<td>33,800</td>
+<td>19.2 s / 5.1 GB</td>
+<td>28.2 s / 1.3 GB</td>
+</tr>
+<tr>
+<td><code>tims_msms_pos_brain1</code> (TDF, PASEF)</td>
+<td>713</td>
+<td>10.7 s / 0.42 GB</td>
+<td>10.0 s / 0.40 GB</td>
+</tr>
+</tbody>
+</table>
+<p>So the claim was true, and small: the one-pass route is about 1.3x faster
+on small imzML and TSF files, at three to four times the peak memory, and
+on a TDF the fused passes (D5) had already made the two equal. Where the
+time goes on <code>pea.imzML</code>: the in-memory route spends 5.3 s in its one pass,
+0.8 s converting COO to CSC and 3.2 s writing; the streaming route 4.6 s
+counting, 5.9 s scattering and 2.2 s writing. The second pass costs more
+than the first because the scatter writes each entry to a random position
+of the memmap, where the count only increments a dense array. That is the
+lever if the second pass ever matters, and it lives inside the one route.</p>
+<p>The same files through the one converter after the fold, same harness,
+best of four runs: <code>pea.imzML</code> 15.8 s / 1.15 GB, <code>bellini.imzML</code> 10.7 s /
+0.67 GB, the TSF slide 29.1 s / 1.48 GB, the PASEF TDF 8.4 s / 0.45 GB.
+The wall time is the old streaming route's to within a second and the
+PASEF set is faster; peak memory sits 10 to 15 percent above the old
+streaming route, which is the writer's 128 MiB shard buffer and the
+<code>var</code> frame the hand-written layout wrote as bare arrays. Store sizes are
+the old in-memory route's to the megabyte, since it is the same writer.</p>
+<p><strong>Why one route anyway.</strong> Three seconds on a fifteen-second conversion
+does not pay for a second code path with its own bug class (a COO
+pre-allocation sized from <code>total_peaks</code> that grew by 50 percent when the
+count was wrong, a 4 GB RSS on a 700 MB file) and its own half of every
+converter test. The three reasons D9 kept the in-memory converters were
+each a piece of work, and they are done:</p>
+<ul>
+<li><em>Depth.</em> The scatter indexes rows within a table unit -- <code>y * n_x + x</code>
+  on a plane's table, <code>z * n_x * n_y + y * n_x + x</code> on the volume's -- and
+  a multi-plane source gets one table per plane or one volume, with the
+  same element keys, <code>obs</code> columns, <code>instance_id</code> convention (the plane-
+  local grid index per plane, the volume grid index for a volume), TIC
+  images and shapes the in-memory converters wrote. The refusal of
+  <code>n_z &gt; 1</code> is gone; the measurement that justified it now asserts the
+  planes are apart (<code>test_pcs_phantom_pixel_rows</code>).</li>
+<li><em>The writer.</em> Nothing composes a Zarr layout by hand any more. Encoding
+  attributes, root attributes, <code>obs</code>, <code>var</code> and the provenance block all
+  come from <code>_save_output</code>, which every table goes through, so the five
+  drifts D9 lists cannot recur -- there is nothing left to drift from.
+  The seam the issue asked about is <code>CscAssembly.matrix()</code>: scipy's
+  constructor takes the memmaps without copying when the index dtype is
+  the one it would have chosen, and anndata's sparse writer copies each
+  array into the store shard by shard, so the write stays out of core.</li>
+<li><em>The oracle.</em> The real writer is not an oracle when it is the only
+  writer; it is the layout. The value-level oracles stay and are the
+  guard now: <code>test_stored_pixel_spectrum_oracle</code> (computed expectation
+  per pixel, never read back), <code>test_out_of_grid_guard</code>, the 3D probe
+  readers and the sibling-table stubs. The cross-path parity suite went,
+  as the issue said it could; what survives of it checks that both table
+  shapes describe the source the same way.</li>
+</ul>
+<p><strong>What changed on disk.</strong> Nothing in the values. Measured rather than
+claimed: the four files above were converted with the code before the
+fold down both routes and with the code after it, and every store was
+read back through spatialdata and compared element by element -- root
+attributes minus the timestamp, every table's <code>X</code> arrays, <code>obs</code>, <code>var</code>
+and <code>uns</code>, every shapes element's index, geometry and transform, every
+image's pixels and transform. Against the old in-memory route all four
+new stores are identical. Against the old streaming route they differ in
+layout details that were the in-memory route's all along -- <code>indptr</code>
+follows scipy's index-dtype rule (int32 while it fits) instead of always
+int64; <code>obs</code> string columns are anndata's nullable string arrays; the
+summed table's shards come from <code>table_write_config()</code> (128 MiB) instead
+of hand-rolled one-million-entry chunks; a raw-axis dense spectrum no
+longer stores its explicit zeros -- and in two drifts of the hand-written
+layout that nobody had listed: it stamped <code>spatialdata_software_version</code>
+with a literal <code>0.6.1</code> from whenever it was written, where the writer
+records the installed version, and it gave the sibling tables an <code>obs</code> of
+<code>x</code>, <code>y</code>, <code>region</code> and <code>instance_key</code> only, where the in-memory route
+gave them the summed table's full <code>obs</code> (<code>spatial_x</code>, <code>spatial_y</code>,
+<code>region_number</code> included), which every sibling now gets. Two things
+changed the other way. The grid table's <code>mobility_marginal</code> block
+carries the per-pixel ratio only: the per-cell deviation the in-memory
+route recorded needed the marginal and its difference from the summed
+table materialised, each the size of the summed table, and the route that
+was kept never holds either. And a single-plane FlexImaging acquisition
+converted with <code>handle_3d=True</code> now places its TIC image by the alignment
+affine like every other 2D image, where the old 3D converter scaled it in
+micrometres while putting its shapes in optical pixels, so the two
+disagreed at <code>"global"</code>.</p>
+<p><strong>What went with them.</strong> <code>--streaming</code> is a hidden no-op and <code>streaming=</code>
+selects nothing (though it is still checked: only <code>True</code>, <code>False</code> and
+<code>"auto"</code> are accepted, because an argument that selects nothing still has
+to say when it was misspelled -- issue #261): with one route the <code>auto</code>
+estimate has nothing to decide,
+so the sizing PR #216 landed the day before (<code>_values_per_spectrum</code>, the
+profile-versus-centroid rule, <code>Thresholds.STREAMING_SIZE_GB</code>) is gone with
+the gate it served. The refusal of a broken file still happens at the
+first metadata read, outside any try, which <code>_create_converter</code> does
+itself now. <code>sparse_format</code> went the same day (D10), which this makes
+moot twice over: the only writer of CSR was in-memory.</p>
+<p><strong>Objections considered.</strong></p>
+<ul>
+<li><em>Small files got slower.</em> By the numbers above, and said here rather
+  than hidden. Conversions of a few seconds are not what the memory
+  budget is for; conversions of hours are, and those already streamed.</li>
+<li><em>A second pass reads the source twice.</em> It always did on the route
+  that was kept, and on a cold network share a pass is bounded by the
+  mapping, not the read (D5's cold-cache measurement).</li>
+<li><em>The in-memory route dropped explicit zeros and the streaming one kept
+  them.</em> It drops them now, on the raw-axis path where they arose;
+  the resampling paths never produced any.</li>
+</ul>
+<p><strong>Known limit.</strong> The <code>var</code> frame is still O(bins) in RAM (D8), and the
+string index it carries is built by pandas at about 125 bytes per bin: a
+raw, unresampled axis of millions of bins is the one thing that still
+scales with the source, and it is the case to resample.</p>
+<hr />
+<h2 id="d12-an-anisotropic-raster-is-carried-not-refused">D12. An anisotropic raster is carried, not refused<a class="headerlink" href="#d12-an-anisotropic-raster-is-carried-not-refused" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Implemented (2026-09-09), issue #228.</p>
+<p><strong>Decision.</strong> When a source declares a different pitch on each axis, the
+store carries both — root attrs, <code>coordinate_systems.global</code> and its
+<code>raster_to_global_affine</code>, the image and shapes transforms, the pixel
+footprints, <code>obs["spatial_x"]</code>/<code>["spatial_y"]</code> and the <code>msi_metadata</code>
+block. Thyra does not refuse the acquisition, and <code>--pixel-size</code> keeps its
+meaning of one number applied to both axes.</p>
+<p><strong>The defect this replaces.</strong> The converter carried a single float. Pixel
+size detection kept the source's x pitch (<code># Use X size</code>), the root attrs
+wrote that same value as <code>pixel_size_y_um</code>, and it went on into the affine
+and the footprints; only <code>msi_metadata.ms_analysis.pixel_size_um</code> read the
+true pair back out of the detection info. A raster acquired at 30 x 50 um
+was stored as 30 x 30 in one block and (30, 50) in another. So the store
+contradicted itself and rendered squashed by y/x.</p>
+<p><strong>Why not refuse.</strong> Refusing was the alternative the issue named, and it
+loses on both counts that decide it:</p>
+<ul>
+<li><em>The format is already per-axis.</em> <code>pixel_size_um</code> is <code>{x, y}</code> and
+  <strong>required</strong> by the metadata schema, mapped to <code>IMS:1000046</code> and
+  <code>IMS:1000047</code>. Nothing needed adding and no schema version moves; the
+  converter was the only thing carrying one number where the format
+  carries two. Refusing would have been declining to write a store the
+  format already describes.</li>
+<li><em>The only escape would be a false statement.</em> <code>--pixel-size</code> overrides
+  detection with one number on both axes, so the way out of a refusal
+  would be to declare a 30 x 50 um raster square. That is a worse store
+  than the one the refusal was protecting against, because nothing in it
+  records that a number was invented.</li>
+</ul>
+<p><strong>What it cost.</strong> <code>self.pixel_size_um</code> had 31 call sites across
+<code>base_spatialdata_converter.py</code>, <code>streaming_converter.py</code> and
+<code>core/base_converter.py</code>, and each had to be read to decide which axis it
+meant. Most are x, or a single number that is written twice. Eleven meant
+y and now take <code>pixel_size_y_um</code>: the root attrs, <code>pixel_size_um_y</code> and
+the <code>raster_to_global_affine</code>, <code>stage_offset_um</code>, the optical-to-micrometre
+scale matrix, the half-pixel footprint, <code>obs["spatial_y"]</code> on all three obs
+builders, and the TIC image's <code>Scale</code> on the plane and volume paths. Two
+provenance echoes gained a <code>pixel_size_y_um</code> key beside the x one. Two were
+judgement calls:</p>
+<ul>
+<li><em><code>_resolve_z_spacing</code>'s fallback</em> ("nobody said, so reuse the in-plane
+  pitch") takes x. There is no single in-plane pitch on an anisotropic
+  raster and the choice is arbitrary — which is the point, since nothing
+  about the raster predicts the section thickness either way, and
+  <code>z_spacing_source</code> already marks the number as assumed rather than
+  measured.</li>
+<li><em><code>stage_offset_um</code></em> multiplies the source's raw acquisition-index
+  offsets by the pitch, so each offset takes its own axis.</li>
+</ul>
+<p><strong>The tolerance.</strong> The anisotropy is reported in the log only when the two
+pitches differ by more than float noise (<code>rel_tol=1e-9</code>). Nothing is
+refused, so the tolerance decides a log line rather than whether a file
+converts. It is deliberately tight: a real anisotropy is a percent or
+more, and the near-misses a detector used to produce were not noise but a
+bug — until issue #217 the Waters extractor returned 29.66 x 28.93 for
+every square raster, which this code would have carried faithfully into
+the affine. That is fixed at the extractor, which is where it belonged.</p>
+<p><strong>Known limit.</strong> No dataset in the registry is anisotropic, so this is
+tested synthetically: a reader is asked for a 30 x 50 um pitch and the
+written store is read back. A DESI method with <code>DesiXStep != DesiYStep</code>
+would be the first real case, and nothing here has been run against one.</p>
+<hr />
+<h2 id="d13-a-peak-on-a-declared-mass-range-bound-lands-in-the-edge-bin">D13. A peak on a declared mass-range bound lands in the edge bin<a class="headerlink" href="#d13-a-peak-on-a-declared-mass-range-bound-lands-in-the-edge-bin" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Implemented (2026-09-09), issue #239.</p>
+<p><strong>Decision.</strong> A peak is in range when it is inside the <strong>declared</strong>
+<code>[min_mz, max_mz]</code>, not when it is inside <code>[axis[0], axis[-1]]</code>. Both
+resampling methods use that range: nearest-neighbour keeps the peak and
+maps it to its nearest bin, TIC-preserving measures the preserved share
+against it. Peaks outside the declared range are still dropped, not
+clamped.</p>
+<p><strong>The defect this replaces.</strong> Every physics generator lays
+<code>target_bins + 1</code> bin <em>edges</em> across the requested range and returns the
+midpoints, so the first and last axis point sit half a bin inside what was
+asked for. A source declaring 50-1000 m/z built the axis
+<code>[50.0001, 999.9975]</code>, and a peak sitting exactly on a declared bound was
+below <code>axis[0]</code> and discarded. It costs most where a source declares its
+range <em>as</em> its first and last sample: <code>phi_extractor</code> takes <code>mass_range</code>
+from the first and last detector channel, so both were dropped in every
+pixel — the mock fixture stored 12 counts against 14 in the source, where
+<code>--no-resample</code> stored all 14.</p>
+<p><strong>Why not widen the axis.</strong> Widening so that
+<code>axis[0] &lt;= min_mz &lt;= max_mz &lt;= axis[-1]</code> was the other candidate the
+issue named. It changes the axis itself, so <code>var["mz"]</code> and the bin count
+move on <strong>every</strong> resampled store, and two stores of the same acquisition
+written either side of the change no longer share a feature axis. Edge
+bins change only which bin a boundary peak lands in — nothing else about
+any store moves, and a store with no peak on a bound is byte-identical.</p>
+<p><strong>Why it cannot become the clamp again.</strong> <code>_nearest_neighbor_resample</code>
+used to clip every out-of-range index into the axis and accumulate, so
+narrowing the range piled the discarded part of the spectrum onto two
+bins: on real <code>pea.imzML</code> resampled to 400-800 m/z, bin 0 held 654,158
+counts where a real peak there is around 80, with the total conserved
+exactly so no TIC check could see it. The new rule reaches at most half a
+bin beyond the first and last centre, because the declared range <em>is</em> the
+outer bin edges. A peak further out is still dropped.</p>
+<p><strong>Where nothing changes.</strong> A uniform axis is
+<code>np.linspace(min_mz, max_mz, n)</code>, whose end points already are the
+declared bounds, so <code>constant</code> stores are untouched. <code>--no-resample</code> is
+untouched too: no axis is built, and the range falls back to the axis's
+own span, which is what the rule was before.</p>
+<p><strong>What it is worth, measured.</strong> On <code>tims_msms_pos_brain1</code> (713 PASEF
+frames, 302,107 peaks, declared 50-1000 m/z) <strong>zero</strong> peaks lie in the
+half-bin skirt; the one peak the warning reports is genuinely above 1000
+and is still dropped. So on data whose peaks are interior this is a
+correctness fix that recovers nothing. The sources it pays on are the ones
+whose declared range is a detector channel rather than an acquisition
+setting.</p>
+<hr />
+<h2 id="d14-a-0-based-imzml-folds-its-base-down-a-cropped-one-does-not-move">D14. A 0-based imzML folds its base down; a cropped one does not move<a class="headerlink" href="#d14-a-0-based-imzml-folds-its-base-down-a-cropped-one-does-not-move" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Implemented (2026-09-09), issue #244.</p>
+<p><strong>Decision.</strong> x and y are rebased on <code>min(observed_minimum, 1)</code>. A file
+whose smallest coordinate is 0 is 0-based and is rebased on 0; a file
+starting at 1, or at 5, keeps the specification's base of 1. z keeps its
+own rule — the smallest value present. What was subtracted is reported as
+<code>EssentialMetadata.coordinate_offsets</code> and written to
+<code>coordinate_systems.global.coordinate_offsets_px</code>.</p>
+<p><strong>The defect this replaces.</strong> Three sites subtracted a constant 1 (the
+reader's cached coordinate array, its per-spectrum fallback, and the
+extractor's grid sizing). On a file written 0-based that produced
+<code>x = -1</code> and <code>y = -1</code> for the first row and column, which the converter's
+<code>_locate</code> guard dropped. A 3x3 file at coordinates 0..2 previewed as
+<code>grid (2, 2)</code>, warned that "5 spectra sat outside the declared 2x2x1
+grid", stored 4 rows, and exited 0.</p>
+<p><strong>Why not rebase on the observed minimum, as z does.</strong> <code>_z_base</code> measures
+its base off the file and its docstring argues the case well — imzML
+guarantees nothing about the base and pyimzml is inconsistent about it.
+The argument does not carry over, because <strong>z has no physical origin and
+x and y do.</strong> An acquisition cropped to a region of the slide legitimately
+starts at <code>x = 5</code>; rebasing on the observed minimum would slide it to
+<code>x = 0</code>, changing the grid width, every <code>obs["spatial_x"]</code>, the TIC image
+extent and the pixel footprint — on a file that converts correctly today.
+Nothing in the file distinguishes that acquisition from a 0-based export
+whose first column happens to be empty. Folding only a 0 down fixes the
+reported defect and moves nothing else, which is the whole point: the only
+files whose stored coordinates change are the ones that were losing a row
+and a column.</p>
+<p><strong>Why not the declared pixel counts.</strong> <code>IMS:1000042</code> / <code>IMS:1000043</code> were
+the third option. Nothing in Thyra reads them today except
+<code>mzpeak_extractor</code>, which carries a comment about a declared extent
+disagreeing with the coordinates it ships with. Trusting a declared extent
+over the coordinates is a larger change with a wider blast radius than the
+defect it would fix.</p>
+<p><strong>What the warning says now.</strong> Nothing, on this path: a 0-based file is no
+longer off-grid, so the out-of-grid warning does not fire for it and keeps
+its meaning for a reader whose coordinates genuinely disagree with the
+grid it declares. The base itself is reported once, at INFO, naming the
+smallest coordinate found.</p>
+<p><strong>Known limit.</strong> No 0-based imzML is in the registry, so this is tested
+against a written fixture (<code>zero_based_imzml</code>), alongside a 1-based one
+and a cropped 1-based one — the last being the file the rejected
+alternative would have moved.</p>
+<hr />
+<h2 id="d15-an-override-that-contradicts-the-detector-warns-it-does-not-refuse-or-self-correct">D15. An override that contradicts the detector warns; it does not refuse or self-correct<a class="headerlink" href="#d15-an-override-that-contradicts-the-detector-warns-it-does-not-refuse-or-self-correct" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Implemented (2026-09-09), issue #246.</p>
+<p><strong>Decision.</strong> When <code>--resample-method</code> is given explicitly, the detector
+is asked what it would have chosen and a WARNING is logged if the two
+differ. Nothing stored changes. For a <code>tic_preserving</code> override the
+warning names <code>--resample-gap-tolerance</code>, or reports the tolerance already
+in force.</p>
+<p><strong>The defect this replaces.</strong> The detector has a verdict for every source
+and only the <code>auto</code> path ever asked for it, so an explicit method was
+applied with nothing checked and nothing said.
+<code>--resample-method tic_preserving</code> on a Bruker TDF — for which the
+detector chooses nearest-neighbour — interpolates across the gaps of a
+sparse centroid list and fills the axis. Measured on
+<code>tims_msms_pos_brain1</code>:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>nearest_neighbor (default)</th>
+<th>tic_preserving</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>stored non-zeros</td>
+<td>302,106</td>
+<td><strong>423,386,757</strong></td>
+</tr>
+<tr>
+<td>table</td>
+<td>7.6 MB</td>
+<td>583 MB</td>
+</tr>
+<tr>
+<td>peak RSS</td>
+<td>0.5 GB</td>
+<td>5.9 GB</td>
+</tr>
+<tr>
+<td>wall</td>
+<td>26 s</td>
+<td>57 s</td>
+</tr>
+</tbody>
+</table>
+<p>Per-pixel TIC is identical either way, so the TIC identity cannot see it.
+What breaks is the siblings, quietly: MS/MS blocks against the summed TIC
+come to 0.998711 per pixel, and the heatmap marginal against the stored
+mean spectrum to rel 68 with nothing recorded at all.</p>
+<p>This is the same bug class as #168 on PHI ToF-SIMS, which was fixed <em>by</em>
+adding a detector — and that is precisely why a detector is not enough on
+its own. A detector only ever steers <code>auto</code>.</p>
+<p><strong>Why not refuse.</strong> A refusal would have to fire on "points per spectrum
+is a small fraction of the axis", which is true of <em>any</em> centroid source
+against a fine axis, including the ones where <code>tic_preserving</code> with a gap
+tolerance is exactly what the user wants. The threshold would be arbitrary
+and the refusal would break working commands.</p>
+<p><strong>Why not an automatic gap tolerance.</strong> It changes stored values on every
+sparse <code>tic_preserving</code> conversion, including ones somebody is relying on,
+and there is no principled value to choose: half the widest source gap is
+per-spectrum and data-dependent, so the stored numbers would depend on a
+heuristic no flag records. The remedy already has a flag, and one flag per
+concept is the rule.</p>
+<p><strong>That the remedy works, measured.</strong> The same conversion with
+<code>--resample-gap-tolerance 0.01</code>: <strong>4,801,946</strong> stored non-zeros, an 88x
+reduction against the unguarded override.</p>
+<p><strong>Where the size is already reported.</strong> Batch 3's <code>_matrix_size_gb</code> logs
+the counted non-zeros after pass 1 — 423,386,757 entries, before pass 2
+writes anything. The axis guard (<code>AXIS_BYTES_PER_BIN</code>) does not fire and
+should not: 599,146 columns is an ordinary axis. What exploded is the
+matrix.</p>
+<hr />
+<h2 id="d16-a-preview-that-cannot-count-spectra-says-so-rather-than-reporting-the-raster">D16. A preview that cannot count spectra says so rather than reporting the raster<a class="headerlink" href="#d16-a-preview-that-cannot-count-spectra-says-so-rather-than-reporting-the-raster" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Implemented (2026-09-09), issue #240.</p>
+<p><strong>Decision.</strong> <code>MsiPreview.n_pixels</code> is <code>Optional[int]</code>, and is <code>None</code> when
+the format cannot count spectra without decoding them.
+<code>EssentialMetadata</code> gains <code>n_spectra_counted</code>, false only on that path,
+where <code>n_spectra</code> and <code>total_peaks</code> are 0 meaning "not counted". PHI is
+the only format that takes it, and only under <code>metadata_only=True</code>.</p>
+<p><strong>The defect this replaces.</strong> <code>preview_msi</code> promises "No spectra are
+decoded" and passes <code>metadata_only=True</code> for that purpose.
+<code>PhiReader.__init__</code> swallowed the kwarg through <code>**kwargs</code>, and
+<code>PhiMetadataExtractor</code> called <code>get_peak_counts_per_pixel()</code>, which
+aggregates every 8-byte event in the stream. Measured at 0.16 s for a
+16 MB file with 2.02 M events and 0.14 s for a 14 MB one — linear, so a
+multi-gigabyte SmartSoft acquisition previewed as slowly as it converted.</p>
+<p><strong>Why not report the raster size.</strong> From the header alone PHI knows the
+tile geometry (<code>n_x * n_y</code>) but not which pixels carry events: it stores a
+stream of ion arrivals, not a list of spectra. Every other reader reports
+spectra <em>present</em>, and cheaply — imzML <code>len(coords)</code>, Bruker a SQL count —
+so putting <code>n_x * n_y</code> in <code>n_pixels</code> would make that field mean "positions
+the raster covers" for one format and "spectra present" for every other.
+The raster extent is already reported, in <code>grid_dims</code>, so nothing is lost
+by declining to answer twice.</p>
+<p><strong>Why a flag rather than <code>Optional[int]</code> on <code>n_spectra</code>.</strong> <code>n_spectra</code> is
+read on the conversion path in half a dozen places where it is always a
+real count; widening its type would push a <code>None</code> check into all of them
+to describe a state none of them can reach. A default-true boolean beside
+it says the same thing and is inert everywhere else.</p>
+<p><strong>Precedent.</strong> Bruker already does this for the other half:
+<code>skip_total_peaks=self._metadata_only</code> reports <code>total_peaks</code> as 0 without
+scanning the Frames table. <code>skip_event_aggregate</code> is the same idea, and
+<code>n_spectra_counted</code> retro-fits the missing part — a way to tell
+0-not-counted from 0-none-present.</p>
+<p><strong>What the preview still answers.</strong> Dimensions, coordinate bounds, m/z
+range, pixel size and both detector verdicts, all from the header and the
+block chain. <code>PhiToFSIMSDetector</code> matches on the format flag rather than
+on peak density, so zeroing the counts does not cost the preview its
+nearest-neighbour verdict — which would have been a regression of #168.</p>
+<hr />
+<h2 id="d17-the-docs-deploy-builds-main-and-the-ibd-uuid-warns-rather-than-refuses">D17. The docs deploy builds <code>main</code>, and the <code>.ibd</code> UUID warns rather than refuses<a class="headerlink" href="#d17-the-docs-deploy-builds-main-and-the-ibd-uuid-warns-rather-than-refuses" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Implemented (2026-09-09), issues #223 and #261.</p>
+<p>Two independent calls, both of the same shape: a check that could be made
+stricter, and the measurement that says how strict it should be.</p>
+<h3 id="the-docs-deploy-pins-its-ref">The docs deploy pins its ref<a class="headerlink" href="#the-docs-deploy-pins-its-ref" title="Permanent link">&para;</a></h3>
+<p><code>docs.yml</code> ends every run in <code>mkdocs gh-deploy --force</code>, which force-pushes
+the whole built site over <code>gh-pages</code>. Two runs overlapping is a lost-update
+race. #154 removed the duration-dependent half of it with a <code>pages-deploy</code>
+concurrency group, and deliberately left a narrower half: GitHub's
+workflow-syntax documentation says runs in a group are processed by the time
+each started waiting, and then adds, verbatim, that <strong>"ordering is not
+guaranteed"</strong>. An older run admitted second builds its own older checkout and
+force-pushes it over newer docs -- both runs green, nothing in either log.</p>
+<p><strong>Decision.</strong> The deploy checks out
+<code>${{ github.event_name == 'push' &amp;&amp; 'main' || github.ref }}</code>. Whichever run
+executes last then builds current <code>main</code>, so the published site is right
+regardless of admission order.</p>
+<p><strong>Why this rather than tighter serialisation.</strong> There is nothing tighter
+available: the group is already unkeyed (one <code>gh-pages</code> branch, so a
+<code>workflow_dispatch</code> and a push must contend), and <code>cancel-in-progress: true</code>
+would reintroduce the race it was added to remove, because cancellation is not
+synchronous and the older run's force-push can still be in flight. The
+ordering guarantee simply is not offered. Not depending on it is the only fix
+that does not depend on it.</p>
+<p><strong>The cost, accepted.</strong> Re-running an old docs run now publishes today's docs
+rather than reproducing that run's build, and <code>gh-deploy</code>'s <code>Deployed &lt;sha&gt;</code>
+message stops matching the run's trigger. For a workflow whose only job is
+"deploy the site" that is the behaviour wanted; it would be wrong for a
+workflow meant to reproduce a historical build, and this is not one.</p>
+<p><strong>Why conditional rather than a hardcoded <code>main</code>.</strong> A hardcoded ref makes a
+deliberate <code>workflow_dispatch</code> against another branch silently deploy <code>main</code>
+instead -- a dispatch that does the opposite of what it says. The conditional
+keeps that path honest and changes nothing about the release path:
+<code>release.yml</code>'s <code>deploy-docs</code> job dispatches with <code>--ref main</code> already.</p>
+<p><strong>Known limit.</strong> The race is narrowed to nothing for <em>content</em>, not for
+<em>attribution</em>: if two runs overlap, the gh-pages commit message names
+whichever ref the surviving run checked out, which is now always <code>main</code>'s tip
+rather than the merge that triggered it.</p>
+<h3 id="an-ibd-uuid-that-disagrees-warns">An <code>.ibd</code> UUID that disagrees warns<a class="headerlink" href="#an-ibd-uuid-that-disagrees-warns" title="Permanent link">&para;</a></h3>
+<p>The imzML specification puts the binary file's UUID in the first 16 bytes of
+the <code>.ibd</code> and the same value in the XML as <code>IMS:1000080</code>. Thyra read the XML
+term for the metadata store and never compared the two (issue #261, item 5).
+Comparing them is the only check that can tell an <code>.imzML</code> apart from a
+<em>different</em> acquisition's <code>.ibd</code> sitting beside it under the right name: every
+other check in <code>_validate_parser_state</code> reads the XML's own offsets and
+lengths against the binary's size, which a wrong-but-plausible pairing
+satisfies.</p>
+<p><strong>Decision.</strong> Compare them, and <strong>warn</strong> on a disagreement. Do not refuse.</p>
+<p><strong>Why not refuse, measured on 2026-09-09.</strong> Of the three real files in the
+corpus, two match byte for byte:</p>
+<table>
+<thead>
+<tr>
+<th>file</th>
+<th>writer</th>
+<th>declared <code>IMS:1000080</code></th>
+<th>first 16 bytes of <code>.ibd</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pea</code></td>
+<td>SCiLS</td>
+<td><code>9069a51f-11a8-4f15-aabb-43624def10d0</code></td>
+<td>same</td>
+</tr>
+<tr>
+<td>Xenium export</td>
+<td>SCiLS</td>
+<td><code>6c176aa6-5cf8-4027-8661-657695f2d400</code></td>
+<td>same</td>
+</tr>
+<tr>
+<td><code>bellini</code></td>
+<td>IONTOF SurfaceLab 7.5</td>
+<td><code>{FC37F303-A9C0-4CD3-A28E-1D18E523C269}</code></td>
+<td><code>3ad1bacd-dcc3-4f7b-aea7-f9b375dbf731</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>bellini</code>'s first spectrum starts at byte 16, so the header slot is there and
+populated -- the writer simply put two different values in the two places.
+That file passes every other check and converts correctly. A refusal would
+therefore reject data Thyra reads right today, over a disagreement between two
+copies of an identifier that is never used to locate a byte. One real file in
+three is not a rare shape.</p>
+<p><strong>What the warning has to say, then.</strong> Both values and both filenames, and
+that reading continues -- because the likeliest reading is "this vendor fills
+the two fields independently", and the person needs to be able to dismiss it
+without reading the source. The second reading, a genuinely mispaired <code>.ibd</code>,
+is the one worth the noise.</p>
+<p><strong>Comparison rule.</strong> The 32 hex digits only. Vendors differ on the registry
+braces (IONTOF writes them, SCiLS does not) and on case, and the hyphens are
+positional rather than data, so a file re-spelling its own UUID in the other
+convention must not read as a disagreement with itself.</p>
+<p><strong>Silent when either side is absent.</strong> A file that declares no UUID, or an
+<code>.ibd</code> shorter than its header, has nothing to compare; the extent checks
+already speak for the truncated case.</p>
+<hr />
+<h2 id="d18-main-stays-unprotected-until-a-release-credential-exists">D18. <code>main</code> stays unprotected until a release credential exists<a class="headerlink" href="#d18-main-stays-unprotected-until-a-release-credential-exists" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Deferred (2026-09-09), issue #224.</p>
+<p><strong>Decision.</strong> Do not turn on required status checks for <code>main</code>. Keep the
+existing ruleset, which forbids deletion and non-fast-forward pushes and costs
+nothing.</p>
+<p><strong>Why.</strong> Required status checks and this repository's release flow cannot both
+work with the credentials available. Measured on 2026-08-01 against a
+throwaway branch, and re-confirmed on 2026-09-09:</p>
+<table>
+<thead>
+<tr>
+<th>configuration</th>
+<th>result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>no protection (baseline)</td>
+<td><code>github-actions[bot]</code> push <strong>allowed</strong></td>
+</tr>
+<tr>
+<td>ruleset, required checks, bypass = admin role</td>
+<td>push <strong>blocked</strong> (<code>GH013</code>)</td>
+</tr>
+<tr>
+<td>ruleset + GitHub Actions app (id 15368) as bypass actor</td>
+<td><strong>refused by the API</strong>, <code>HTTP 422</code></td>
+</tr>
+<tr>
+<td>classic protection, <code>enforce_admins: false</code></td>
+<td>push <strong>blocked</strong> (<code>GH006</code>)</td>
+</tr>
+</tbody>
+</table>
+<p><code>release.yml</code> runs <code>semantic-release version</code>, which pushes the version commit
+to <code>main</code> with <code>secrets.GITHUB_TOKEN</code>. That push cannot bypass required
+checks, and the Actions app cannot be added as a repo-level bypass actor --
+"must be part of the ruleset source or owner organization". Turning the rule
+on would leave the repository tagged-but-not-bumped on the first releasable
+merge. <strong>A repository that cannot cut a release is worse than one without
+required checks.</strong></p>
+<p><strong>The obvious wrong assumption, named.</strong> Moving the release trigger off <code>push</code>
+(the batched-release change) did <strong>not</strong> fix this. It changes <em>when</em>
+semantic-release pushes the version commit, not <em>what</em> that push is.</p>
+<p><strong>What has changed since the measurement, and what it means.</strong> The check list
+has grown from seven contexts to eleven -- four <code>integration (os, py)</code> jobs
+joined the seven the issue lists -- which makes the rule stricter, not more
+reachable. More to the point, the risk the issue was opened for is already
+closed by a different mechanism: <code>release.yml</code> waits for the <strong>Tests</strong>
+workflow on the exact commit it is about to release, and refuses to release
+when that run is absent, incomplete, or not successful. Required checks would
+add "a red PR cannot be merged"; they would not add "a red commit cannot reach
+PyPI", because that is already true. This is why the issue is deferred rather
+than escalated.</p>
+<p><strong>What would reopen it.</strong> Any one of: a repo-admin PAT or GitHub App token in
+<code>release.yml</code>'s checkout <code>token:</code> (note Ousia went deliberately no-PAT for its
+own release flow, so this is a reversal, not a detail); a deploy key as a
+<code>DeployKey</code> bypass actor, pushing over SSH; or an organization-level ruleset,
+where the 422's wording hints the Actions app may be an acceptable actor --
+untested, because it needs <code>gh auth refresh -s admin:org</code>, which is
+interactive.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.instant", "navigation.instant.progress", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
