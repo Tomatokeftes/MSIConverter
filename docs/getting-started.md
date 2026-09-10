@@ -208,12 +208,12 @@ session, napari, or a Jupyter notebook that loaded it.
 **Fix:** Close any program that has the zarr open, or write to a different output
 path.
 
-### Windows: long output paths
+### Windows: long paths
 
 Windows caps a normal path at 260 characters, and the limit applies to every
 file inside the `.zarr` directory rather than to the path you typed. Thyra's
-deepest metadata key sits roughly 95 characters below the output path, so an
-output path over about 165 characters would once fail part-way through the
+deepest metadata key sits roughly 134 characters below the output path, so an
+output path over about 125 characters would once fail part-way through the
 write with a confusing error naming a file you never asked for:
 
 ```
@@ -246,6 +246,37 @@ long output paths convert normally. A log line records when this happens.
     sdata = sd.read_zarr(r"\\?\C:\very\long\path\output.zarr")
     ```
     or simply choose a shorter output path such as `C:\msi\out.zarr`.
+
+!!! warning "A relative path is measured differently, and can lose an array"
+    Windows applies the limit to the working directory, a separator and the
+    relative path **as you spelled it**, before the `..` segments are
+    collapsed. A store you can open perfectly well by its absolute path can
+    therefore be unreadable through a relative one, and the failure is the
+    silent kind described above: the array simply does not appear, with at
+    most a `UserWarning` from Zarr about an object it does not recognise.
+
+    Two arrays sitting side by side in the same group of a real store:
+
+    | key | relative | absolute | result |
+    | --- | --- | --- | --- |
+    | `current_ratio` | 259 | 251 | reads |
+    | `mobility_edges` | **260** | 252 | **missing, no error** |
+
+    Nothing about the two differed but the length of the name -- same shape,
+    dtype, codecs and shards. Enabling long path support does **not** help
+    here, because it only applies to fully qualified paths.
+
+    Pass an absolute path, or pass the store through
+    `thyra.utils.windows_paths.prepare_zarr_read_path`, which resolves one for
+    you. If something looks missing, compare the two spellings before
+    suspecting the data:
+
+    ```python
+    import os
+    os.path.exists(p), os.path.exists(os.path.abspath(p))
+    ```
+
+    A `False, True` result means the path, not the store.
 
 !!! info "Failed conversions exit non-zero and move the partial store aside"
     Any failed conversion exits with status 1, so a script or CI job wrapping
