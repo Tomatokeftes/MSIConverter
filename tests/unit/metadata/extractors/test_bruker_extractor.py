@@ -1,10 +1,12 @@
 # tests/unit/metadata/extractors/test_bruker_extractor.py
+import logging
 import sqlite3
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 
+from thyra.errors import ConversionRefused
 from thyra.metadata.extractors.bruker_extractor import BrukerMetadataExtractor
 
 
@@ -209,6 +211,46 @@ class TestBrukerMetadataExtractor:
         essential = extractor.get_essential()
 
         assert essential.pixel_size == (15.0, 15.0)
+
+    def test_a_refused_mis_reaches_the_caller(self, tmp_path, thyra_logs):
+        """The .mis this extractor reads for <Raster> can be refused.
+
+        ``_resolve_pixel_size_um`` is one of the four consumers of
+        ``parse_mis_file``, and the only one that sits behind a broad
+        handler. That handler logs "Unexpected error extracting essential
+        metadata: ..." at ERROR and re-raises, so a refusal travelling
+        through it reached the user twice -- once under a heading that is
+        not true, and once from ``convert_msi``'s refusal handler, which
+        is the line actually written for them.
+
+        Both halves are asserted: the exception arrives, and it arrives
+        without the relabelling.
+        """
+        sample_data = {
+            "essential": (15.0, 15.0, 5.0, 0, 2, 0, 4, 400, 100.0, 1000.0),
+            "comprehensive": [],
+            "laser_info": (15.0, 15.0, 5.0),
+        }
+        mock_conn = self.create_mock_connection(sample_data)
+
+        d_folder = tmp_path / "sample_entity.d"
+        d_folder.mkdir()
+        mis = tmp_path / "sample_entity.mis"
+        mis.write_text(
+            "<?xml version='1.0'?>"
+            '<!DOCTYPE ImagingSequence [<!ENTITY r "5,5">]>'
+            "<ImagingSequence><Raster>&r;</Raster></ImagingSequence>"
+        )
+
+        extractor = BrukerMetadataExtractor(mock_conn, d_folder)
+        logger_name = "thyra.metadata.extractors.bruker_extractor"
+        with thyra_logs(logger_name, logging.ERROR) as records:
+            with pytest.raises(ConversionRefused) as excinfo:
+                extractor.get_essential()
+
+        assert "sample_entity.mis" in str(excinfo.value)
+        messages = [r.getMessage() for r in records]
+        assert not any("Unexpected error" in message for message in messages), messages
 
     def test_extract_essential_3d_data(self):
         """Test essential metadata extraction with 3D data (SpotSize > 1)."""

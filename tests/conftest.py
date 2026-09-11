@@ -225,26 +225,6 @@ def cropped_one_based_imzml(temp_dir):
 
 
 @pytest.fixture
-def mock_bruker_data(temp_dir):
-    """
-    Create a mock Bruker data directory structure.
-    This is just for structure testing - won't contain real data.
-    """
-    bruker_dir = temp_dir / "mock.d"
-    bruker_dir.mkdir(parents=True)
-
-    # Create minimal analysis.tsf file
-    with open(bruker_dir / "analysis.tsf", "w") as f:
-        f.write("Mock Bruker TSF file for testing")
-
-    # Create a fake SQLite DB file
-    with open(bruker_dir / "analysis.sqlite", "w") as f:
-        f.write("Mock SQLite DB file")
-
-    return bruker_dir
-
-
-@pytest.fixture
 def mock_waters_data(temp_dir):
     """Create a mock Waters .raw directory structure.
 

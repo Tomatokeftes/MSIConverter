@@ -47,17 +47,9 @@ import pytest
 from numpy.typing import NDArray
 
 from thyra.converters.spatialdata import SpatialDataConverter
-from thyra.converters.spatialdata.base_spatialdata_converter import (
-    SPATIALDATA_AVAILABLE,
-)
 from thyra.core.base_extractor import MetadataExtractor
 from thyra.core.base_reader import BaseMSIReader
 from thyra.metadata.types import ComprehensiveMetadata, EssentialMetadata
-
-pytestmark = pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 
 _DATASET_ID = "vol"
 

@@ -68,6 +68,28 @@ _NO_CALIBRATION_WARNED: set = set()
 _ONE_OVER_K0_UNIT_ACCESSION = "MS:1002814"
 _ONE_OVER_K0_UNIT_NAME = "volt-second per square centimeter"
 
+#: Constructor keywords retired with the timsTOF utils package they
+#: configured (issue #301).  They are named in a refusal rather than left
+#: to ``**kwargs``, which forwards them to ``BaseMSIReader.__init__`` --
+#: which never reads kwargs, so a caller who still passes one would hear
+#: nothing at all.  That silence is what D10's Python-API half refuses: a
+#: keyword accepted and doing nothing is the shape of option being cleared
+#: out, and D10 refuses even ``sparse_format="csc"``, the value that asked
+#: for what it would have got anyway.
+RETIRED_INIT_KEYWORDS = ("cache_coordinates", "memory_limit_gb", "batch_size")
+
+#: Said after every type refusal on a parameter that moved into the slots
+#: the three above vacated.  A keyword refusal cannot see an old
+#: positional call -- ``BrukerReader(path, True, True, 4.0, 100)`` arrives
+#: with an empty ``kwargs`` and three truthy values bound to the wrong
+#: parameters -- so the types are what catch it.
+_POSITIONAL_SHIFT_NOTE = (
+    "cache_coordinates, memory_limit_gb and batch_size were removed from the "
+    "positional slots that used to precede this parameter, so a positional "
+    "call written against the old signature binds their values to the "
+    "parameters that moved up. Delete those arguments, or pass by keyword."
+)
+
 
 def build_raw_mass_axis(
     spectra_iterator: Generator[
@@ -349,6 +371,73 @@ class TdfFrameScans:
         return self._reader._precursor_spectra_from(self, scan_map, n_windows)
 
 
+def _refuse_retired_keywords(passed: Dict[str, Any]) -> None:
+    """Answer the keywords that went with the timsTOF utils package.
+
+    All of the ones that were passed are named in one message. Refusing
+    them one at a time would make a caller with an old three-keyword call
+    run the conversion three times to learn it needs three edits.
+    """
+    retired = [name for name in RETIRED_INIT_KEYWORDS if name in passed]
+    if not retired:
+        return
+
+    if len(retired) == 1:
+        named, verb, noun, pronoun = retired[0], "was", "the argument", "it"
+    else:
+        named = f"{', '.join(retired[:-1])} and {retired[-1]}"
+        verb, noun, pronoun = "were", "the arguments", "they"
+
+    raise ConversionRefused(
+        f"{named} {verb} removed: coordinates are read straight from the .d "
+        "database and spectra one frame at a time, so there is nothing left "
+        f"to cache, to cap or to batch. Delete {noun}; there is no "
+        f"replacement keyword, because what {pronoun} configured was deleted "
+        "as dead code."
+    )
+
+
+def _refuse_shifted_positional_types(
+    progress_callback: object, region: object, metadata_only: object
+) -> None:
+    """Answer a value that none of these three parameters ever accepted.
+
+    These are the parameters that moved up when the retired three were
+    removed, and a positional call written against the old signature lands
+    a bool, a float and an int in exactly this window. ``progress_callback``
+    is the one that has to catch it: positional arguments are contiguous,
+    so no old call could reach ``memory_limit_gb``'s slot or
+    ``batch_size``'s without also filling ``cache_coordinates``', which is
+    this one, and a bool is not callable. The other two are the same rule
+    applied to the rest of the window, and each is independently right --
+    a float region resolves to the string ``"4.0"`` and fails much later
+    in ``--region`` vocabulary an API caller never used, and
+    ``metadata_only=100`` builds a reader whose ``iter_spectra`` raises
+    SDKError about a handle that is None.
+
+    The arguments are typed ``object`` so that mypy, which is told these
+    parameters are already a callable, an int-or-str and a bool, does not
+    call the checks unreachable.
+    """
+    if progress_callback is not None and not callable(progress_callback):
+        raise ConversionRefused(
+            "progress_callback takes a callable or None, got "
+            f"{type(progress_callback).__name__}. {_POSITIONAL_SHIFT_NOTE}"
+        )
+    if region is not None and (
+        isinstance(region, bool) or not isinstance(region, (int, str))
+    ):
+        raise ConversionRefused(
+            "region takes a DB RegionNumber int, a .mis Area Name string or "
+            f"None, got {type(region).__name__}. {_POSITIONAL_SHIFT_NOTE}"
+        )
+    if not isinstance(metadata_only, bool):
+        raise ConversionRefused(
+            "metadata_only takes True or False, got "
+            f"{type(metadata_only).__name__}. {_POSITIONAL_SHIFT_NOTE}"
+        )
+
+
 @register_reader("bruker")
 class BrukerReader(BrukerBaseMSIReader):
     """Bruker reader for TSF/TDF data formats.
@@ -365,9 +454,6 @@ class BrukerReader(BrukerBaseMSIReader):
         self,
         data_path: Path,
         use_recalibrated_state: bool = True,
-        cache_coordinates: bool = True,
-        memory_limit_gb: Optional[float] = None,
-        batch_size: Optional[int] = None,
         progress_callback: Optional[Callable[[int, int], None]] = None,
         region: Optional[Union[int, str]] = None,
         metadata_only: bool = False,
@@ -383,9 +469,6 @@ class BrukerReader(BrukerBaseMSIReader):
             use_recalibrated_state: Whether to use recalibrated/active calibration state.
                 Defaults to True (use active calibration). Set to False to use original
                 calibration from data acquisition.
-            cache_coordinates: Ignored, maintained for compatibility
-            memory_limit_gb: Ignored, maintained for compatibility
-            batch_size: Ignored, maintained for compatibility
             progress_callback: Optional callback for progress updates
             region: Region selector for multi-region datasets.
                 None (default): convert all regions (no filtering).
@@ -409,8 +492,29 @@ class BrukerReader(BrukerBaseMSIReader):
                 ramp, the same peak picker behind the TSF line spectrum.
                 Ignored for TSF. See
                 :mod:`thyra.readers.bruker.timstof.sdk.sdk_functions`.
-            **kwargs: Additional arguments
+            **kwargs: Additional arguments, forwarded to
+                :class:`~thyra.core.base_reader.BaseMSIReader` (which reads
+                ``intensity_threshold`` and ignores the rest).  Three names
+                are the exception and are refused rather than forwarded:
+                ``cache_coordinates``, ``memory_limit_gb`` and
+                ``batch_size`` configured the timsTOF utils package, which
+                was deleted as dead code (issue #301), so they have no
+                replacement and the call should drop them.  Note that they
+                also vacated the three positional slots now held by
+                ``progress_callback``, ``region`` and ``metadata_only``: a
+                positional call written against the old signature is
+                refused on the type of what lands there.
+
+        Raises:
+            ConversionRefused: If ``cache_coordinates``, ``memory_limit_gb``
+                or ``batch_size`` is passed; if ``progress_callback``,
+                ``region`` or ``metadata_only`` is given a value its
+                declared type does not allow; or if ``tdf_spectrum`` is not
+                one of the supported modes.
         """
+        _refuse_retired_keywords(kwargs)
+        _refuse_shifted_positional_types(progress_callback, region, metadata_only)
+
         super().__init__(data_path, **kwargs)
         self.use_recalibrated_state = use_recalibrated_state
         self.progress_callback = progress_callback
@@ -429,9 +533,6 @@ class BrukerReader(BrukerBaseMSIReader):
 
         # Read calibration metadata
         self._calibration_metadata = self._read_calibration_metadata()
-
-        # Initialize components
-        self._setup_components(cache_coordinates, memory_limit_gb, batch_size)
 
         # Initialize SDK + connections.  In metadata-only mode we
         # skip the SDK (no DLL load, no open_file) since all metadata
@@ -553,16 +654,6 @@ class BrukerReader(BrukerBaseMSIReader):
             )
 
         logger.debug(f"Detected file type: {self.file_type.upper()}")
-
-    def _setup_components(
-        self,
-        cache_coordinates: bool,
-        memory_limit_gb: Optional[float],
-        batch_size: Optional[int],
-    ) -> None:
-        """Setup utility components (now minimal)."""
-        # No more coordinate cache - using direct database access
-        pass
 
     def _read_calibration_metadata(self) -> Optional[Dict]:
         """Read calibration metadata from calibration.sqlite.
@@ -2010,11 +2101,21 @@ class BrukerReader(BrukerBaseMSIReader):
 
         Returns:
             Dictionary of parsed .mis metadata, empty if no .mis found
+
+        Raises:
+            ConversionRefused: If the .mis found is a document defusedxml
+                refuses. Deliberately not caught: this runs in ``__init__``
+                before ``_select_region``, and the areas it would have
+                filled are what resolves ``--region <name>``, so swallowing
+                it turned a refused file into "no such region" naming a
+                region list that was empty for a reason nobody was told.
         """
         try:
             mis_path = self.get_teaching_points_file()
         except (ValueError, OSError):
-            # Folder structure analysis can fail for non-standard paths
+            # Folder structure analysis can fail for non-standard paths.
+            # Scoped to this one call on purpose: ConversionRefused is a
+            # ValueError, and parse_mis_file below must not land here.
             return {}
 
         if mis_path is None:

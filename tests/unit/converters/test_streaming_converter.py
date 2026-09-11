@@ -11,7 +11,6 @@ import numpy as np
 import pytest
 
 from thyra.converters.spatialdata.streaming_converter import (
-    SPATIALDATA_AVAILABLE,
     StreamingSpatialDataConverter,
 )
 
@@ -151,10 +150,6 @@ class MockMSIReader:
         np.random.seed(42)
 
 
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 def test_resampling_plan_uses_real_bins_for_width_based_config():
     """Regression for #87: when ``target_bins`` is None, the bin count must be
     resolved from ``width_at_mz`` rather than a hardcoded 10,000 placeholder.
@@ -194,10 +189,6 @@ def test_resampling_plan_uses_real_bins_for_width_based_config():
     )
 
 
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 def test_converter_initialization():
     """Test that the converter initializes correctly."""
     reader = MockMSIReader()
@@ -217,10 +208,6 @@ def test_converter_initialization():
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 class TestStreamingSpatialDataConverter:
     """Tests for StreamingSpatialDataConverter."""
 
@@ -433,10 +420,6 @@ class TestStreamingSpatialDataConverter:
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 def test_streaming_converter_memory_efficiency():
     """Test that streaming converter uses bounded memory."""
     # This is a basic check - actual memory profiling would need
@@ -471,10 +454,6 @@ def test_streaming_converter_memory_efficiency():
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 def test_single_pixel_dataset():
     """Test conversion with a single pixel (1x1) dataset."""
     reader = MockMSIReader(
@@ -508,10 +487,6 @@ def test_single_pixel_dataset():
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 def test_rectangular_grid():
     """Test conversion with non-square (rectangular) grid."""
     reader = MockMSIReader(
@@ -551,10 +526,6 @@ def test_rectangular_grid():
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 def test_auto_use_csc_mode_with_resampling():
     """``use_csc="auto"`` converts, and the size it reports is the counted one."""
     reader = MockMSIReader(
@@ -602,10 +573,6 @@ class MockMSIReaderWithOptical(MockMSIReader):
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 def test_optical_image_loading():
     """Test that optical images are loaded when include_optical=True."""
     import tifffile
@@ -645,10 +612,6 @@ def test_optical_image_loading():
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 def test_optical_image_rgb():
     """Test loading RGB optical images (3D TIFF)."""
     import tifffile
@@ -690,10 +653,6 @@ def test_optical_image_rgb():
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 def test_no_optical_images_when_disabled():
     """Test that optical images are not loaded when include_optical=False."""
     import tifffile
@@ -736,10 +695,6 @@ def test_no_optical_images_when_disabled():
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 def test_larger_chunk_write():
     """Test that larger datasets trigger chunk write logic."""
     # Create dataset large enough to trigger multiple chunk writes
@@ -813,10 +768,6 @@ class MockMSIReaderWithControlledIntensities(MockMSIReader):
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 def test_intensity_threshold_filtering():
     """Test that intensity_threshold filters out low intensity values.
 

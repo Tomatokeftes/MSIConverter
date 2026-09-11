@@ -19,6 +19,7 @@ from thyra.converters.spatialdata.base_spatialdata_converter import (
     _reference_params,
     _tof_plan,
 )
+from thyra.errors import ConversionRefused
 from thyra.resampling.common_axis import CommonAxisBuilder
 from thyra.resampling.data_characteristics import DataCharacteristics
 from thyra.resampling.decision_tree import ResamplingDecisionTree
@@ -127,13 +128,32 @@ class TestBinsPerFWHM:
 
     def test_builder_needs_the_law(self):
         builder = CommonAxisBuilder()
-        with pytest.raises(ValueError, match="tof_law"):
+        with pytest.raises(ConversionRefused, match="tof_law"):
             builder.build_physics_axis(100.0, 1000.0, 100, AxisType.TOF)
         axis = builder.build_physics_axis(
             100.0, 1000.0, 100, AxisType.TOF, tof_law=MRT_TOF_LAW
         )
         assert axis.axis_type is AxisType.TOF
         assert axis.num_bins == 100
+
+    def test_builder_refuses_an_axis_type_it_has_no_generator_for(self):
+        """``AxisType.UNKNOWN`` has no spacing model, so no axis is built.
+
+        The second of ``build_physics_axis``'s two refusals, and the one
+        with no direct coverage before: ``AxisType.UNKNOWN`` reached the
+        builder only through ``_normalize_resampling_config``, which is a
+        different function and refuses it one frame earlier. An analyser
+        nobody could identify is left as ``None`` and auto-detected, not
+        labelled ``UNKNOWN``.
+
+        Passes before and after the docstring correction it accompanies:
+        the code already raised ``ConversionRefused`` and only the
+        ``Raises`` block said ``ValueError``. It covers a refusal that had
+        none rather than guarding a regression.
+        """
+        builder = CommonAxisBuilder()
+        with pytest.raises(ConversionRefused, match="Unsupported axis type"):
+            builder.build_physics_axis(100.0, 1000.0, 100, AxisType.UNKNOWN)
 
 
 class TestConverterPlan:

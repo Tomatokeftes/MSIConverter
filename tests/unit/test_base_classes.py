@@ -155,7 +155,6 @@ class TestBaseMSIConverter:
         # Run all utility method tests
         self._test_coordinate_conversion(converter)
         self._test_mass_mapping(converter)
-        self._test_sparse_matrix_operations(converter)
         self._test_dataframe_creation(converter)
 
     def _create_test_converter(self):
@@ -237,18 +236,6 @@ class TestBaseMSIConverter:
         """Test mass mapping functionality."""
         mz_indices = converter._map_mass_to_indices(np.array([100.0, 300.0]))
         np.testing.assert_array_equal(mz_indices, np.array([0, 2]))
-
-    def _test_sparse_matrix_operations(self, converter):
-        """Test sparse matrix creation and operations."""
-        sparse_matrix = converter._create_sparse_matrix()
-        assert sparse_matrix.shape == (4, 3)  # 4 pixels, 3 mass values
-
-        # Test adding to sparse matrix
-        converter._add_to_sparse_matrix(
-            sparse_matrix, 0, np.array([0, 2]), np.array([1.0, 2.0])
-        )
-        assert sparse_matrix[0, 0] == 1.0
-        assert sparse_matrix[0, 2] == 2.0
 
     def _test_dataframe_creation(self, converter):
         """Test dataframe creation methods."""

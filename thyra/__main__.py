@@ -594,7 +594,6 @@ class GroupedCommand(click.Command):
 
     GROUPS = {
         "Conversion": [
-            "--format",
             "--pixel-size",
             "--region",
             "--no-resample",
@@ -700,7 +699,12 @@ class GroupedCommand(click.Command):
     "--format",
     type=click.Choice(["spatialdata"]),
     default="spatialdata",
-    help="Output format (default: spatialdata)",
+    hidden=True,
+    help=(
+        "The only output format there is. Accepted so existing scripts keep "
+        "running; it selects nothing. The Choice stays so an unknown value "
+        "still fails before any data is read."
+    ),
 )
 @click.option(
     "--pixel-size",

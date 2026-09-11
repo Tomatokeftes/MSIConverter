@@ -19,22 +19,7 @@ import logging
 import re
 import struct
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional, Tuple
-
-if TYPE_CHECKING:
-    from xml.etree.ElementTree import Element  # nosec B405 - type hint only
-
-try:
-    # Prefer defusedxml for secure parsing of instrument XML files.
-    import defusedxml.ElementTree as ET
-except ImportError:
-    # Fallback to the standard library so the reader still works when
-    # defusedxml is unavailable (mirrors imzml_extractor._get_xml_parser).
-    import xml.etree.ElementTree as ET  # nosec B405
-
-    logging.getLogger(__name__).warning(
-        "defusedxml not available, using xml.etree.ElementTree"
-    )
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
@@ -45,6 +30,7 @@ from ....core.registry import register_reader
 from ....errors import ConversionRefused
 from ....metadata.types import ComprehensiveMetadata, EssentialMetadata
 from ..base_bruker_reader import BrukerBaseMSIReader
+from ..mis_parser import parse_mis_file
 
 logger = logging.getLogger(__name__)
 
@@ -300,14 +286,22 @@ class RapiflexReader(BrukerBaseMSIReader):
         )
 
     def _parse_metadata(self) -> None:
-        """Parse metadata from _info.txt and .mis files."""
+        """Parse metadata from _info.txt and .mis files.
+
+        Raises:
+            ConversionRefused: If the .mis is a document defusedxml
+                refuses. The .mis itself is optional -- a folder without
+                one reads fine -- but a file that is present and refused
+                is not the same as one that is absent, so it is not
+                swallowed into an empty ``_mis_metadata``.
+        """
         # Parse _info.txt
         if self._info_path and self._info_path.exists():
             self._info_metadata = self._parse_info_file(self._info_path)
 
         # Parse .mis file (optional)
         if self._mis_path and self._mis_path.exists():
-            self._mis_metadata = self._parse_mis_file(self._mis_path)
+            self._mis_metadata = parse_mis_file(self._mis_path)
 
     def _parse_info_file(self, path: Path) -> Dict[str, Any]:
         """Parse the _info.txt metadata file.
@@ -350,110 +344,6 @@ class RapiflexReader(BrukerBaseMSIReader):
                 metadata["raster_y"] = float(parts[1])
 
         return metadata
-
-    def _parse_mis_file(self, path: Path) -> Dict[str, Any]:
-        """Parse the .mis XML file for method and alignment info.
-
-        Args:
-            path: Path to the .mis file
-
-        Returns:
-            Dictionary of parsed metadata
-        """
-        metadata: Dict[str, Any] = {}
-
-        try:
-            tree = ET.parse(
-                path
-            )  # nosec B314 - defusedxml preferred; trusted local instrument file
-            root = tree.getroot()
-
-            self._extract_basic_elements(root, metadata)
-            self._extract_teaching_points(root, metadata)
-            self._extract_raster_info(root, metadata)
-            self._extract_areas(root, metadata)
-
-        except ET.ParseError as e:
-            logger.warning(f"Failed to parse .mis file: {e}")
-
-        return metadata
-
-    def _extract_basic_elements(
-        self, root: "Element", metadata: Dict[str, Any]
-    ) -> None:
-        """Extract basic text elements from .mis XML."""
-        for elem_name in ["Method", "ImageFile", "OriginalImage", "BaseGeometry"]:
-            elem = root.find(f".//{elem_name}")
-            if elem is not None and elem.text:
-                metadata[elem_name] = elem.text
-
-    def _extract_teaching_points(
-        self, root: "Element", metadata: Dict[str, Any]
-    ) -> None:
-        """Extract teaching point calibration data from .mis XML."""
-        teaching_points = []
-        for tp in root.findall(".//TeachPoint"):
-            if tp.text and ";" in tp.text:
-                img_coords, stage_coords = tp.text.split(";")
-                img_x, img_y = map(int, img_coords.split(","))
-                stage_x, stage_y = map(int, stage_coords.split(","))
-                # Use lists instead of tuples for Zarr serialization
-                teaching_points.append(
-                    {"image": [img_x, img_y], "stage": [stage_x, stage_y]}
-                )
-        if teaching_points:
-            metadata["teaching_points"] = teaching_points
-
-    def _extract_raster_info(self, root: "Element", metadata: Dict[str, Any]) -> None:
-        """Extract raster dimensions from .mis XML."""
-        raster_elem = root.find(".//Raster")
-        if raster_elem is not None and raster_elem.text:
-            parts = raster_elem.text.split(",")
-            if len(parts) == 2:
-                # Use list instead of tuple for Zarr serialization
-                metadata["raster"] = [int(parts[0]), int(parts[1])]
-
-    def _extract_areas(self, root: "Element", metadata: Dict[str, Any]) -> None:
-        """Extract Area definitions from .mis XML.
-
-        Areas define the image pixel coordinates for each acquisition region.
-        Areas may be rectangular (Type=0, 2 points) or polygon (Type=3, N
-        points). In both cases the bounding box of all points is stored.
-
-        Args:
-            root: XML root element
-            metadata: Dictionary to update with area info
-        """
-        areas = []
-        for area_elem in root.findall(".//Area"):
-            area_name = area_elem.get("Name", "")
-            points = area_elem.findall("Point")
-            if len(points) >= 2:
-                try:
-                    # Parse ALL point coordinates to get bounding box
-                    # Works for both rectangular (2 points) and polygon (N points)
-                    all_x = []
-                    all_y = []
-                    for pt in points:
-                        pt_text = pt.text or ""
-                        parts = pt_text.split(",")
-                        all_x.append(int(parts[0]))
-                        all_y.append(int(parts[1]))
-
-                    areas.append(
-                        {
-                            "name": area_name,
-                            "p1": [min(all_x), min(all_y)],
-                            "p2": [max(all_x), max(all_y)],
-                        }
-                    )
-                except (ValueError, IndexError) as e:
-                    logger.warning(f"Failed to parse Area '{area_name}': {e}")
-                    continue
-
-        if areas:
-            metadata["areas"] = areas
-            logger.debug(f"Parsed {len(areas)} area definitions from .mis")
 
     def _parse_positions(self) -> None:
         """Parse coordinate information from _poslog.txt file."""

@@ -12,18 +12,10 @@ import pytest
 from click.testing import CliRunner
 
 from tests.fixtures.mock_msi_generator import MockMSIConfig, MockMSIReader
-from thyra.converters.spatialdata.base_spatialdata_converter import (
-    SPATIALDATA_AVAILABLE,
-)
 from thyra.metadata.schema import (
     MSI_METADATA_SCHEMA_VERSION,
     read_msi_metadata_blocks,
     validate_document,
-)
-
-pytestmark = pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
 )
 
 

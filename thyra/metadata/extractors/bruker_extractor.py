@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from ...core.base_extractor import MetadataExtractor
+from ...errors import ConversionRefused
 from ..types import ComprehensiveMetadata, EssentialMetadata
 
 logger = logging.getLogger(__name__)
@@ -239,6 +240,15 @@ class BrukerMetadataExtractor(MetadataExtractor):
             raise ValueError(
                 f"Failed to extract essential metadata from Bruker database: " f"{e}"
             )
+        except ConversionRefused:
+            # Nothing unexpected about a refusal, and it is already the
+            # whole explanation. _resolve_pixel_size_um below reads the
+            # sibling .mis, which refuses an entity-bearing document, so
+            # one reaches here; the clause under this one would log it at
+            # ERROR as "Unexpected error ..." and then re-raise it into
+            # convert_msi, which logs it again. Two lines, the first of
+            # them untrue.
+            raise
         except Exception as e:
             logger.error(f"Unexpected error extracting essential metadata: {e}")
             raise
@@ -268,6 +278,12 @@ class BrukerMetadataExtractor(MetadataExtractor):
         and the canonical pixel pitch is the Raster step from the FlexImaging
         ``.mis`` file. Prefer the Raster step; warn when it disagrees with
         BeamScanSize. Fall back to BeamScanSize when no .mis is found.
+
+        Raises:
+            ConversionRefused: If a ``.mis`` is found and is a document
+                defusedxml refuses. No .mis at all is the fall-back case
+                above; one that is present and refused is not, so it is
+                not quietly resolved to BeamScanSize.
         """
         from ...readers.bruker.mis_parser import (
             find_mis_file_for_d_folder,

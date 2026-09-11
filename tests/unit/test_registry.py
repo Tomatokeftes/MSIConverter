@@ -4,6 +4,7 @@ Tests for the simplified format registry system.
 
 import pytest
 
+import thyra
 from thyra.core.base_converter import BaseMSIConverter
 from thyra.core.base_reader import BaseMSIReader
 from thyra.core.registry import (
@@ -14,6 +15,7 @@ from thyra.core.registry import (
     register_converter,
     register_reader,
 )
+from thyra.errors import ConversionRefused
 
 
 class TestRegistry:
@@ -221,11 +223,79 @@ class TestRegistry:
         assert detect_format(some_dir) == "waters"
 
     def test_get_nonexistent_reader(self):
-        """Test getting a non-existent reader class."""
-        with pytest.raises(ValueError, match="No reader for format"):
+        """A reader miss is a refusal, not a bare ValueError.
+
+        Asserted as ``ConversionRefused`` rather than ``ValueError``
+        because the type is what ``convert_msi`` dispatches on: the
+        refusal handler prints the message once and keeps the traceback
+        for DEBUG, the generic handler prints a traceback at ERROR. A
+        ``ValueError`` assertion passes under either, so it could not tell
+        the two apart -- and the registry is the one place every caller of
+        a format name goes through, which is why the convention belongs
+        here rather than in each caller's error mapping.
+        """
+        with pytest.raises(ConversionRefused, match="No reader for format"):
             get_reader_class("nonexistent_format")
 
     def test_get_nonexistent_converter(self):
-        """Test getting a non-existent converter class."""
-        with pytest.raises(ValueError, match="No converter for format"):
+        """A converter miss is a refusal too, for the same reason.
+
+        ``thyra/convert.py`` used to route this lookup through a wrapper,
+        ``_resolve_converter_class``, that caught the registry's error and
+        re-raised ``ConversionRefused`` for any format name containing
+        "spatialdata". The wrapper is gone and ``_create_converter`` calls
+        ``get_converter_class`` directly.
+
+        Two things hold the convention on that path, not one. This
+        assertion holds it at the registry, where every caller of a format
+        name arrives. ``TestAnUnregisteredOutputFormat`` in
+        ``tests/unit/test_cli_refusals.py``, added by the same commit,
+        holds the other end: it drives the lookup through ``convert_msi``
+        and asserts the registry's own message reaches the user as a
+        single ERROR line naming the formats there are, with the traceback
+        kept for DEBUG. Either can fail while the other passes -- this one
+        if the registry stops refusing, that one if something between the
+        registry and the user starts rewriting the refusal again -- which
+        is why both are here.
+        """
+        with pytest.raises(ConversionRefused, match="No converter for format"):
             get_converter_class("nonexistent_format")
+
+
+# The two below live outside TestRegistry on purpose: its setup_method
+# clears _registry._converters and teardown_method restores it, so the same
+# assertions inside the class would only ever test that fixture.
+#
+# Both were measured to pass against the pre-#310 code as well, and that is
+# not a flaw in them: on an install where spatialdata imports, the flag they
+# used to be gated behind was True and the behaviour was already correct.
+# They state the invariant so a future reviewer can see it asserted
+# somewhere; the test that actually separates the two trees is
+# tests/unit/test_hard_dependency.py, which fails before the fix.
+
+
+def test_spatialdata_converter_is_registered_on_import():
+    """Importing thyra registers the one output format the docs describe.
+
+    Registration used to sit behind ``if SPATIALDATA_AVAILABLE:``, a flag
+    set by a try/except that swallowed the ImportError. When spatialdata
+    could not be imported, ``import thyra`` still succeeded and this lookup
+    raised "No converter for format 'spatialdata'. Available: []" -- an
+    empty registry, naming neither the missing package nor the cause
+    (issue #310). spatialdata is a hard dependency, so registration is now
+    unconditional and a broken install fails at ``import thyra`` instead.
+    """
+    assert get_converter_class("spatialdata") is thyra.SpatialDataConverter
+
+
+def test_spatialdata_converter_is_always_a_class():
+    """``thyra.SpatialDataConverter`` is a class, never None.
+
+    ``thyra/__init__.py`` carried an ``except ImportError`` branch rebinding
+    this name to ``None``, and issue #282 item 3 described the name as "a
+    class or None depending on installed extras". It was measured to be the
+    class even with spatialdata blocked -- the branch was dead, because the
+    swallow one layer down meant the import it guarded never raised. Both
+    the branch and the flag are gone; the name has one type.
+    """
+    assert isinstance(thyra.SpatialDataConverter, type)

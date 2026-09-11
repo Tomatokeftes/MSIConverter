@@ -35,13 +35,7 @@ import pytest
 
 from tests.fixtures.mock_msi_generator import MockMSIConfig, MockMSIReader
 from thyra.converters.spatialdata.streaming_converter import (
-    SPATIALDATA_AVAILABLE,
     StreamingSpatialDataConverter,
-)
-
-pytestmark = pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
 )
 
 

@@ -34,15 +34,9 @@ import numpy as np
 import pytest
 
 from thyra.converters.spatialdata.streaming_converter import (
-    SPATIALDATA_AVAILABLE,
     StreamingSpatialDataConverter,
 )
 from thyra.readers.imzml import ImzMLReader
-
-pytestmark = pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 
 _TABLE_KEY = "imzml_z0"
 _OUT_OF_GRID_LOGGER = "thyra.converters.spatialdata.streaming_converter"

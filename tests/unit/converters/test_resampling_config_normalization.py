@@ -14,6 +14,7 @@ import pytest
 from thyra.converters.spatialdata.base_spatialdata_converter import (
     _normalize_resampling_config,
 )
+from thyra.errors import ConversionRefused
 from thyra.resampling.types import (
     DEFAULT_REFERENCE_MZ,
     AxisType,
@@ -82,7 +83,17 @@ class TestRecognisedValues:
 
 
 class TestUnrecognisedValues:
-    """Unknown values must raise, not fall back to auto-detection."""
+    """Unknown values must raise, not fall back to auto-detection.
+
+    All seven assertions below were tightened from ``ValueError`` to
+    ``ConversionRefused`` alongside the docstring correction on
+    ``_normalize_resampling_config``, and **all seven pass before and
+    after**: ``ConversionRefused`` subclasses ``ValueError``, and the code
+    already raised the subclass -- only the ``Raises`` block named the
+    parent. They pin the refusal type the PR #264 convention makes the
+    contract, so a later widening back to a bare ``ValueError`` cannot pass
+    unnoticed; none of them is a regression guard.
+    """
 
     @pytest.mark.parametrize(
         "bad",
@@ -98,7 +109,7 @@ class TestUnrecognisedValues:
         ],
     )
     def test_unknown_method_raises(self, bad):
-        with pytest.raises(ValueError, match="method"):
+        with pytest.raises(ConversionRefused, match="method"):
             _normalize_resampling_config({"method": bad})
 
     @pytest.mark.parametrize(
@@ -113,11 +124,11 @@ class TestUnrecognisedValues:
         ],
     )
     def test_unknown_axis_type_raises(self, bad):
-        with pytest.raises(ValueError, match="axis_type"):
+        with pytest.raises(ConversionRefused, match="axis_type"):
             _normalize_resampling_config({"axis_type": bad})
 
     def test_error_names_the_valid_values(self):
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(ConversionRefused) as excinfo:
             _normalize_resampling_config({"method": "typo"})
 
         message = str(excinfo.value)
@@ -126,7 +137,7 @@ class TestUnrecognisedValues:
         assert "'tic_preserving'" in message
 
     def test_error_names_the_offending_value(self):
-        with pytest.raises(ValueError, match="tic_preserving "):
+        with pytest.raises(ConversionRefused, match="tic_preserving "):
             _normalize_resampling_config({"method": "tic_preserving "})
 
     def test_unimplemented_method_enum_raises(self):
@@ -136,15 +147,15 @@ class TestUnrecognisedValues:
         TIC-preserving resampling. Callers who want no resampling pass
         ``resampling_config=None`` instead.
         """
-        with pytest.raises(ValueError, match="method"):
+        with pytest.raises(ConversionRefused, match="method"):
             _normalize_resampling_config({"method": ResamplingMethod.NONE})
 
     def test_wrong_type_raises(self):
-        with pytest.raises(ValueError, match="method"):
+        with pytest.raises(ConversionRefused, match="method"):
             _normalize_resampling_config({"method": 3})
 
     def test_axis_type_enum_without_a_generator_raises(self):
-        with pytest.raises(ValueError, match="axis_type"):
+        with pytest.raises(ConversionRefused, match="axis_type"):
             _normalize_resampling_config({"axis_type": AxisType.UNKNOWN})
 
 

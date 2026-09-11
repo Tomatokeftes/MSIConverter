@@ -38,20 +38,13 @@ from pathlib import Path
 from typing import Generator, Optional, Tuple
 
 import numpy as np
-import pytest
 import zarr
 from numpy.typing import NDArray
 from scipy import sparse
 
 from tests.fixtures.mock_msi_generator import MockMSIConfig, MockMSIReader
 from thyra.converters.spatialdata.streaming_converter import (
-    SPATIALDATA_AVAILABLE,
     StreamingSpatialDataConverter,
-)
-
-pytestmark = pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
 )
 
 DATASET_ID = "mock"

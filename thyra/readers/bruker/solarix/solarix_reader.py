@@ -97,6 +97,15 @@ class SolarixReader(BrukerBaseMSIReader):
                 still works in this mode -- the index loads on demand.
             intensity_threshold: Minimum intensity to retain.
             **kwargs: Passed to :class:`BrukerBaseMSIReader`.
+
+        Raises:
+            ConversionRefused: Among the layout and schema checks, from
+                the sibling ``.mis`` when that file is a document
+                defusedxml refuses. Not caught here: without the ``.mis``
+                the pixel size is unknown, and reporting it unknown
+                because the file was refused -- while saying nothing about
+                the file -- is the failure this reader would otherwise
+                present.
         """
         super().__init__(data_path, intensity_threshold=intensity_threshold, **kwargs)
 

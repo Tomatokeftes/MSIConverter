@@ -71,7 +71,13 @@ dependencies = [
     # python-semantic-release's dev-only `<8.2` cap) and on 8.4.2, which is what
     # a plain `pip install thyra` resolves today and the lockfile never exercises.
     "click>=8.1, <9",                 # tested 8.1.8 and 8.4.2
-    "defusedxml>=0.7.1",  # Secure XML parsing for the Bruker Rapiflex reader
+    # Secure XML parsing for the shared Bruker `.mis` parser, which every
+    # Bruker path goes through: the Rapiflex, timsTOF and solariX readers and
+    # BrukerMetadataExtractor. `mis_parser` imports it unconditionally and has
+    # no `xml.etree` fallback, because that fallback expands XML entities --
+    # it would quietly reinstate the hole. A hard runtime dependency, not an
+    # extra: an install without it must fail at import.
+    "defusedxml>=0.7.1",
     "geopandas>=0.9.0",
     # No `lxml` here, deliberately, and it is the inverse of the `click` case
     # above rather than an oversight. Nothing under `thyra/` imports it at any
@@ -154,10 +160,12 @@ dependencies = [
     # base, 2D, 3D and streaming converters. Both arrive transitively today
     # (spatialdata requires xarray >=2024.10.0 outright; tifffile comes in behind
     # scikit-image and dask-image), so this is the same undeclared-direct-import
-    # defect as click above -- but a quieter one. Their imports sit inside the
-    # SPATIALDATA_AVAILABLE try/except, so losing either degrades instead of
-    # crashing: every converter is replaced by a dummy and the run reports
-    # "SpatialData dependencies not available" rather than naming the real cause.
+    # defect as click above -- but a quieter one. Both are plain top-level
+    # imports since issue #310 removed the try/except that used to swallow their
+    # absence, so losing either now aborts `import thyra` at the offending line
+    # with the real ImportError. That is the reason to declare them: the floor
+    # below is the only thing standing between a resolver that drops either one
+    # and a package that cannot be imported at all.
     # Floors only, and deliberately so; no upper bound nothing here has tested.
     # The tifffile floor is load-bearing: optical_image.py streams TIFF row bands
     # through tifffile's zarr adapter (``TiffPage.aszarr()``), which speaks zarr

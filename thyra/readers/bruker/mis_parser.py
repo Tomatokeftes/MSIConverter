@@ -3,12 +3,34 @@
 The .mis file contains teaching point calibration, acquisition area definitions,
 and optical image references. It is used by both Rapiflex and timsTOF workflows
 for aligning MSI data with optical images.
+
+Parsing goes through ``defusedxml``, which is a hard dependency: see the
+import below for why there is no stdlib fallback.
 """
 
 import logging
-import xml.etree.ElementTree as ET  # nosec B405 - parsing trusted local instrument files
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+# defusedxml, unconditionally, and never xml.etree here. The stdlib parser
+# expands entity declarations -- measured on a .mis carrying
+# ``<!ENTITY r "5,5">``: xml.etree hands back the expansion and reports a
+# 5x5 raster, defusedxml raises EntitiesForbidden -- so a fallback to it is
+# not a degraded parse, it is the hole the defusedxml swap was made to
+# close. defusedxml is declared in ``[project] dependencies`` with no
+# optional-dependencies table anywhere in pyproject.toml, so an install
+# without it is broken rather than a supported configuration, and a broken
+# install is entitled to the ImportError and its traceback. This is the
+# same principle the spatialdata import follows (issue #310); a
+# try/except ImportError that warns and carries on is the mirror image of
+# the machinery that commit deleted.
+import defusedxml.ElementTree as ET
+from defusedxml.common import DefusedXmlException
+
+from ...errors import ConversionRefused
+
+if TYPE_CHECKING:
+    from xml.etree.ElementTree import Element  # nosec B405 - type hint only
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +67,59 @@ def parse_mis_file(path: Path) -> Dict[str, Any]:
     Extracts teaching points, area definitions, raster info, and image
     references from the XML structure.
 
+    A document defusedxml refuses and a document that is simply not
+    well-formed are answered differently, on purpose. A malformed or
+    truncated .mis costs the optical alignment, which every caller already
+    treats as optional -- most acquisitions have no .mis at all -- so it
+    stays a warning and an empty result. A refused document is a different
+    claim: nothing about that file was read *because Thyra would not read
+    it*, and saying so with an empty dict makes a security decision look
+    exactly like a .mis that happened to hold nothing. The visible
+    consequence was downstream and misleading: no areas, no teaching
+    points, no raster, and a later ``--region <name>`` failing as "no such
+    region" while the file that caused it went unnamed.
+
     Args:
         path: Path to the .mis file
 
     Returns:
         Dictionary with keys: teaching_points, areas, raster, ImageFile,
-        OriginalImage, BaseGeometry (all optional depending on file content)
+        OriginalImage, BaseGeometry (all optional depending on file
+        content). Empty when the document is not well-formed XML.
+
+    Raises:
+        ConversionRefused: If the document declares XML entities or reaches
+            for an external reference. Where that lands differs by
+            consumer, and only three of the five let it travel untouched.
+
+            The solariX, Rapiflex and timsTOF readers each parse from
+            ``__init__``, so it leaves the constructor and reaches
+            ``convert_msi``, which prints it once and stops. The timsTOF
+            reader's ``except (ValueError, OSError)`` sits above the parse
+            and covers the folder-layout lookup only, so it does not
+            swallow this.
+
+            ``BrukerMetadataExtractor._resolve_pixel_size_um`` is not a
+            constructor and is not uncaught: ``_extract_essential_impl``
+            catches it with ``except ConversionRefused: raise``, which is
+            what keeps the broad handler under that clause from re-logging
+            the refusal at ERROR as "Unexpected error extracting essential
+            metadata". It is re-raised unchanged.
+
+            :func:`thyra.preview.preview_msi` is a fifth surface, and the
+            commit that wrote this refusal did not enumerate it -- its
+            "checked for each consumer" list named four, all of them
+            library callers. Preview builds its reader inside ``except
+            Exception``, so nothing propagates: the refusal is turned into
+            ``MsiPreview.error`` ("Reader construction failed: ...") and
+            the preview comes back with ``readable=False``. No reader's
+            construction can skip the parse: solariX and timsTOF both run
+            it outside their ``metadata_only`` guard, and Rapiflex has no
+            such parameter to sit outside of -- ``metadata_only`` is
+            absorbed by its ``**kwargs`` and never read -- so it parses
+            whenever the .mis is present. A preview therefore reaches this
+            function even though it decodes no spectra and, for timsTOF,
+            loads no vendor library.
     """
     metadata: Dict[str, Any] = {}
 
@@ -63,13 +132,29 @@ def parse_mis_file(path: Path) -> Dict[str, Any]:
         _extract_raster_info(root, metadata)
         _extract_areas(root, metadata)
 
+    # DefusedXmlException is a ValueError, ET.ParseError a SyntaxError, so
+    # the two clauses are disjoint and their order is presentation only.
+    except DefusedXmlException as e:
+        raise ConversionRefused(
+            f"Refused to read the FlexImaging sequence file {path}: {e}. "
+            "The document declares XML entities, or points at an external "
+            "resource, and Thyra does not expand either -- an entity can "
+            "pull a file off this machine into the acquisition metadata, "
+            "or expand until the parser runs out of memory. Nothing was "
+            "read from the file, so the acquisition areas, the teaching "
+            "points and the raster step it carries are all unavailable and "
+            "the conversion cannot use it. Re-export the imaging sequence "
+            "from FlexImaging, or -- after reading what the declaration "
+            "actually does -- remove the DOCTYPE from the file."
+        ) from e
+
     except ET.ParseError as e:
         logger.warning(f"Failed to parse .mis file: {e}")
 
     return metadata
 
 
-def _extract_basic_elements(root: ET.Element, metadata: Dict[str, Any]) -> None:
+def _extract_basic_elements(root: "Element", metadata: Dict[str, Any]) -> None:
     """Extract basic text elements from .mis XML."""
     for elem_name in ["Method", "ImageFile", "OriginalImage", "BaseGeometry"]:
         elem = root.find(f".//{elem_name}")
@@ -77,7 +162,7 @@ def _extract_basic_elements(root: ET.Element, metadata: Dict[str, Any]) -> None:
             metadata[elem_name] = elem.text
 
 
-def _extract_teaching_points(root: ET.Element, metadata: Dict[str, Any]) -> None:
+def _extract_teaching_points(root: "Element", metadata: Dict[str, Any]) -> None:
     """Extract teaching point calibration data from .mis XML."""
     teaching_points: List[Dict[str, List[int]]] = []
     for tp in root.findall(".//TeachPoint"):
@@ -92,7 +177,7 @@ def _extract_teaching_points(root: ET.Element, metadata: Dict[str, Any]) -> None
         metadata["teaching_points"] = teaching_points
 
 
-def _extract_raster_info(root: ET.Element, metadata: Dict[str, Any]) -> None:
+def _extract_raster_info(root: "Element", metadata: Dict[str, Any]) -> None:
     """Extract raster dimensions from .mis XML."""
     raster_elem = root.find(".//Raster")
     if raster_elem is not None and raster_elem.text:
@@ -101,15 +186,13 @@ def _extract_raster_info(root: ET.Element, metadata: Dict[str, Any]) -> None:
             metadata["raster"] = [int(parts[0]), int(parts[1])]
 
 
-def _extract_areas(root: ET.Element, metadata: Dict[str, Any]) -> None:
+def _extract_areas(root: "Element", metadata: Dict[str, Any]) -> None:
     """Extract Area definitions from .mis XML.
 
-    Each Area defines an acquisition region. Areas may be defined by:
-    - Two points (bounding box corners) for rectangular regions
-    - Multiple points (polygon) for irregular tissue shapes
-
-    In both cases, the bounding box (min/max of all points) is stored
-    as p1 and p2, since alignment only needs the enclosing rectangle.
+    Areas define the image pixel coordinates for each acquisition region.
+    Areas may be rectangular (Type=0, 2 points) or polygon (Type=3, N
+    points). In both cases the bounding box of all points is stored as p1
+    and p2, since alignment only needs the enclosing rectangle.
 
     Args:
         root: XML root element

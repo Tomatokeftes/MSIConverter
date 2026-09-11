@@ -50,6 +50,27 @@ repos:
         types: [text]
         exclude: ^docs/getting-started\.md$
 
+      # The rule above only sees BACKSLASH paths, and that is deliberate: the
+      # forward-slash form is how legitimate Windows paths are written in this
+      # codebase, because Path("C:/Program Files/Bruker/timsTOF/sdk") is real
+      # source (readers/bruker/timstof/sdk/platform_detector.py) and so is a
+      # synthetic "C:/data/run.d" in a test. Widening it to both separators
+      # would fail on those.
+      #
+      # A user-home path is the one shape that is never legitimate in either
+      # spelling -- it names a machine account, and this repository is public.
+      # The rule above missed nine of them in handouts/, written with forward
+      # slashes, and reported Passed while they sat in a tracked file. So this
+      # is not a widening of that rule but a second, narrower one aimed at the
+      # only form that carries an identity. Verified against the whole tracked
+      # tree: it matches the leak and nothing else.
+      - id: no-user-home-paths
+        name: no user-home paths in tracked files
+        language: pygrep
+        entry: '[A-Za-z]:[\\/]+[Uu]sers[\\/]+'
+        types: [text]
+        exclude: ^docs/getting-started\.md$
+
   # Basic file formatting and checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0

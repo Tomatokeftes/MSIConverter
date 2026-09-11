@@ -46,6 +46,35 @@ To run the integration tests:
 pytest -m integration
 ```
 
+Most of the lane builds its own inputs and needs nothing further. The tests
+that need a file no repository can carry -- a vendor acquisition, or an archive
+written by someone else's converter -- are opt-in through an environment
+variable naming the path, and **skip cleanly when it is unset**, which is what
+CI sees. The variable is the only way to reach them; there is no default
+location and no auto-discovery.
+
+| Variable | Points at | Unlocks |
+| --- | --- | --- |
+| `THYRA_BRUKER_TDF_DATASET` | a real TIMS `.d` directory containing `analysis.tdf` | `integration/test_bruker_real_data.py` (the whole file) and `TestRealAcquisition` in `integration/test_bruker_tdf_synthetic.py`, which checks every frame is read and the lossless TIC matches the database. One variable serves both files |
+| `THYRA_BRUKER_PASEF_DATASET` | a `.d` directory from a PASEF (MS/MS) acquisition | the demultiplexed-table tests at the end of `integration/test_bruker_tdf_synthetic.py`, including the cross-store comparison of two schedules of differing shape |
+| `THYRA_MZPEAK_REFERENCE_ARCHIVE` | an archive written by the HUPO-PSI reference converter | `test_reference_archive_converts` in `integration/test_convert_mzpeak.py`. Not vendored: that repository publishes no licence, so the check runs against a path the operator supplies |
+| `THYRA_TEST_DATA` | the directory holding the real imzML corpus (default: `test_data/` at the repository root, which is gitignored -- see below) | the "a real file is still accepted" cases in `unit/readers/test_imzml_parser_state_validation.py`. Unit lane, not integration, but it fails the same way if you expect it to find files on its own |
+
+The two Bruker variables additionally need the vendor library, which is bundled
+for Windows and Linux only; anywhere it cannot be loaded those tests skip
+rather than fail. A path that exists but is not a Bruker acquisition still
+fails loudly -- the reader rejects it before the library is ever reached.
+
+So a full opt-in run looks like this (POSIX shell; use `$env:NAME = "..."` in
+PowerShell):
+
+```bash
+THYRA_BRUKER_TDF_DATASET=/path/to/acquisition.d \
+THYRA_BRUKER_PASEF_DATASET=/path/to/pasef.d \
+THYRA_MZPEAK_REFERENCE_ARCHIVE=/path/to/reference.mzpeak \
+  pytest -m integration
+```
+
 ### Running All Tests
 
 To run both unit and integration tests:

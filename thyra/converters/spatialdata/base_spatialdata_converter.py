@@ -23,9 +23,16 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
+import zarr
+from anndata import AnnData
 from numpy.typing import NDArray
+from shapely.geometry import box
+from spatialdata import SpatialData
+from spatialdata.models import ShapesModel
+from spatialdata.transformations import Affine, Identity, Scale, Sequence
 
 from ...alignment import AreaAlignmentResult, TeachingPointAlignment
 from ...core.base_converter import BaseMSIConverter, PixelSizeSource
@@ -48,6 +55,7 @@ from ...resampling.tic import preserved_tic, rescale_to_preserved_tic
 from ...resampling.types import AxisType, ResamplingConfig
 from ...utils.zarr_atomic_write import install_windows_atomic_write_retry
 from ._chunking import image_chunks, table_write_config
+from .optical_image import OpticalTiffSource, StreamedOpticalImage
 
 logger = logging.getLogger(__name__)
 
@@ -159,8 +167,8 @@ def _resolve_config_enum(raw: Any, by_name: Dict[str, Any], key: str) -> Any:
         key: The config key, used in error messages.
 
     Raises:
-        ValueError: If ``raw`` names no accepted value, or is neither a
-            string nor one of the accepted enum members.
+        ConversionRefused: If ``raw`` names no accepted value, or is
+            neither a string nor one of the accepted enum members.
     """
     if raw is None:
         return None
@@ -216,8 +224,8 @@ def _normalize_resampling_config(
     returns a ResamplingConfig in both cases.
 
     Raises:
-        ValueError: If ``method`` or ``axis_type`` is not a recognised
-            value.
+        ConversionRefused: If ``method`` or ``axis_type`` is not a
+            recognised value.
     """
     if isinstance(config, ResamplingConfig):
         return config
@@ -280,41 +288,6 @@ def _normalize_resampling_config(
         tof_b=_optional_float("tof_b"),
         bins_per_fwhm=_optional_float("bins_per_fwhm"),
     )
-
-
-# Check SpatialData availability (defer imports to avoid issues)
-SPATIALDATA_AVAILABLE = False
-_import_error_msg = None
-try:
-    import geopandas as gpd
-    import zarr
-    from anndata import AnnData
-    from shapely.geometry import box
-    from spatialdata import SpatialData
-    from spatialdata.models import Image2DModel, ShapesModel, TableModel
-    from spatialdata.transformations import Affine, Identity, Scale, Sequence
-
-    from .optical_image import OpticalTiffSource, StreamedOpticalImage
-
-    SPATIALDATA_AVAILABLE = True
-except (ImportError, NotImplementedError) as e:
-    _import_error_msg = str(e)
-    logger.warning(f"SpatialData dependencies not available: {e}")
-    SPATIALDATA_AVAILABLE = False
-
-    # Create dummy classes for registration
-    AnnData = None
-    SpatialData = None
-    TableModel = None
-    ShapesModel = None
-    Image2DModel = None
-    Affine = None
-    Identity = None
-    Scale = None
-    box = None
-    gpd = None
-    OpticalTiffSource = None  # type: ignore[misc]
-    StreamedOpticalImage = None  # type: ignore[misc]
 
 
 def _calc_optical_scale_factors(
@@ -890,9 +863,8 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             **kwargs: Additional keyword arguments
 
         Raises:
-            ImportError: If SpatialData dependencies are not available
-            ValueError: If pixel_size_um is not positive, dataset_id is
-                empty, or ``sparse_format`` is passed
+            ConversionRefused: If pixel_size_um is not positive, dataset_id
+                is empty, or ``sparse_format`` is passed
         """
         # ``sparse_format`` chose between CSC and CSR until v3.22. CSC is now
         # the only layout written, so the keyword has nothing left to select --
@@ -905,16 +877,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
                 "is the layout an ion image reads down. Drop the argument; for "
                 "row-wise access call X.tocsr() on the matrix you read back."
             )
-
-        # Check if SpatialData is available
-        if not SPATIALDATA_AVAILABLE:
-            error_msg = (
-                f"SpatialData dependencies not available: "
-                f"{_import_error_msg}. "
-                f"Please install required packages or fix dependency "
-                f"conflicts."
-            )
-            raise ImportError(error_msg)
 
         # Every Zarr write below this point goes through Zarr's atomic
         # rename, which on Windows intermittently loses a race against
@@ -3282,13 +3244,7 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
 
         Returns:
             SpatialData shapes model
-
-        Raises:
-            ImportError: If required SpatialData dependencies are not available
         """
-        if not SPATIALDATA_AVAILABLE:
-            raise ImportError("SpatialData dependencies not available")
-
         geometries = []
 
         # Track valid indices (for alignment mode where we skip empty positions)
@@ -3823,9 +3779,6 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
         Returns:
             True if saving was successful, False otherwise
         """
-        if not SPATIALDATA_AVAILABLE:
-            raise ImportError("SpatialData dependencies not available")
-
         try:
             # Create SpatialData object with images included
             sdata = SpatialData(

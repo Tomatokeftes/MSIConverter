@@ -7,7 +7,6 @@ pixel size detection.
 
 # Suppress known warnings from dependencies
 import warnings
-from typing import Any
 
 # Configure Dask to use new query planning (silences legacy DataFrame warning)
 try:
@@ -21,6 +20,7 @@ except ImportError:
 from . import converters  # This triggers converter registrations  # noqa: F401
 from . import readers  # This triggers reader registrations  # noqa: F401
 from .convert import convert_msi
+from .converters.spatialdata.converter import SpatialDataConverter  # noqa: F401
 from .preview import MsiPreview, preview_msi  # noqa: F401
 
 # Suppress remaining dependency warnings
@@ -37,13 +37,6 @@ warnings.filterwarnings(
 )
 
 __version__ = "3.23.2"
-
-# Import key components - avoid wildcard imports
-try:
-    from .converters.spatialdata.converter import SpatialDataConverter
-except ImportError:
-    # SpatialData dependencies not available
-    SpatialDataConverter: Any = None  # type: ignore[no-redef]
 
 # Expose main API
 __all__ = [

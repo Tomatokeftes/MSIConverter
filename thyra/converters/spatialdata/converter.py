@@ -3,7 +3,6 @@
 import logging
 
 from ...core.registry import register_converter
-from .base_spatialdata_converter import SPATIALDATA_AVAILABLE, _import_error_msg
 from .streaming_converter import StreamingSpatialDataConverter
 
 logger = logging.getLogger(__name__)
@@ -23,12 +22,5 @@ class SpatialDataConverter(StreamingSpatialDataConverter):
     """
 
 
-# Only register the converter if SpatialData dependencies are available
-if SPATIALDATA_AVAILABLE:
-    register_converter("spatialdata")(SpatialDataConverter)
-    logger.debug("SpatialDataConverter registered successfully")
-else:
-    logger.warning(
-        f"SpatialDataConverter not registered due to dependency issues: "
-        f"{_import_error_msg}"
-    )
+register_converter("spatialdata")(SpatialDataConverter)
+logger.debug("SpatialDataConverter registered successfully")

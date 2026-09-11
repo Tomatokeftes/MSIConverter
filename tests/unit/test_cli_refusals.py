@@ -105,6 +105,76 @@ class TestPresentation:
         assert any("Traceback" in message for message in errors)
 
 
+class TestAnUnregisteredOutputFormat:
+    """A ``format_type`` nobody registered is a refusal all the way out.
+
+    ``_create_converter`` used to reach the registry through a wrapper,
+    ``_resolve_converter_class``, which caught the lookup's ``ValueError``
+    and, for any name containing "spatialdata", logged five lines of
+    zarr-upgrade advice and raised ``ConversionRefused("SpatialData
+    converter unavailable")`` -- discarding the registry's own message,
+    which names the format asked for and the formats there are. The
+    wrapper is gone; ``MSIRegistry.get_converter_class`` raises
+    ``ConversionRefused`` itself, so the convention survives the deletion
+    and does so for every caller of the registry rather than for the one
+    caller that remembered to map the error.
+
+    Python-API only in practice -- the CLI's ``--format`` is a
+    ``click.Choice`` with one value -- but a refusal is a refusal, and
+    nothing asserted this.
+    """
+
+    def _convert(self, tmp_path, monkeypatch, thyra_logs, format_type):
+        class _StubReader:
+            """Enough reader for _create_converter to be reached."""
+
+            def get_essential_metadata(self):
+                return SimpleNamespace(pixel_size=(25.0, 25.0))
+
+            def close(self):
+                pass
+
+        monkeypatch.setattr(
+            "thyra.convert._create_reader",
+            lambda *_args, **_kwargs: (_StubReader(), "imzml"),
+        )
+        source = tmp_path / "sample.imzML"
+        source.write_bytes(b"")
+
+        with thyra_logs("thyra.convert", logging.DEBUG) as records:
+            result = convert_msi(
+                source,
+                tmp_path / "out.zarr",
+                format_type=format_type,
+                pixel_size_um=25.0,
+            )
+        return result, records
+
+    @pytest.mark.parametrize("format_type", ["spatialdata2", "nonsense"])
+    def test_it_is_one_line_at_error_naming_what_there_is(
+        self, tmp_path, monkeypatch, thyra_logs, format_type
+    ):
+        """One ERROR record, no traceback in it, and it names the choices.
+
+        "spatialdata2" is the interesting half of the parametrisation: it
+        is the shape of name the deleted wrapper special-cased on a
+        substring test, so it is the one that would regress first.
+        """
+        result, records = self._convert(tmp_path, monkeypatch, thyra_logs, format_type)
+        assert result is False
+
+        errors = [r.getMessage() for r in records if r.levelno == logging.ERROR]
+        assert errors == [
+            f"No converter for format '{format_type}'. Available: ['spatialdata']"
+        ]
+
+    def test_the_traceback_is_kept_for_debug(self, tmp_path, monkeypatch, thyra_logs):
+        _, records = self._convert(tmp_path, monkeypatch, thyra_logs, "spatialdata2")
+
+        debug = [r.getMessage() for r in records if r.levelno == logging.DEBUG]
+        assert any("Traceback" in message for message in debug)
+
+
 class TestOutputPathParent:
     """Issue #255: refuse before the reader is opened, naming the cause."""
 

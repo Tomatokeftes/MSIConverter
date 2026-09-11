@@ -39,7 +39,6 @@ import numpy as np
 import pytest
 
 from thyra.converters.spatialdata.base_spatialdata_converter import (
-    SPATIALDATA_AVAILABLE,
     BaseSpatialDataConverter,
     _kept_mz_range,
 )
@@ -277,9 +276,6 @@ class TestTheKeptRangeNeverNarrowsTheAxis:
         assert _kept_mz_range(axis, (101.0, 109.0)) == (100.0, 110.0)
 
 
-@pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE, reason="SpatialData dependencies not available"
-)
 class TestEndToEndOnAPhysicsAxis:
     """A conversion whose only peaks sit on the declared bounds.
 
