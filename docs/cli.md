@@ -66,7 +66,6 @@ thyra input.imzML output.zarr && python analyse.py output.zarr
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--format [spatialdata]` | `spatialdata` | Output format |
 | `--pixel-size FLOAT` | auto-detect | Pixel size in micrometers, applied to **both** axes. Auto-detection keeps the source's own x and y pitch separately, so an anisotropic raster stays anisotropic; passing this declares it square |
 | `--region TEXT` | all | Convert one region, by `.mis` Area Name or by DB RegionNumber. Checked against the dataset's own region list whether it has one region or several; a value that matches no Area Name is read as a RegionNumber, and says so |
 | `--resample / --no-resample` | enabled | Mass axis resampling |
@@ -75,6 +74,13 @@ thyra input.imzML output.zarr && python analyse.py output.zarr
 | `--mobility-heatmap / --no-mobility-heatmap` | enabled | When the source has an ion mobility dimension, store the mean mass-mobility frame on the summed table as `uns["mobility_heatmap"]`; on a Bruker TDF it is fed from the summed table's own passes, on other sources it is one extra pass (see [Output Format](output-format.md#ion-mobility)) |
 | `--mobility-grid / --no-mobility-grid` | **disabled** | When the source carries ion mobility per pixel rather than as a shared feature list (Bruker TDF), bin the point cloud onto a common mobility grid and write the same mobility-resolved sibling table; fed from the summed table's own two passes (no extra read of the source), a much larger table built out of core so any acquisition fits; its marginal reproduces the summed table exactly under the default `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#the-same-table-from-a-common-mobility-grid)) |
 | `--msms-table / --no-msms-table` | enabled | When the source isolates several precursors per pixel in disjoint mobility slices (Bruker PASEF), also write them split apart as a demultiplexed sibling table; fed from the summed table's own two passes (no extra read of the source); the split adds back up to the summed table exactly under the default `--tdf-spectrum scan_sum` (see [Output Format](output-format.md#demultiplexed-msms-table)) |
+
+!!! warning "`--format` is deprecated"
+    `spatialdata` was the only value `--format` ever accepted, and it is the
+    only output format Thyra writes, so no invocation could ever change what
+    the flag selects. It is still accepted, so existing scripts keep running,
+    but it is no longer listed in `--help`. Any other value still fails
+    before any data is read.
 
 ### Examples
 

@@ -29,7 +29,6 @@ class TestCommandLineInterface:
 
         # Check help content
         assert "Convert MSI data to SpatialData format" in captured.out
-        assert "--format" in captured.out
         assert "--dataset-id" in captured.out
         assert "--pixel-size" in captured.out
         assert "--handle-3d" in captured.out
@@ -38,8 +37,18 @@ class TestCommandLineInterface:
         # scripts keep running, but no longer advertised.
         assert "--optimize-chunks" not in captured.out
 
+        # --format has one legal value, equal to its default, so no invocation
+        # can change what it selects: still accepted so existing scripts keep
+        # running, but no longer advertised.
+        assert "--format" not in captured.out
+
     def test_cli_convert(self, create_minimal_imzml, temp_dir, monkeypatch):
-        """Test basic CLI conversion."""
+        """Test basic CLI conversion.
+
+        The ``--format spatialdata`` below is deliberate, not leftover: it is
+        the "still accepted" half of the pair whose other half is
+        ``test_cli_help``'s "no longer advertised". Do not drop it.
+        """
         # Get test data
         imzml_path, _, _, _ = create_minimal_imzml
         output_path = temp_dir / "cli_output.h5ad"
@@ -83,8 +92,16 @@ class TestCommandLineInterface:
         # Check error content
         assert "error" in captured.err.lower()
 
-    def test_cli_invalid_format(self, create_minimal_imzml, temp_dir):
-        """Test CLI behavior with invalid format."""
+    def test_cli_rejects_a_format_it_does_not_write(
+        self, create_minimal_imzml, temp_dir
+    ):
+        """An unknown ``--format`` value fails before any data is read.
+
+        ``--format`` is hidden, but its ``click.Choice`` is what keeps an
+        unknown value a usage error (exit 2) rather than something accepted
+        and quietly ignored. This is the only test guarding that Choice, so
+        it stays even though the flag itself no longer selects anything.
+        """
         # Get test data
         imzml_path, _, _, _ = create_minimal_imzml
         output_path = temp_dir / "invalid_format.h5ad"
@@ -99,8 +116,11 @@ class TestCommandLineInterface:
         ]
 
         # Run main with exit handling
-        with pytest.raises(SystemExit):
+        with pytest.raises(SystemExit) as e:
             main()
+
+        # Click's own usage error, raised before the reader opens anything
+        assert e.value.code == 2
 
         # Check output file does not exist
         assert not output_path.exists()
