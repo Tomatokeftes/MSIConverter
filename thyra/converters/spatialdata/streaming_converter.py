@@ -276,11 +276,12 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
                 the default writes one per z plane.
 
         Raises:
-            ValueError: On ``use_csc=False``. There is one route left for it
-                to select, and falling through to it as if it had been
-                chosen is how a caller ends up with the opposite of what
-                they asked for. (``sparse_format`` is refused by the base
-                converter: CSC is the only layout, design decision D10.)
+            ConversionRefused: On ``use_csc=False``. There is one route
+                left for it to select, and falling through to it as if it
+                had been chosen is how a caller ends up with the opposite
+                of what they asked for. (``sparse_format`` is refused by
+                the base converter: CSC is the only layout, design
+                decision D10.)
 
         Note:
             Intensity thresholding (filtering noise below a minimum value) is

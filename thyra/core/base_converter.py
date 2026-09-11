@@ -89,7 +89,8 @@ class BaseMSIConverter(ABC):
             **kwargs: Additional keyword arguments
 
         Raises:
-            ValueError: If ``z_spacing_um`` is given and is not positive.
+            ConversionRefused: If ``z_spacing_um`` is given and is not
+                positive, a non-number included.
         """
         if z_spacing_um is not None and (
             not isinstance(z_spacing_um, (int, float)) or z_spacing_um <= 0
