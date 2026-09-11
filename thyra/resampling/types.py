@@ -48,7 +48,12 @@ class AxisType(Enum):
             :mod:`thyra.resampling.mass_axis.tof_generator`.
         ORBITRAP: Orbitrap -- spacing proportional to ``m/z^(3/2)``.
         FTICR: FTICR -- spacing proportional to ``m/z^2``.
-        UNKNOWN: Unknown analyser; falls back to constant spacing.
+        UNKNOWN: No analyser identified. Nothing in Thyra produces or
+            accepts this member: ``ResamplingConfig`` refuses it and
+            :meth:`~thyra.resampling.common_axis.CommonAxisBuilder.build_physics_axis`
+            refuses it, because there is no spacing model to build an axis
+            from. An undetected analyser is left as ``None``, which means
+            "auto-detect" and does fall back to constant spacing.
     """
 
     CONSTANT = "constant"

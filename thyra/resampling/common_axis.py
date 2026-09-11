@@ -89,7 +89,7 @@ class CommonAxisBuilder:
 
         Raises
         ------
-        ValueError
+        ConversionRefused
             If axis_type is not supported, or is ``TOF`` without a law
         """
         if axis_type is AxisType.TOF:
