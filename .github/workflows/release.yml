@@ -77,6 +77,13 @@ jobs:
     outputs:
       released: ${{ steps.release.outputs.released }}
       version: ${{ steps.release.outputs.version }}
+      # The immutable handle on what this job released. `version` is the bare
+      # number and is what the publish job asserts its build against; `tag` is
+      # what it CHECKS OUT, so that the tree being built is pinned by a ref that
+      # cannot move rather than by the name of a branch that can. Empty on every
+      # path where this job does not cut a version, which is what lets the
+      # publish job's fallback chain tell the three triggers apart.
+      tag: ${{ steps.release.outputs.tag }}
 
     steps:
       - name: Checkout code
@@ -296,6 +303,12 @@ jobs:
           semantic-release version
           echo "released=true" >> $GITHUB_OUTPUT
           echo "version=$NEXT" >> $GITHUB_OUTPUT
+          # `v$NEXT` is the same spelling the already-tagged guard above verifies
+          # with `refs/tags/v$NEXT`, and it is semantic-release's default
+          # tag_format ("v{version}"), which this project does not override in
+          # [tool.semantic_release]. If that format is ever customised, these two
+          # places and the guard must move together.
+          echo "tag=v$NEXT" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -322,15 +335,85 @@ jobs:
       id-token: write  # Required for Trusted Publishing
 
     steps:
+      # Build the commit the release job TAGGED, never whatever main happens to
+      # be by the time this job starts.
+      #
+      # The release job spends four mechanisms making the released commit
+      # deterministic -- it re-points at the tip and records $RELEASE_SHA, gates
+      # the Tests run on $RELEASE_SHA rather than $GITHUB_SHA, stands down if
+      # main moved while it waited, and refuses an already-existing tag. This
+      # ref used to be the literal string 'main' on both the schedule and the
+      # workflow_dispatch paths, which discarded all four one job later: the
+      # name resolves when THIS checkout runs, and a `git pull origin main`
+      # immediately after fast-forwarded again. The window is push-to-checkout,
+      # a few minutes, and main moves about 1.8 times a day.
+      #
+      # That is the same vacuous gate the release job's own comment (above,
+      # "It gates $RELEASE_SHA, NOT $GITHUB_SHA") exists to prevent, arrived at
+      # by name resolution instead of by variable. `version_toml` rewrites only
+      # project.version, which no ordinary feat:/fix: merge touches, so the
+      # wheel would carry the released version number over a superset of the
+      # released tree -- and `skip-existing: true` below means the corrective
+      # re-upload is refused by PyPI, swallowed, and reported as success.
+      #
+      # The three triggers resolve in order:
+      #   release event       -> the published release's own tag
+      #   schedule / dispatch -> needs.release.outputs.tag, the tag just created
+      #   publish_only        -> '' from a skipped release job, so 'main', which
+      #                          is that input's documented intent ("publish
+      #                          current version")
       - name: Checkout code
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || 'main' }}
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || (needs.release.outputs.tag || 'main') }}
           fetch-depth: 0
 
-      - name: Pull latest changes
-        if: github.event_name != 'release'
-        run: git pull origin main
+      # Assert the invariant the ref above is there to establish, rather than
+      # trusting that it held. True by construction today -- which is the point:
+      # it is what makes the bug unable to come back quietly. Re-adding a
+      # `git pull origin main`, or an edit that breaks the expression so it
+      # falls through to 'main', turns a silent wrong-tree publish into a failed
+      # step naming both commits.
+      #
+      # This is the check that catches the real failure mode, and the version
+      # assertion after the build is NOT a substitute for it: the commits that
+      # land in the window are ordinary feat:/fix: merges that do not touch
+      # project.version, so a superset of the released tree still builds under
+      # the released version number and passes a filename check.
+      #
+      # Skipped on publish_only, which has no tag to be pinned to by design.
+      - name: Verify the checkout is the released commit
+        env:
+          EXPECTED_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || needs.release.outputs.tag }}
+        run: |
+          if [ -z "$EXPECTED_TAG" ]; then
+            echo "publish_only dispatch: building main's tip by design, nothing to pin."
+            exit 0
+          fi
+
+          # Do not depend on checkout having populated refs/tags/. fetch-depth: 0
+          # does fetch tags today, but this step's whole purpose is to stop
+          # trusting that the ref resolved to what we meant, so it should not
+          # then trust a second checkout behaviour to verify the first. --force
+          # because a tag that moved must not be silently kept at its old value,
+          # the same reason the release job re-fetches before its tag guard.
+          git fetch --tags --force origin
+          if ! TAG_SHA=$(git rev-parse -q --verify "refs/tags/$EXPECTED_TAG^{commit}"); then
+            echo "REFUSING TO PUBLISH: tag $EXPECTED_TAG does not exist on origin."
+            echo "The release job reported it, so it was deleted between the two jobs."
+            exit 1
+          fi
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "tag $EXPECTED_TAG -> $TAG_SHA"
+          echo "HEAD           -> $HEAD_SHA"
+          if [ "$TAG_SHA" != "$HEAD_SHA" ]; then
+            echo "REFUSING TO PUBLISH: the working tree is not the commit that was tagged."
+            echo "Publishing it would put a different tree on PyPI under the released"
+            echo "version, and skip-existing would report that as success."
+            exit 1
+          fi
+          echo "Checkout is the released commit."
+        shell: bash
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -344,6 +427,62 @@ jobs:
 
       - name: Build package
         run: python -m build
+
+      # Second net, independent of the commit check above and weaker than it:
+      # this compares what the build CLAIMS to be against what was released,
+      # where that one compares the tree itself. It cannot see a superset of the
+      # released tree, because the merges that land in the window do not touch
+      # project.version. What it does catch is the class the commit check cannot:
+      # a tag pointing at a tree whose pyproject.toml disagrees with the tag
+      # name, which is what a hand-made tag or a half-applied `version_toml`
+      # rewrite produces.
+      #
+      # It has to run BEFORE the upload rather than after it. PyPI refuses a
+      # second upload of a filename it already holds, and `skip-existing: true`
+      # below turns that refusal into a green step -- so a wrong tree published
+      # under a right version number cannot be corrected by re-running this
+      # workflow. The version has to be burned and a new one cut.
+      #
+      # Asserted only where an expectation exists INDEPENDENTLY of the tree being
+      # built. On the release and schedule/dispatch paths that is the tag. On a
+      # publish_only dispatch there is none: the only statement of intent is
+      # pyproject.toml's own version, which is the build's input, so comparing
+      # against it would compare the build to itself.
+      - name: Verify the build carries the released version
+        env:
+          EXPECTED: ${{ github.event_name == 'release' && github.event.release.tag_name || needs.release.outputs.version }}
+        run: |
+          # tag_name carries the leading v; the release job's `version` output
+          # does not. Strip it so both paths compare bare versions.
+          EXPECTED="${EXPECTED#v}"
+          if [ -z "$EXPECTED" ]; then
+            echo "publish_only dispatch: no expected version independent of the build. Skipping."
+            exit 0
+          fi
+
+          echo "Expecting version $EXPECTED. Built:"
+          ls -1 dist/
+
+          # hatchling names the sdist thyra-<version>.tar.gz (PEP 625) and the
+          # wheel thyra-<version>-<tags>.whl (PEP 427), both from
+          # project.version -- which is the field `version_toml` rewrites. So
+          # these filenames are what the built tree actually claims to be.
+          # The wheel tag is globbed rather than pinned to py3-none-any: the
+          # package is pure Python today, and this check should not be what
+          # breaks if that ever stops being true.
+          MISSING=0
+          [ -f "dist/thyra-$EXPECTED.tar.gz" ] || MISSING=1
+          compgen -G "dist/thyra-$EXPECTED-*.whl" >/dev/null || MISSING=1
+
+          if [ "$MISSING" = "1" ]; then
+            echo "REFUSING TO PUBLISH: the build does not carry version $EXPECTED."
+            echo "The checkout ref resolved to a tree whose project.version is not the"
+            echo "released one. Publishing it would put a different tree on PyPI under"
+            echo "the released version number, and skip-existing would report success."
+            exit 1
+          fi
+          echo "Build carries the released version $EXPECTED."
+        shell: bash
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
