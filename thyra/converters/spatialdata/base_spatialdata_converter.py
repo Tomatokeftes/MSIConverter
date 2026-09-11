@@ -546,6 +546,64 @@ def _nn_accumulate(
     return nonzero_indices, nonzero_values.astype(np.float64)
 
 
+def _regate_tic_preserving(converter, tree, axis_type) -> None:
+    """Re-ask the TIC-preserving gate about the axis that will be built.
+
+    ``_setup_resampling`` picks the method from the detector chain, which
+    gates ``TIC_PRESERVING`` on the detector's *own* axis choice.
+    ``--mass-axis-type`` overrides that choice, and it is applied here in
+    ``_resolve_resampling_plan``, after the method has been chosen. The two
+    then come apart and the gate's premise is gone: TIC-preserving
+    resampling is exact only when the source grid law and the target axis
+    are the same law.
+
+    Both detectors that reach ``TIC_PRESERVING`` -- ``RapiflexDetector``
+    (CONSTANT) and ``WatersProfileDetector`` (LINEAR_TOF) -- declare a
+    source law equal to their own axis, so the early gate always cleared
+    and the conversion then interpolated onto whatever axis was asked for.
+    ``docs/resampling.md`` measures the cost: two ions of equal abundance
+    come back with their ratio distorted by up to 13.4x. Nothing downstream
+    sees it, because the per-pixel TIC still balances exactly -- preserving
+    it is what the operator does.
+
+    Auto-selected methods only. An explicit ``--resample-method`` is the
+    caller's decision, honoured with a warning instead (D15); overruling it
+    here is what #246 deliberately rejected. On the auto path with no axis
+    override this re-derives the same answer, so it is a no-op.
+
+    A module-level function taking the converter, like
+    :func:`_reference_params`, rather than a method. ``_resolve_resampling_plan``
+    is called unbound against duck-typed stubs in the suite -- a
+    ``SimpleNamespace`` carrying only the attributes the plan reads
+    (``tests/unit/test_cli_refusals.py``) and a harness that names the methods
+    it borrows (``tests/unit/converters/``). A method here would make every
+    such stub fail on attribute lookup the moment this was extracted, which is
+    exactly what happened while writing it; a plain function does not ask
+    ``converter`` for anything the plan did not already need.
+
+    Args:
+        converter: The converter whose resampling method may be downgraded.
+        tree: The decision tree to ask.
+        axis_type: The axis the conversion will build.
+    """
+    if not getattr(converter, "_resampling_method_was_auto", False):
+        return
+    if converter._resampling_method is not ResamplingMethod.TIC_PRESERVING:
+        return
+
+    regated = tree.select_strategy_for_axis(
+        converter._get_cached_metadata_for_resampling(), axis_type
+    )
+    if regated is not converter._resampling_method:
+        logger.info(
+            "Resampling method downgraded to %s: the mass axis resolved "
+            "to %s, which is not the source grid law.",
+            regated.name,
+            axis_type.name,
+        )
+        converter._resampling_method = regated
+
+
 def _reference_params(converter: Any, axis_name: str) -> Tuple[float, float]:
     """``(width_da, reference_mz)`` for the axis about to be built.
 
@@ -1109,6 +1167,13 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             # Use provided method directly (already an enum)
             self._resampling_method = method
             self._warn_if_override_contradicts_detector(method, config)
+
+        # Whether the method above was chosen by the detector chain rather than
+        # named by the caller. The TIC-preserving gate governs auto-selection
+        # only -- an explicit method is taken as given and merely warned about
+        # (D15) -- so _resolve_resampling_plan needs to know which this was
+        # before it re-asks the gate against the axis it settles on.
+        self._resampling_method_was_auto = method is None
 
         logger.info(f"Using resampling method: {self._resampling_method}")
 
@@ -2419,6 +2484,8 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             # not set a width of their own.
             if self._width_at_mz is None:
                 self._detected_reference_width = tree.select_reference_width(metadata)
+
+        _regate_tic_preserving(self, tree, axis_type)
 
         # A TOF axis without the caller's own coefficients takes the pair
         # the instrument declares -- on the auto path (an MRT centroid

@@ -364,11 +364,14 @@ class PhiToFSIMSDetector(InstrumentDetector):
         9.8e-5 u per channel at m/z 1 against 5.0e-4 at m/z 26, a ratio of
         5.1 where ``sqrt(26)`` is 5.099.
 
-        Declaring it matters even though :meth:`get_resampling_method`
-        returns nearest-neighbour, because it is what would let a caller
-        that explicitly asks for ``tic_preserving`` clear
-        ``_gate_tic_preserving`` when it targets a linear-TOF axis -- the
-        one case where interpolating this data is defensible.
+        Declaring it is documentation of the acquisition, not a switch.
+        ``_gate_tic_preserving`` governs auto-selection only, and this
+        detector's :meth:`get_resampling_method` returns nearest-neighbour,
+        so the gate returns that before it ever reads this property. A
+        caller who asks for ``tic_preserving`` by name does not reach the
+        gate either: an explicit method is taken as given, with a warning
+        when it contradicts the detector (D15). An earlier version of this
+        docstring claimed the opposite and was wrong on both halves.
         """
         return AxisType.LINEAR_TOF
 
@@ -668,8 +671,35 @@ class InstrumentDetectorChain:
         logger.info(f"Selected resampling method: {method.name}")
         return method
 
+    def get_resampling_method_for_axis(
+        self, characteristics: DataCharacteristics, axis_type: AxisType
+    ) -> ResamplingMethod:
+        """Select the method for an axis the caller has already settled.
+
+        :meth:`get_resampling_method` gates against the axis the detector
+        would have chosen. That is the right answer only while nothing
+        overrides it, and ``--mass-axis-type`` does: the converter resolves
+        the axis separately and later, so the gate could clear on the
+        detector's axis and the conversion then build a different one.
+
+        Call this once the target axis is known. It is the same gate against
+        the axis that will actually be laid.
+
+        Args:
+            characteristics: Data characteristics to match.
+            axis_type: The axis the conversion will build.
+
+        Returns:
+            The detector's method, or ``NEAREST_NEIGHBOR`` in its place.
+        """
+        detector = self.detect(characteristics)
+        return self._gate_tic_preserving(detector, axis_type)
+
     @staticmethod
-    def _gate_tic_preserving(detector: InstrumentDetector) -> ResamplingMethod:
+    def _gate_tic_preserving(
+        detector: InstrumentDetector,
+        axis_type: Optional[AxisType] = None,
+    ) -> ResamplingMethod:
         """Allow ``TIC_PRESERVING`` only when source and target laws agree.
 
         SCiLS Lab applies TIC-preserving resampling to profile data only
@@ -686,6 +716,10 @@ class InstrumentDetectorChain:
 
         Args:
             detector: The detector that matched.
+            axis_type: The axis the conversion will build. Defaults to the
+                detector's own choice, which is correct only while nothing
+                overrides it -- see
+                :meth:`get_resampling_method_for_axis`.
 
         Returns:
             The detector's method, or ``NEAREST_NEIGHBOR`` in its place.
@@ -694,7 +728,8 @@ class InstrumentDetectorChain:
         if method is not ResamplingMethod.TIC_PRESERVING:
             return method
 
-        axis_type = detector.get_axis_type()
+        if axis_type is None:
+            axis_type = detector.get_axis_type()
         source_law = detector.source_grid_law
         if source_law is axis_type:
             return method
