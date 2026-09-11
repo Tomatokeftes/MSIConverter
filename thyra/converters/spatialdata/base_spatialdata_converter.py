@@ -167,8 +167,8 @@ def _resolve_config_enum(raw: Any, by_name: Dict[str, Any], key: str) -> Any:
         key: The config key, used in error messages.
 
     Raises:
-        ValueError: If ``raw`` names no accepted value, or is neither a
-            string nor one of the accepted enum members.
+        ConversionRefused: If ``raw`` names no accepted value, or is
+            neither a string nor one of the accepted enum members.
     """
     if raw is None:
         return None
@@ -224,8 +224,8 @@ def _normalize_resampling_config(
     returns a ResamplingConfig in both cases.
 
     Raises:
-        ValueError: If ``method`` or ``axis_type`` is not a recognised
-            value.
+        ConversionRefused: If ``method`` or ``axis_type`` is not a
+            recognised value.
     """
     if isinstance(config, ResamplingConfig):
         return config
@@ -863,9 +863,8 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             **kwargs: Additional keyword arguments
 
         Raises:
-            ImportError: If SpatialData dependencies are not available
-            ValueError: If pixel_size_um is not positive, dataset_id is
-                empty, or ``sparse_format`` is passed
+            ConversionRefused: If pixel_size_um is not positive, dataset_id
+                is empty, or ``sparse_format`` is passed
         """
         # ``sparse_format`` chose between CSC and CSR until v3.22. CSC is now
         # the only layout written, so the keyword has nothing left to select --

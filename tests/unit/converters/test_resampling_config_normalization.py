@@ -83,7 +83,17 @@ class TestRecognisedValues:
 
 
 class TestUnrecognisedValues:
-    """Unknown values must raise, not fall back to auto-detection."""
+    """Unknown values must raise, not fall back to auto-detection.
+
+    All seven assertions below were tightened from ``ValueError`` to
+    ``ConversionRefused`` alongside the docstring correction on
+    ``_normalize_resampling_config``, and **all seven pass before and
+    after**: ``ConversionRefused`` subclasses ``ValueError``, and the code
+    already raised the subclass -- only the ``Raises`` block named the
+    parent. They pin the refusal type the PR #264 convention makes the
+    contract, so a later widening back to a bare ``ValueError`` cannot pass
+    unnoticed; none of them is a regression guard.
+    """
 
     @pytest.mark.parametrize(
         "bad",

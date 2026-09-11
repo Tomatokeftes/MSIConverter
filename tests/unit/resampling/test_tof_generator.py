@@ -145,6 +145,11 @@ class TestBinsPerFWHM:
         different function and refuses it one frame earlier. An analyser
         nobody could identify is left as ``None`` and auto-detected, not
         labelled ``UNKNOWN``.
+
+        Passes before and after the docstring correction it accompanies:
+        the code already raised ``ConversionRefused`` and only the
+        ``Raises`` block said ``ValueError``. It covers a refusal that had
+        none rather than guarding a regression.
         """
         builder = CommonAxisBuilder()
         with pytest.raises(ConversionRefused, match="Unsupported axis type"):
