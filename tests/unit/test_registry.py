@@ -15,6 +15,7 @@ from thyra.core.registry import (
     register_converter,
     register_reader,
 )
+from thyra.errors import ConversionRefused
 
 
 class TestRegistry:
@@ -222,13 +223,31 @@ class TestRegistry:
         assert detect_format(some_dir) == "waters"
 
     def test_get_nonexistent_reader(self):
-        """Test getting a non-existent reader class."""
-        with pytest.raises(ValueError, match="No reader for format"):
+        """A reader miss is a refusal, not a bare ValueError.
+
+        Asserted as ``ConversionRefused`` rather than ``ValueError``
+        because the type is what ``convert_msi`` dispatches on: the
+        refusal handler prints the message once and keeps the traceback
+        for DEBUG, the generic handler prints a traceback at ERROR. A
+        ``ValueError`` assertion passes under either, so it could not tell
+        the two apart -- and the registry is the one place every caller of
+        a format name goes through, which is why the convention belongs
+        here rather than in each caller's error mapping.
+        """
+        with pytest.raises(ConversionRefused, match="No reader for format"):
             get_reader_class("nonexistent_format")
 
     def test_get_nonexistent_converter(self):
-        """Test getting a non-existent converter class."""
-        with pytest.raises(ValueError, match="No converter for format"):
+        """A converter miss is a refusal too, for the same reason.
+
+        ``thyra/convert.py`` used to route this lookup through a wrapper,
+        ``_resolve_converter_class``, that caught the registry's error and
+        re-raised ``ConversionRefused`` for any format name containing
+        "spatialdata". The wrapper is gone and ``_create_converter`` calls
+        ``get_converter_class`` directly, so this assertion is now the only
+        thing holding the convention in place on that path.
+        """
+        with pytest.raises(ConversionRefused, match="No converter for format"):
             get_converter_class("nonexistent_format")
 
 
