@@ -8,6 +8,7 @@ This test suite validates:
 - Core functionality after removing complex utilities
 """
 
+import importlib.util
 import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -15,6 +16,29 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from thyra.readers.bruker.timstof.timstof_reader import BrukerReader
+
+
+def test_timstof_utils_package_is_deleted():
+    """The retired timsTOF utils package carries no importable code.
+
+    MemoryManager, BufferPool, CoordinateCache, MassAxisBuilder and
+    BatchProcessor were orphaned when _setup_components became a pass, then
+    shipped unexecuted for two releases. This is the guard that they stay gone;
+    the three ``assert not hasattr`` lines in test_initialization below pass
+    either way and do not guard it.
+
+    find_spec rather than ``with pytest.raises(ModuleNotFoundError): import
+    ...``: the import form is an unused import under this repo's flake8, which
+    lints tests/. It is also the more accurate question. A directory left on
+    disk holding only a stale __pycache__ is an implicit namespace package, so
+    the import form would still succeed there; a namespace portion yields a
+    spec whose origin is None, which is what this accepts.
+    """
+    spec = importlib.util.find_spec("thyra.readers.bruker.timstof.utils")
+
+    assert (
+        spec is None or spec.origin is None
+    ), f"the utils package is importable again from {spec.origin}"
 
 
 class TestBrukerReader:
@@ -52,6 +76,50 @@ class TestBrukerReader:
             # Should have essential components
             assert hasattr(reader, "sdk")
             assert hasattr(reader, "db_path")
+
+    @patch("thyra.readers.bruker.timstof.timstof_reader.DLLManager")
+    @patch("thyra.readers.bruker.timstof.timstof_reader.SDKFunctions")
+    def test_retired_keywords_are_still_absorbed(
+        self, mock_sdk_functions, mock_dll_manager
+    ):
+        """cache_coordinates, memory_limit_gb and batch_size still construct.
+
+        A compatibility pin, not a regression guard: it passes before the
+        parameters were dropped from the signature and after, because both
+        before and after the three are accepted and ignored. What it pins is
+        that they keep being *silently* ignored -- D10 allows that only for a
+        keyword that never had an effect, and these have had none since
+        _setup_components became a pass. If BaseMSIReader.__init__ ever grows a
+        ``if kwargs: raise``, this is the test that says an old caller breaks.
+        """
+        mock_data_path = Path("/fake/bruker.d")
+
+        mock_dll_manager.return_value = MagicMock()
+        mock_sdk = MagicMock()
+        mock_sdk_functions.return_value = mock_sdk
+        mock_sdk.open_file.return_value = MagicMock()
+
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+            patch("sqlite3.connect") as mock_connect,
+        ):
+
+            mock_conn = MagicMock()
+            mock_connect.return_value = mock_conn
+
+            reader = BrukerReader(
+                mock_data_path,
+                cache_coordinates=True,
+                memory_limit_gb=2.0,
+                batch_size=10,
+            )
+
+            assert hasattr(reader, "db_path")
+            # Absorbed and dropped, not stashed on the instance.
+            assert not hasattr(reader, "cache_coordinates")
+            assert not hasattr(reader, "memory_limit_gb")
+            assert not hasattr(reader, "batch_size")
 
     def test_build_raw_mass_axis_function_exists(self):
         """Test that build_raw_mass_axis function is available and works."""

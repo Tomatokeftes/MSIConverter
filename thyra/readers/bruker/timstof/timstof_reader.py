@@ -365,9 +365,6 @@ class BrukerReader(BrukerBaseMSIReader):
         self,
         data_path: Path,
         use_recalibrated_state: bool = True,
-        cache_coordinates: bool = True,
-        memory_limit_gb: Optional[float] = None,
-        batch_size: Optional[int] = None,
         progress_callback: Optional[Callable[[int, int], None]] = None,
         region: Optional[Union[int, str]] = None,
         metadata_only: bool = False,
@@ -383,9 +380,6 @@ class BrukerReader(BrukerBaseMSIReader):
             use_recalibrated_state: Whether to use recalibrated/active calibration state.
                 Defaults to True (use active calibration). Set to False to use original
                 calibration from data acquisition.
-            cache_coordinates: Ignored, maintained for compatibility
-            memory_limit_gb: Ignored, maintained for compatibility
-            batch_size: Ignored, maintained for compatibility
             progress_callback: Optional callback for progress updates
             region: Region selector for multi-region datasets.
                 None (default): convert all regions (no filtering).
@@ -429,9 +423,6 @@ class BrukerReader(BrukerBaseMSIReader):
 
         # Read calibration metadata
         self._calibration_metadata = self._read_calibration_metadata()
-
-        # Initialize components
-        self._setup_components(cache_coordinates, memory_limit_gb, batch_size)
 
         # Initialize SDK + connections.  In metadata-only mode we
         # skip the SDK (no DLL load, no open_file) since all metadata
@@ -553,16 +544,6 @@ class BrukerReader(BrukerBaseMSIReader):
             )
 
         logger.debug(f"Detected file type: {self.file_type.upper()}")
-
-    def _setup_components(
-        self,
-        cache_coordinates: bool,
-        memory_limit_gb: Optional[float],
-        batch_size: Optional[int],
-    ) -> None:
-        """Setup utility components (now minimal)."""
-        # No more coordinate cache - using direct database access
-        pass
 
     def _read_calibration_metadata(self) -> Optional[Dict]:
         """Read calibration metadata from calibration.sqlite.

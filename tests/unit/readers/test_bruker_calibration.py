@@ -66,7 +66,6 @@ class TestCalibrationMetadataReading:
             with (
                 patch.object(BrukerReader, "_validate_data_path"),
                 patch.object(BrukerReader, "_detect_file_type"),
-                patch.object(BrukerReader, "_setup_components"),
                 patch.object(BrukerReader, "_initialize_sdk"),
                 patch.object(BrukerReader, "_initialize_database"),
                 patch.object(BrukerReader, "_preload_frame_num_peaks"),
@@ -155,7 +154,6 @@ class TestCalibrationMetadataReading:
             with (
                 patch.object(BrukerReader, "_validate_data_path"),
                 patch.object(BrukerReader, "_detect_file_type"),
-                patch.object(BrukerReader, "_setup_components"),
                 patch.object(BrukerReader, "_initialize_sdk"),
                 patch.object(BrukerReader, "_initialize_database"),
                 patch.object(BrukerReader, "_preload_frame_num_peaks"),
@@ -191,7 +189,6 @@ class TestCalibrationMetadataReading:
             with (
                 patch.object(BrukerReader, "_validate_data_path"),
                 patch.object(BrukerReader, "_detect_file_type"),
-                patch.object(BrukerReader, "_setup_components"),
                 patch.object(BrukerReader, "_initialize_sdk"),
                 patch.object(BrukerReader, "_initialize_database"),
                 patch.object(BrukerReader, "_preload_frame_num_peaks"),
@@ -223,7 +220,6 @@ class TestCalibrationMetadataReading:
                 with (
                     patch.object(BrukerReader, "_validate_data_path"),
                     patch.object(BrukerReader, "_detect_file_type"),
-                    patch.object(BrukerReader, "_setup_components"),
                     patch.object(BrukerReader, "_initialize_sdk"),
                     patch.object(BrukerReader, "_initialize_database"),
                     patch.object(BrukerReader, "_preload_frame_num_peaks"),
@@ -338,7 +334,6 @@ class TestDefaultCalibrationBehavior:
             patch.object(BrukerReader, "_validate_data_path"),
             patch.object(BrukerReader, "_detect_file_type", mock_detect),
             patch.object(BrukerReader, "_read_calibration_metadata", return_value=None),
-            patch.object(BrukerReader, "_setup_components"),
             patch.object(BrukerReader, "_initialize_sdk"),
             patch.object(BrukerReader, "_initialize_database"),
             patch.object(BrukerReader, "_detect_regions", return_value=[]),
@@ -368,7 +363,6 @@ class TestRealCalibrationData:
         with (
             patch.object(BrukerReader, "_validate_data_path"),
             patch.object(BrukerReader, "_detect_file_type"),
-            patch.object(BrukerReader, "_setup_components"),
             patch.object(BrukerReader, "_initialize_sdk"),
             patch.object(BrukerReader, "_initialize_database"),
             patch.object(BrukerReader, "_preload_frame_num_peaks"),
