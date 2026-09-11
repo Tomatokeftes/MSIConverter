@@ -1,11 +1,14 @@
-"""
-Integration tests using real Bruker dataset.
+"""The Bruker reader against a real acquisition on disk.
 
-These tests ensure that the BrukerReader works correctly with actual data,
-particularly for constructor calls and pixel size detection.
+These tests run only when ``THYRA_BRUKER_TDF_DATASET`` names a real TIMS
+acquisition -- the same TDF ``.d`` directory
+``tests/integration/test_bruker_tdf_synthetic.py`` wants, so one variable
+serves both files. With the variable unset the whole class skips.
 
-NOTE: These tests are optional and will skip if the real dataset is not available.
-They are primarily for local development and validation.
+The vendor library is bundled for Windows and Linux only; anywhere it cannot
+be loaded these tests skip rather than fail. A dataset path that does not
+exist, or is not a Bruker acquisition, still fails loudly -- the reader
+rejects it before it ever reaches the library.
 """
 
 import os
@@ -15,52 +18,45 @@ import pytest
 
 from thyra.core.registry import detect_format, get_reader_class
 from thyra.readers.bruker import BrukerReader
+from thyra.utils.bruker_exceptions import SDKError
+
+REAL_DATASET = os.environ.get("THYRA_BRUKER_TDF_DATASET")
+
+
+def _open(path: Path) -> BrukerReader:
+    try:
+        return BrukerReader(path)
+    except (SDKError, OSError) as exc:  # the vendor library is not loadable here
+        pytest.skip(f"Bruker library not loadable on this platform: {exc}")
 
 
 @pytest.mark.skipif(
-    os.getenv("CI") == "true",
-    reason="Real Bruker dataset not available in CI environment",
+    not REAL_DATASET,
+    reason="Set THYRA_BRUKER_TDF_DATASET to a TIMS .d directory to run",
 )
 class TestBrukerRealData:
-    """Test BrukerReader with real dataset (optional, skipped in CI)."""
+    """Test BrukerReader with a real dataset (optional, opt-in by env var)."""
 
     @pytest.fixture
-    def bruker_data_path(self):
-        """Path to real Bruker test dataset."""
-        # Try multiple possible locations for the dataset
-        possible_paths = [
-            Path(__file__).parent.parent.parent
-            / "data"
-            / "20231109_PEA_NEDC.d",  # Local data folder
-            Path(
-                "C:/Users/P70078823/Desktop/MSIConverter/data/20231109_PEA_NEDC.d"
-            ),  # Absolute path
-        ]
-
-        for data_path in possible_paths:
-            if data_path.exists():
-                return data_path
-
-        pytest.skip(
-            f"Bruker test dataset not found. Tried: {[str(p) for p in possible_paths]}"
-        )
-        return None
+    def bruker_data_path(self) -> Path:
+        """The acquisition named by THYRA_BRUKER_TDF_DATASET."""
+        return Path(REAL_DATASET)  # type: ignore[arg-type]
 
     def test_bruker_reader_instantiation(self, bruker_data_path):
         """Test that BrukerReader can be instantiated with real data."""
-        reader = BrukerReader(bruker_data_path)
+        reader = _open(bruker_data_path)
         assert reader.data_path == bruker_data_path
         reader.close()
 
     def test_bruker_reader_context_manager(self, bruker_data_path):
         """Test BrukerReader works as context manager."""
-        with BrukerReader(bruker_data_path) as reader:
+        with _open(bruker_data_path) as reader:
             assert reader.data_path == bruker_data_path
             assert hasattr(reader, "close")
 
     def test_pixel_size_detection(self, bruker_data_path):
         """Test automatic pixel size detection."""
-        with BrukerReader(bruker_data_path) as reader:
+        with _open(bruker_data_path) as reader:
             essential_metadata = reader.get_essential_metadata()
             pixel_size = essential_metadata.pixel_size
             assert pixel_size is not None
@@ -78,7 +74,7 @@ class TestBrukerRealData:
         assert reader_class == BrukerReader
 
         # This line was causing the original error
-        reader = reader_class(bruker_data_path)
+        reader = _open(bruker_data_path)
         assert reader is not None
 
         # Test the pixel size detection that was failing
@@ -90,7 +86,7 @@ class TestBrukerRealData:
 
     def test_basic_functionality(self, bruker_data_path):
         """Test basic reader functionality with real data."""
-        with BrukerReader(bruker_data_path) as reader:
+        with _open(bruker_data_path) as reader:
             # Test metadata
             metadata = reader.get_comprehensive_metadata()
             assert hasattr(metadata, "essential")
