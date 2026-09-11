@@ -2101,11 +2101,21 @@ class BrukerReader(BrukerBaseMSIReader):
 
         Returns:
             Dictionary of parsed .mis metadata, empty if no .mis found
+
+        Raises:
+            ConversionRefused: If the .mis found is a document defusedxml
+                refuses. Deliberately not caught: this runs in ``__init__``
+                before ``_select_region``, and the areas it would have
+                filled are what resolves ``--region <name>``, so swallowing
+                it turned a refused file into "no such region" naming a
+                region list that was empty for a reason nobody was told.
         """
         try:
             mis_path = self.get_teaching_points_file()
         except (ValueError, OSError):
-            # Folder structure analysis can fail for non-standard paths
+            # Folder structure analysis can fail for non-standard paths.
+            # Scoped to this one call on purpose: ConversionRefused is a
+            # ValueError, and parse_mis_file below must not land here.
             return {}
 
         if mis_path is None:

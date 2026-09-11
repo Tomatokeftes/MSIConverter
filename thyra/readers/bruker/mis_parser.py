@@ -27,6 +27,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 import defusedxml.ElementTree as ET
 from defusedxml.common import DefusedXmlException
 
+from ...errors import ConversionRefused
+
 if TYPE_CHECKING:
     from xml.etree.ElementTree import Element  # nosec B405 - type hint only
 
@@ -65,12 +67,31 @@ def parse_mis_file(path: Path) -> Dict[str, Any]:
     Extracts teaching points, area definitions, raster info, and image
     references from the XML structure.
 
+    A document defusedxml refuses and a document that is simply not
+    well-formed are answered differently, on purpose. A malformed or
+    truncated .mis costs the optical alignment, which every caller already
+    treats as optional -- most acquisitions have no .mis at all -- so it
+    stays a warning and an empty result. A refused document is a different
+    claim: nothing about that file was read *because Thyra would not read
+    it*, and saying so with an empty dict makes a security decision look
+    exactly like a .mis that happened to hold nothing. The visible
+    consequence was downstream and misleading: no areas, no teaching
+    points, no raster, and a later ``--region <name>`` failing as "no such
+    region" while the file that caused it went unnamed.
+
     Args:
         path: Path to the .mis file
 
     Returns:
         Dictionary with keys: teaching_points, areas, raster, ImageFile,
-        OriginalImage, BaseGeometry (all optional depending on file content)
+        OriginalImage, BaseGeometry (all optional depending on file
+        content). Empty when the document is not well-formed XML.
+
+    Raises:
+        ConversionRefused: If the document declares XML entities or reaches
+            for an external reference. Callers do not catch this: it
+            travels out of the reader constructor to ``convert_msi``, which
+            prints it once and stops.
     """
     metadata: Dict[str, Any] = {}
 
@@ -83,9 +104,23 @@ def parse_mis_file(path: Path) -> Dict[str, Any]:
         _extract_raster_info(root, metadata)
         _extract_areas(root, metadata)
 
-    # defusedxml raises DefusedXmlException (a ValueError, not a ParseError)
-    # for a document it refuses, so it has to be caught alongside ParseError.
-    except (ET.ParseError, DefusedXmlException) as e:
+    # DefusedXmlException is a ValueError, ET.ParseError a SyntaxError, so
+    # the two clauses are disjoint and their order is presentation only.
+    except DefusedXmlException as e:
+        raise ConversionRefused(
+            f"Refused to read the FlexImaging sequence file {path}: {e}. "
+            "The document declares XML entities, or points at an external "
+            "resource, and Thyra does not expand either -- an entity can "
+            "pull a file off this machine into the acquisition metadata, "
+            "or expand until the parser runs out of memory. Nothing was "
+            "read from the file, so the acquisition areas, the teaching "
+            "points and the raster step it carries are all unavailable and "
+            "the conversion cannot use it. Re-export the imaging sequence "
+            "from FlexImaging, or -- after reading what the declaration "
+            "actually does -- remove the DOCTYPE from the file."
+        ) from e
+
+    except ET.ParseError as e:
         logger.warning(f"Failed to parse .mis file: {e}")
 
     return metadata

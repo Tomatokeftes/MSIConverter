@@ -4,11 +4,15 @@ import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import pytest
+
+from thyra.errors import ConversionRefused
 from thyra.readers.bruker.mis_parser import (
     _extract_areas,
     find_mis_file_for_d_folder,
     parse_mis_file,
 )
+from thyra.readers.bruker.timstof.timstof_reader import BrukerReader
 
 RECTANGULAR_AREA = (
     '<Area Type="0" Name="01"><Point>10,20</Point><Point>30,40</Point></Area>'
@@ -147,7 +151,18 @@ def test_parse_mis_extracts_polygon_area_bounding_box(tmp_path: Path) -> None:
     assert data["areas"] == [{"name": "01", "p1": [24420, 3043], "p2": [26753, 5777]}]
 
 
-def test_entity_bearing_mis_does_not_expand(tmp_path: Path, thyra_logs) -> None:
+def _write_entity_mis(tmp_path: Path, name: str = "entity.mis") -> Path:
+    mis = tmp_path / name
+    mis.write_text(
+        """<?xml version="1.0"?>
+<!DOCTYPE ImagingSequence [<!ENTITY r "5,5">]>
+<ImagingSequence><Raster>&r;</Raster></ImagingSequence>
+"""
+    )
+    return mis
+
+
+def test_entity_bearing_mis_does_not_expand(tmp_path: Path) -> None:
     """An XML entity in a .mis is refused, not expanded.
 
     The only test in this file that fails before the defusedxml swap: on the
@@ -157,27 +172,82 @@ def test_entity_bearing_mis_does_not_expand(tmp_path: Path, thyra_logs) -> None:
     or the exception escapes parse_mis_file into three callers that do not
     catch it.
 
-    Not caplog: setup_logging sets propagate=False on the `thyra` logger
-    process-globally, so a caplog assertion here would pass alone and fail
-    after any test that has invoked the CLI. See the thyra_logs fixture.
-
     No importorskip on defusedxml: it is a hard dependency, and an
     importorskip would turn the one security test in this file into a
     silent pass on exactly the install where the hole is open.
     """
-    mis = tmp_path / "entity.mis"
-    mis.write_text(
-        """<?xml version="1.0"?>
-<!DOCTYPE ImagingSequence [<!ENTITY r "5,5">]>
-<ImagingSequence><Raster>&r;</Raster></ImagingSequence>
-"""
-    )
+    with pytest.raises(ConversionRefused):
+        parse_mis_file(_write_entity_mis(tmp_path))
+
+
+def test_the_refusal_names_the_file_and_the_reason(tmp_path: Path) -> None:
+    """A security refusal must not read like an empty file.
+
+    This started as a warning and an empty dict, which none of the four
+    consumers (the Rapiflex, timsTOF and solariX readers, and
+    BrukerMetadataExtractor) checks for. The acquisition then ran with no
+    areas, no teaching points and no raster step, and the first visible
+    symptom was a later ``--region <name>`` failing as "no such region" --
+    a message about a region list, pointing away from the file that
+    emptied it. So the two things the message has to carry are which file
+    and why.
+    """
+    mis = _write_entity_mis(tmp_path, "brain_section.mis")
+
+    with pytest.raises(ConversionRefused) as excinfo:
+        parse_mis_file(mis)
+
+    message = str(excinfo.value)
+    assert "brain_section.mis" in message
+    assert "entit" in message.lower()
+
+
+def test_malformed_xml_is_still_only_a_warning(tmp_path: Path, thyra_logs) -> None:
+    """Not well-formed is not the same claim as refused.
+
+    A truncated or corrupt .mis costs the optical alignment, which every
+    caller already treats as optional -- most acquisitions have no .mis at
+    all -- so it stays a warning and an empty result, exactly as before.
+    The refusal above is the case where Thyra decided not to read a file it
+    could have read, and that decision is the one that has to be audible.
+
+    Not caplog: setup_logging sets propagate=False on the `thyra` logger
+    process-globally, so a caplog assertion here would pass alone and fail
+    after any test that has invoked the CLI. See the thyra_logs fixture.
+    """
+    mis = tmp_path / "truncated.mis"
+    mis.write_text('<?xml version="1.0"?>\n<ImagingSequence><Raster>5,5')
 
     with thyra_logs("thyra.readers.bruker.mis_parser", logging.WARNING) as records:
         data = parse_mis_file(mis)
 
     assert data == {}
     assert any("Failed to parse .mis file" in r.getMessage() for r in records)
+
+
+def test_the_timstof_reader_does_not_swallow_the_refusal(tmp_path: Path) -> None:
+    """The one consumer with a ``except ValueError`` anywhere near it.
+
+    ``BrukerReader._parse_mis_alignment`` wraps
+    ``get_teaching_points_file()`` in ``except (ValueError, OSError):
+    return {}`` for non-standard folder layouts. ``ConversionRefused`` is a
+    ``ValueError``, so widening that try by two lines to cover the
+    ``parse_mis_file`` call under it would restore the silence with no
+    other visible change -- and this is the consumer where the silence
+    hurt most, because ``_parse_mis_alignment`` runs in ``__init__``
+    before ``_select_region``, and the areas it fills are what resolves
+    ``--region <name>``.
+
+    Called on an uninitialised instance: the method reads nothing but
+    ``get_teaching_points_file``, and constructing the reader properly
+    would need the vendor library.
+    """
+    reader = BrukerReader.__new__(BrukerReader)
+    mis = _write_entity_mis(tmp_path)
+    reader.get_teaching_points_file = lambda: mis  # type: ignore[method-assign]
+
+    with pytest.raises(ConversionRefused, match="entity.mis"):
+        reader._parse_mis_alignment()
 
 
 def test_internal_subset_dtd_still_parses(tmp_path: Path) -> None:

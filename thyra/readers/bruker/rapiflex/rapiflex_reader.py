@@ -286,7 +286,15 @@ class RapiflexReader(BrukerBaseMSIReader):
         )
 
     def _parse_metadata(self) -> None:
-        """Parse metadata from _info.txt and .mis files."""
+        """Parse metadata from _info.txt and .mis files.
+
+        Raises:
+            ConversionRefused: If the .mis is a document defusedxml
+                refuses. The .mis itself is optional -- a folder without
+                one reads fine -- but a file that is present and refused
+                is not the same as one that is absent, so it is not
+                swallowed into an empty ``_mis_metadata``.
+        """
         # Parse _info.txt
         if self._info_path and self._info_path.exists():
             self._info_metadata = self._parse_info_file(self._info_path)
