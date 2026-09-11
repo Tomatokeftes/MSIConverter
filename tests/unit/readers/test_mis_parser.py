@@ -4,8 +4,6 @@ import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import pytest
-
 from thyra.readers.bruker.mis_parser import (
     _extract_areas,
     find_mis_file_for_d_folder,
@@ -162,8 +160,11 @@ def test_entity_bearing_mis_does_not_expand(tmp_path: Path, thyra_logs) -> None:
     Not caplog: setup_logging sets propagate=False on the `thyra` logger
     process-globally, so a caplog assertion here would pass alone and fail
     after any test that has invoked the CLI. See the thyra_logs fixture.
+
+    No importorskip on defusedxml: it is a hard dependency, and an
+    importorskip would turn the one security test in this file into a
+    silent pass on exactly the install where the hole is open.
     """
-    pytest.importorskip("defusedxml")
     mis = tmp_path / "entity.mis"
     mis.write_text(
         """<?xml version="1.0"?>

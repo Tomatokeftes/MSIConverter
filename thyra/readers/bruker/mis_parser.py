@@ -3,32 +3,32 @@
 The .mis file contains teaching point calibration, acquisition area definitions,
 and optical image references. It is used by both Rapiflex and timsTOF workflows
 for aligning MSI data with optical images.
+
+Parsing goes through ``defusedxml``, which is a hard dependency: see the
+import below for why there is no stdlib fallback.
 """
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+# defusedxml, unconditionally, and never xml.etree here. The stdlib parser
+# expands entity declarations -- measured on a .mis carrying
+# ``<!ENTITY r "5,5">``: xml.etree hands back the expansion and reports a
+# 5x5 raster, defusedxml raises EntitiesForbidden -- so a fallback to it is
+# not a degraded parse, it is the hole the defusedxml swap was made to
+# close. defusedxml is declared in ``[project] dependencies`` with no
+# optional-dependencies table anywhere in pyproject.toml, so an install
+# without it is broken rather than a supported configuration, and a broken
+# install is entitled to the ImportError and its traceback. This is the
+# same principle the spatialdata import follows (issue #310); a
+# try/except ImportError that warns and carries on is the mirror image of
+# the machinery that commit deleted.
+import defusedxml.ElementTree as ET
+from defusedxml.common import DefusedXmlException
 
 if TYPE_CHECKING:
     from xml.etree.ElementTree import Element  # nosec B405 - type hint only
-
-try:
-    # Prefer defusedxml for secure parsing of instrument XML files.
-    import defusedxml.ElementTree as ET
-    from defusedxml.common import DefusedXmlException
-
-    # defusedxml raises DefusedXmlException (a ValueError, not a ParseError)
-    # for a document it refuses, so it has to be caught alongside ParseError.
-    _PARSE_ERRORS: Tuple[Type[Exception], ...] = (ET.ParseError, DefusedXmlException)
-except ImportError:
-    # Fallback to the standard library so the parser still works when
-    # defusedxml is unavailable.
-    import xml.etree.ElementTree as ET  # nosec B405
-
-    _PARSE_ERRORS = (ET.ParseError,)
-    logging.getLogger(__name__).warning(
-        "defusedxml not available, using xml.etree.ElementTree"
-    )
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,9 @@ def parse_mis_file(path: Path) -> Dict[str, Any]:
         _extract_raster_info(root, metadata)
         _extract_areas(root, metadata)
 
-    except _PARSE_ERRORS as e:
+    # defusedxml raises DefusedXmlException (a ValueError, not a ParseError)
+    # for a document it refuses, so it has to be caught alongside ParseError.
+    except (ET.ParseError, DefusedXmlException) as e:
         logger.warning(f"Failed to parse .mis file: {e}")
 
     return metadata

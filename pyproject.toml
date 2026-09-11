@@ -73,9 +73,10 @@ dependencies = [
     "click>=8.1, <9",                 # tested 8.1.8 and 8.4.2
     # Secure XML parsing for the shared Bruker `.mis` parser, which every
     # Bruker path goes through: the Rapiflex, timsTOF and solariX readers and
-    # BrukerMetadataExtractor. `mis_parser` falls back to `xml.etree` with a
-    # warning if it is absent, but that fallback expands XML entities, so this
-    # is a hard runtime dependency and not an extra.
+    # BrukerMetadataExtractor. `mis_parser` imports it unconditionally and has
+    # no `xml.etree` fallback, because that fallback expands XML entities --
+    # it would quietly reinstate the hole. A hard runtime dependency, not an
+    # extra: an install without it must fail at import.
     "defusedxml>=0.7.1",
     "geopandas>=0.9.0",
     # No `lxml` here, deliberately, and it is the inverse of the `click` case
