@@ -244,8 +244,19 @@ class TestRegistry:
         ``_resolve_converter_class``, that caught the registry's error and
         re-raised ``ConversionRefused`` for any format name containing
         "spatialdata". The wrapper is gone and ``_create_converter`` calls
-        ``get_converter_class`` directly, so this assertion is now the only
-        thing holding the convention in place on that path.
+        ``get_converter_class`` directly.
+
+        Two things hold the convention on that path, not one. This
+        assertion holds it at the registry, where every caller of a format
+        name arrives. ``TestAnUnregisteredOutputFormat`` in
+        ``tests/unit/test_cli_refusals.py``, added by the same commit,
+        holds the other end: it drives the lookup through ``convert_msi``
+        and asserts the registry's own message reaches the user as a
+        single ERROR line naming the formats there are, with the traceback
+        kept for DEBUG. Either can fail while the other passes -- this one
+        if the registry stops refusing, that one if something between the
+        registry and the user starts rewriting the refusal again -- which
+        is why both are here.
         """
         with pytest.raises(ConversionRefused, match="No converter for format"):
             get_converter_class("nonexistent_format")
