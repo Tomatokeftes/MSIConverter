@@ -178,7 +178,7 @@ Monotone in the budget, resolved independently per array and per dtype. On a 200
 
 ## 4. Implementation, file by file, in call order
 
-All paths are on `upstream/main @ ccf1ea0` in the clone at `C:/Users/P70078823/Desktop/spatialdata`.
+All paths are on `upstream/main @ ccf1ea0` in the clone at `%USERPROFILE%/Desktop/spatialdata`.
 
 ### 4.1 `src/spatialdata/_io/exceptions.py` (file is 26 lines; append)
 
@@ -303,7 +303,7 @@ table_shard_size_bytes
 
 ## 5. Test plan
 
-**Location: append at the END of `C:/Users/P70078823/Desktop/spatialdata/tests/io/test_readwrite.py`** (currently 1370 lines, last test at :1314). **Not** at ~:830 -- PR #1106's test diff is `@@ -820,6 +841,168 @@`, the exact same insertion point, and #1055's is `@@ -1368,3 +1372,172 @@`. Appending at the end reduces the conflict to a trivial ordering rebase.
+**Location: append at the END of `%USERPROFILE%/Desktop/spatialdata/tests/io/test_readwrite.py`** (currently 1370 lines, last test at :1314). **Not** at ~:830 -- PR #1106's test diff is `@@ -820,6 +841,168 @@`, the exact same insertion point, and #1055's is `@@ -1368,3 +1372,172 @@`. Appending at the end reduces the conflict to a trivial ordering rebase.
 
 **Fixtures.** The shipped `_get_table` (`tests/conftest.py:344`) is `AnnData(RNG.normal(size=(100, 10)))` -- 8 kB, proves nothing. Build a purpose-built CSR AnnData (**4000 × 2000, density 0.05**, with categorical obs, a 2-D `obsm`, and `uns` scalars) the way #1106's raster sharding tests build 800×1000 arrays. Budgets **512 KiB and 2 MiB** -- measured to actually differentiate on that fixture. A 128 MiB budget and anndata's own 1 GB default produce byte-identical stores on anything smaller than ~1.2M nnz, so a large budget tests nothing.
 
@@ -358,7 +358,7 @@ This implements melonora's 2026-07-03 maintainer decision ("write_kwargs for use
 6. **If you assert `shards[0] * itemsize <= budget`, the test encodes a false invariant.** When the budget is below the auto inner chunk, `_guess_num_chunks_per_axis_shard` returns 1 early and shard == chunk, which exceeds the budget. Measured: budget 262144 on a 36M f8 array → chunks (70313,), shards (70313,) = 562,504 bytes > budget.
 7. **If T2 asserts on `uns/spatialdata_attrs/region`, it fails on any multi-region table** -- a first-class case (`_get_table(region: str | list[str])`, `table_multiple_annotations` fixture). Measured: `region=["a","b"]` → shape (2,) shards (2,).
 8. **If you set `zarr.config` in a scope narrower than the whole anndata call, anndata's 1 GB default silently takes over for the rest** -- arrays are created lazily throughout `write_dispatched`.
-9. **If you read the anndata at `C:/Users/P70078823/AppData/Roaming/Python/Python313/site-packages/anndata`, you will produce a wrong design.** That tree is 0.13.0.dev62+g3c90d3cc2, a stale main snapshot with `auto_shard_zarr_v3` default `False`, `zarr_write_format` default `2`, a plain-function `zarr_v3_sharding`, and a `validate_zarr_sharding` gate that exists **nowhere else**. Use `C:/Users/P70078823/Desktop/spatialdata/.venv-test/Lib/site-packages/anndata` (0.12.16, chronologically newer) and fetch the 0.13.3 tag for released behaviour (`zarr_write_format = 3`, `auto_shard_zarr_v3: bool | None = True`).
+9. **If you read the anndata at `%USERPROFILE%/AppData/Roaming/Python/Python313/site-packages/anndata`, you will produce a wrong design.** That tree is 0.13.0.dev62+g3c90d3cc2, a stale main snapshot with `auto_shard_zarr_v3` default `False`, `zarr_write_format` default `2`, a plain-function `zarr_v3_sharding`, and a `validate_zarr_sharding` gate that exists **nowhere else**. Use `%USERPROFILE%/Desktop/spatialdata/.venv-test/Lib/site-packages/anndata` (0.12.16, chronologically newer) and fetch the 0.13.3 tag for released behaviour (`zarr_write_format = 3`, `auto_shard_zarr_v3: bool | None = True`).
 10. **If you branch from or rebase onto `pr-1106-sharding`, `import spatialdata` fails** (`KeyError: 'RASTER_WRITE_KWARGS_DOCS'` at class-body execution). It is also 33 commits behind main and its `io_table.py` predates `convert_strings_to_categoricals`, the zarr-v3 path and the #1183 re-fetch.
 11. **If you move the `table_group = group[name]` re-fetch, you re-break issue #1183** -- the stale handle's cached empty-attrs view erases anndata's `encoding-type`/`encoding-version`. Verified intact under a budget: attributes come back as `['encoding-type', 'encoding-version', 'instance_key', 'region', 'region_key', 'spatialdata-encoding-type', 'version']`.
 12. **If you add a `TablesFormatV03`, you cascade six edits for nothing.** Table format versions encode only zarr v2 vs v3; the read path (`_read_table` → `anndata.read_zarr`) is geometry-blind. Precedent: `raster_compressor` (PR #944, commit `68dade6`) changed on-disk bytes with no format bump.
@@ -378,7 +378,7 @@ This implements melonora's 2026-07-03 maintainer decision ("write_kwargs for use
 - [ ] **Changelog: nothing to write.** `CHANGELOG.md` is a 0-byte file; `docs/changelog.md` points at GitHub Releases. Release notes come from the PR title plus a **`release-added`** label. If the title cannot carry the note, add a `# Release notes` section at the end of the PR's first message per `docs/contributing.md:164`.
 - [ ] Upstream zarr issue filed for the rank-0 non-termination, linked from the PR.
 
-**Follow-up Thyra PR (this repo, `C:/Users/P70078823/Desktop/Thyra`), gated on a released spatialdata carrying the kwarg:**
+**Follow-up Thyra PR (this repo, `%USERPROFILE%/Desktop/Thyra`), gated on a released spatialdata carrying the kwarg:**
 - [ ] `thyra/converters/spatialdata/base_spatialdata_converter.py:2530-2531` becomes `with _suppress_upstream_warnings(): sdata.write(str(self.output_path), table_shard_size_bytes=TABLE_SHARD_TARGET_BYTES)`.
 - [ ] **Delete** `table_write_config()` (`thyra/converters/spatialdata/_chunking.py:64-73` -- the entire body is the `zarr.config.set` block), its import at `base_spatialdata_converter.py:24`, and `TestTableWriteConfig` (`tests/unit/converters/test_chunking_policy.py:68-86`, three donfig set/restore tests that become vacuous).
 - [ ] **Keep** `TABLE_SHARD_TARGET_BYTES` (128 MiB) as the constant Thyra now *passes* rather than *installs*, and `MIN_TABLE_SHARD_BYTES` as the regression floor. The on-disk geometry assertions at `test_chunking_policy.py:153-168` are unchanged and still pass -- identical layout, same zarr key, same value, scoped by the library instead of by application code.
@@ -408,7 +408,7 @@ https://github.com/scverse/spatialdata/issues/1178
 
 ## Repo and branch
 
-Work in the spatialdata clone at C:/Users/P70078823/Desktop/spatialdata (Windows; PowerShell is
+Work in the spatialdata clone at %USERPROFILE%/Desktop/spatialdata (Windows; PowerShell is
 primary, a Bash tool is also available). Remotes: origin = Tomatokeftes fork, upstream =
 scverse/spatialdata. There is a test venv at .venv-test (anndata 0.12.16, zarr 3.2.1).
 
@@ -422,7 +422,7 @@ convert_strings_to_categoricals parameter, the zarr-v3 write path, and the issue
 Treat #1106 only as a design reference, and note that its settings/config layer was REVERTED in
 commit 1f49846 - config.py is byte-identical between main and that branch.
 
-DO NOT read the anndata at C:/Users/P70078823/AppData/Roaming/Python/Python313/site-packages/anndata.
+DO NOT read the anndata at %USERPROFILE%/AppData/Roaming/Python/Python313/site-packages/anndata.
 It is a stale main snapshot (0.13.0.dev62) whose sharding API, setting types and defaults all
 disagree with reality. Use .venv-test/Lib/site-packages/anndata (0.12.16) and, for released
 behaviour, fetch the 0.13.3 tag from raw.githubusercontent.com/scverse/anndata/0.13.3/.
@@ -616,7 +616,7 @@ R8  write_element(<an image>, table_shard_size_bytes=...) is silently ignored, m
 
 ## Tests
 
-Append at the END of C:/Users/P70078823/Desktop/spatialdata/tests/io/test_readwrite.py (currently
+Append at the END of %USERPROFILE%/Desktop/spatialdata/tests/io/test_readwrite.py (currently
 1370 lines, last test at :1314). NOT at ~:830 - PR #1106's test diff is @@ -820,6 +841,168 @@, the
 exact same insertion point; #1055's is @@ -1368,3 +1372,172 @@.
 
@@ -698,6 +698,6 @@ Plain, short sentences. Do not add Claude or any AI tool as co-author or committ
   filed; do not open a duplicate.
 
 Verify locally with the repo's own venv before pushing:
-  C:/Users/P70078823/Desktop/spatialdata/.venv-test/Scripts/python.exe -m pytest tests/io/test_readwrite.py -k "roundtrip or table or shard or compress or chunk"
+  %USERPROFILE%/Desktop/spatialdata/.venv-test/Scripts/python.exe -m pytest tests/io/test_readwrite.py -k "roundtrip or table or shard or compress or chunk"
 (The unmodified baseline of that selection is 44 passed, 79 deselected.)
 `````
