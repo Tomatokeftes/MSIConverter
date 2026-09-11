@@ -14,7 +14,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
+from thyra.errors import ConversionRefused
 from thyra.readers.bruker.timstof.timstof_reader import BrukerReader
 
 
@@ -39,6 +41,151 @@ def test_timstof_utils_package_is_deleted():
     assert (
         spec is None or spec.origin is None
     ), f"the utils package is importable again from {spec.origin}"
+
+
+#: The constructor keywords retired with the timsTOF utils package they
+#: configured, and a value of the type the old signature declared for each.
+RETIRED_KEYWORDS = {
+    "cache_coordinates": True,
+    "memory_limit_gb": 2.0,
+    "batch_size": 10,
+}
+
+
+class TestRetiredConstructorKeywords:
+    """The three retired keywords are answered rather than swallowed.
+
+    D10's Python-API half refuses a keyword that is accepted and does
+    nothing, ``sparse_format="csc"`` included -- being effect-free is not
+    what earns a keyword silence. Dropping these three from the signature
+    put them in ``**kwargs``, which forwards them to
+    ``BaseMSIReader.__init__``, which never reads kwargs: silently
+    swallowed and no longer documented, which is further from D10 than the
+    "Ignored, maintained for compatibility" parameters they replaced.
+
+    None of the refusal tests mock anything, which is itself the
+    assertion: the refusal is raised before the path is validated, so a
+    reader that did not refuse would reach ``_validate_data_path`` and
+    raise ``FileFormatError`` on this nonexistent path instead. That is
+    what they do on the commit before this one.
+    """
+
+    @pytest.mark.parametrize("keyword", sorted(RETIRED_KEYWORDS))
+    def test_a_retired_keyword_is_refused_and_named(self, keyword):
+        """Each of the three is refused on its own, and the message says which."""
+        with pytest.raises(ConversionRefused) as refusal:
+            BrukerReader(Path("/fake/bruker.d"), **{keyword: RETIRED_KEYWORDS[keyword]})
+
+        assert keyword in str(refusal.value)
+
+    def test_all_three_are_named_in_one_refusal(self):
+        """A caller fixing an old call is told the whole list at once.
+
+        Refusing one at a time would make the caller run the conversion
+        three times to find out the call needs three edits.
+        """
+        with pytest.raises(ConversionRefused) as refusal:
+            BrukerReader(Path("/fake/bruker.d"), **RETIRED_KEYWORDS)
+
+        message = str(refusal.value)
+        for keyword in RETIRED_KEYWORDS:
+            assert keyword in message
+
+    def test_the_old_positional_call_is_refused(self):
+        """``BrukerReader(path, True, True, 4.0, 100)`` cannot bind quietly.
+
+        The three sat in the positional slots that ``progress_callback``,
+        ``region`` and ``metadata_only`` now occupy, so an old positional
+        call binds ``progress_callback=True``, ``region=4.0`` and
+        ``metadata_only=100`` -- all truthy, all wrong, and a reader that
+        accepted them would be metadata-only and fail much later, in
+        ``iter_spectra``, as an SDKError about a handle that is None. The
+        keyword refusal above cannot see this call at all: ``kwargs`` is
+        empty.
+        """
+        with pytest.raises(ConversionRefused) as refusal:
+            BrukerReader(Path("/fake/bruker.d"), True, True, 4.0, 100)
+
+        message = str(refusal.value)
+        assert "progress_callback" in message
+        assert "positional" in message
+
+    def test_region_refuses_the_type_memory_limit_gb_had(self):
+        """A float region is the second slot of the shifted window."""
+        with pytest.raises(ConversionRefused) as refusal:
+            BrukerReader(Path("/fake/bruker.d"), region=4.0)
+
+        assert "region" in str(refusal.value)
+
+    def test_metadata_only_refuses_the_type_batch_size_had(self):
+        """An int metadata_only is the third; ``bool(100)`` would have been True."""
+        with pytest.raises(ConversionRefused) as refusal:
+            BrukerReader(Path("/fake/bruker.d"), metadata_only=100)
+
+        assert "metadata_only" in str(refusal.value)
+
+    @patch("thyra.readers.bruker.timstof.timstof_reader.DLLManager")
+    @patch("thyra.readers.bruker.timstof.timstof_reader.SDKFunctions")
+    def test_an_unknown_keyword_still_passes_through(
+        self, mock_sdk_functions, mock_dll_manager
+    ):
+        """Only those three names are answered; the signature stays open.
+
+        ``**kwargs`` is how a reader-specific option reaches a reader that
+        has one (``reader_options={...}`` in ``convert_msi``), so this is
+        not a strict signature: an unknown keyword is absorbed exactly as
+        it was before, and is not stashed on the instance either.
+        """
+        mock_dll_manager.return_value = MagicMock()
+        mock_sdk = MagicMock()
+        mock_sdk_functions.return_value = mock_sdk
+        mock_sdk.open_file.return_value = MagicMock()
+
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+            patch("sqlite3.connect") as mock_connect,
+        ):
+            mock_connect.return_value = MagicMock()
+
+            reader = BrukerReader(Path("/fake/bruker.d"), some_future_option=1)
+
+            assert hasattr(reader, "db_path")
+            assert not hasattr(reader, "some_future_option")
+
+    @patch("thyra.readers.bruker.timstof.timstof_reader.DLLManager")
+    @patch("thyra.readers.bruker.timstof.timstof_reader.SDKFunctions")
+    def test_a_current_positional_call_still_constructs(
+        self, mock_sdk_functions, mock_dll_manager
+    ):
+        """The validation is not a keyword-only signature in disguise.
+
+        ``use_recalibrated_state`` did not move, and every parameter that
+        did still accepts its declared types positionally. ``region`` is
+        passed as ``None`` because any other value goes on to select an
+        area out of a database this test does not have.
+        """
+        mock_dll_manager.return_value = MagicMock()
+        mock_sdk = MagicMock()
+        mock_sdk_functions.return_value = mock_sdk
+        mock_sdk.open_file.return_value = MagicMock()
+
+        def on_progress(done, total):
+            return None
+
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "is_dir", return_value=True),
+            patch("sqlite3.connect") as mock_connect,
+        ):
+            mock_connect.return_value = MagicMock()
+
+            reader = BrukerReader(
+                Path("/fake/bruker.d"), False, on_progress, None, True
+            )
+
+            assert reader.use_recalibrated_state is False
+            assert reader.progress_callback is on_progress
 
 
 class TestBrukerReader:
@@ -76,50 +223,6 @@ class TestBrukerReader:
             # Should have essential components
             assert hasattr(reader, "sdk")
             assert hasattr(reader, "db_path")
-
-    @patch("thyra.readers.bruker.timstof.timstof_reader.DLLManager")
-    @patch("thyra.readers.bruker.timstof.timstof_reader.SDKFunctions")
-    def test_retired_keywords_are_still_absorbed(
-        self, mock_sdk_functions, mock_dll_manager
-    ):
-        """cache_coordinates, memory_limit_gb and batch_size still construct.
-
-        A compatibility pin, not a regression guard: it passes before the
-        parameters were dropped from the signature and after, because both
-        before and after the three are accepted and ignored. What it pins is
-        that they keep being *silently* ignored -- D10 allows that only for a
-        keyword that never had an effect, and these have had none since
-        _setup_components became a pass. If BaseMSIReader.__init__ ever grows a
-        ``if kwargs: raise``, this is the test that says an old caller breaks.
-        """
-        mock_data_path = Path("/fake/bruker.d")
-
-        mock_dll_manager.return_value = MagicMock()
-        mock_sdk = MagicMock()
-        mock_sdk_functions.return_value = mock_sdk
-        mock_sdk.open_file.return_value = MagicMock()
-
-        with (
-            patch.object(Path, "exists", return_value=True),
-            patch.object(Path, "is_dir", return_value=True),
-            patch("sqlite3.connect") as mock_connect,
-        ):
-
-            mock_conn = MagicMock()
-            mock_connect.return_value = mock_conn
-
-            reader = BrukerReader(
-                mock_data_path,
-                cache_coordinates=True,
-                memory_limit_gb=2.0,
-                batch_size=10,
-            )
-
-            assert hasattr(reader, "db_path")
-            # Absorbed and dropped, not stashed on the instance.
-            assert not hasattr(reader, "cache_coordinates")
-            assert not hasattr(reader, "memory_limit_gb")
-            assert not hasattr(reader, "batch_size")
 
     def test_build_raw_mass_axis_function_exists(self):
         """Test that build_raw_mass_axis function is available and works."""
