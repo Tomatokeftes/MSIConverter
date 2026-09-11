@@ -64,6 +64,45 @@ class ResamplingDecisionTree:
         # Use detector chain to find matching instrument
         return self._detector_chain.get_resampling_method(characteristics)
 
+    def select_strategy_for_axis(
+        self, metadata: Optional[Dict[str, Any]], axis_type: AxisType
+    ) -> ResamplingMethod:
+        """Select the method for an axis the caller has already settled.
+
+        :meth:`select_strategy` gates TIC-preserving resampling against the
+        axis the detector would have chosen. ``--mass-axis-type`` overrides
+        that axis, and the override is applied after the method has been
+        picked, so the gate has to be asked again once the real axis is
+        known.
+
+        Parameters
+        ----------
+        metadata : Optional[Dict[str, Any]]
+            Metadata dictionary containing instrument information
+        axis_type : AxisType
+            The axis the conversion will build
+
+        Returns
+        -------
+        ResamplingMethod
+            Selected resampling strategy for that axis
+
+        Raises
+        ------
+        NotImplementedError
+            When metadata is None (cannot auto-detect without data)
+        """
+        if metadata is None:
+            raise NotImplementedError(
+                "Automatic strategy selection requires metadata. "
+                "Please provide metadata or specify the resampling method manually."
+            )
+
+        characteristics = DataCharacteristics.from_metadata(metadata)
+        return self._detector_chain.get_resampling_method_for_axis(
+            characteristics, axis_type
+        )
+
     def select_axis_type(self, metadata: Optional[Dict[str, Any]] = None) -> AxisType:
         """Automatically select appropriate mass axis type.
 

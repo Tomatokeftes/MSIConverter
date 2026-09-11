@@ -1110,6 +1110,13 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             self._resampling_method = method
             self._warn_if_override_contradicts_detector(method, config)
 
+        # Whether the method above was chosen by the detector chain rather than
+        # named by the caller. The TIC-preserving gate governs auto-selection
+        # only -- an explicit method is taken as given and merely warned about
+        # (D15) -- so _resolve_resampling_plan needs to know which this was
+        # before it re-asks the gate against the axis it settles on.
+        self._resampling_method_was_auto = method is None
+
         logger.info(f"Using resampling method: {self._resampling_method}")
 
         # Store axis_type override if provided (will be used in _build_resampled_mass_axis)
@@ -2419,6 +2426,45 @@ class BaseSpatialDataConverter(BaseMSIConverter, ABC):
             # not set a width of their own.
             if self._width_at_mz is None:
                 self._detected_reference_width = tree.select_reference_width(metadata)
+
+        # Now that the axis is settled, ask the TIC-preserving gate again --
+        # against the axis that will actually be laid.
+        #
+        # _setup_resampling picked the method from the detector chain, which
+        # gates TIC_PRESERVING on the detector's OWN axis choice. When
+        # --mass-axis-type overrides that choice the two come apart, and the
+        # gate's premise is gone: it is exact only when the source grid law and
+        # the target axis are the same law. Rapiflex and Waters-profile are the
+        # two detectors that reach TIC_PRESERVING, and both declare a source law
+        # equal to their own axis, so the early gate always cleared and the
+        # conversion then interpolated onto whatever axis was asked for.
+        #
+        # docs/resampling.md measures the cost: two ions of equal abundance come
+        # back with their ratio distorted by 1.9x on linear_tof, 3.7x on
+        # reflector_tof, 7.0x on orbitrap and 13.4x on fticr. Every stored
+        # intensity in the main table is affected, and nothing downstream
+        # notices, because the per-pixel TIC still balances exactly -- that is
+        # what the operator preserves.
+        #
+        # Auto-selected methods only. An explicit --resample-method is the
+        # caller's decision and is honoured with a warning instead (D15).
+        # On the auto path with no axis override this re-derives the same
+        # answer, so it is a no-op in the ordinary case.
+        if (
+            getattr(self, "_resampling_method_was_auto", False)
+            and self._resampling_method is ResamplingMethod.TIC_PRESERVING
+        ):
+            regated = tree.select_strategy_for_axis(
+                self._get_cached_metadata_for_resampling(), axis_type
+            )
+            if regated is not self._resampling_method:
+                logger.info(
+                    "Resampling method downgraded to %s: the mass axis "
+                    "resolved to %s, which is not the source grid law.",
+                    regated.name,
+                    axis_type.name,
+                )
+                self._resampling_method = regated
 
         # A TOF axis without the caller's own coefficients takes the pair
         # the instrument declares -- on the auto path (an MRT centroid

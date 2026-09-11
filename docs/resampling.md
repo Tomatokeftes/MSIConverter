@@ -191,9 +191,21 @@ catch-all default. This table is the actual observed behaviour of that chain:
     Auto-selection cannot produce these pairings. `tic_preserving` is only
     ever chosen alongside an axis whose law the source grid itself follows --
     `constant` for the Rapiflex, `linear_tof` for the Waters profile trace --
-    which is what makes it exact; the detector chain enforces that. You have
-    to ask for a mismatched combination with two explicit flags, and Thyra
-    takes you at your word.
+    which is what makes it exact; the detector chain enforces that, and it
+    re-checks once the axis is settled, so overriding the axis with
+    `--mass-axis-type` downgrades an auto-selected `tic_preserving` to
+    `nearest_neighbor` rather than interpolating onto an axis the source
+    does not follow.
+
+    You therefore have to ask for a mismatched combination explicitly, by
+    naming `--resample-method tic_preserving` yourself, and Thyra takes you
+    at your word -- with a warning when it contradicts the detector.
+
+    Before Thyra 3.24 one flag was enough: this paragraph said two were
+    needed, but the gate was evaluated against the axis the *detector*
+    preferred rather than the one the conversion would build, so
+    `--mass-axis-type fticr` alone reached the 13.4x distortion above with
+    `--resample-method` left at its `auto` default (issue #286).
 
     If you want a non-uniform axis, use `nearest_neighbor`, which moves each
     peak into a single bin and is unaffected by bin width.
