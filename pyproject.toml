@@ -283,7 +283,21 @@ build_command = "uv lock && pip install build && python -m build"
 # Extra files to include in the release commit beyond the version-stamped
 # ones above.
 assets = ["uv.lock"]
-upload_to_vcs_release = true
+# There is deliberately no `upload_to_vcs_release` here. It used to sit at this
+# level and had never had any effect, for three independent reasons: it is a
+# field of PublishConfig, so it belongs under [tool.semantic_release.publish] and
+# is silently dropped here (RawConfig sets no `extra` policy, so pydantic ignores
+# unknown keys); its default is already true; and it is acted on only by
+# `semantic-release publish`, which calls hvcs_client.upload_dists, while
+# release.yml only ever runs `semantic-release version`, which never does.
+# Verified against python-semantic-release 10.6.2. The visible consequence was
+# that the releases for v3.23.0-v3.23.2 each carry exactly one asset, uv.lock,
+# and no wheel or sdist.
+#
+# The dist this build_command produces is not lost, though. release.yml uploads
+# it as a workflow artifact and the publish job takes it from there, which is
+# what makes one build per release. If you want it on the GitHub Release as well,
+# that is an upload step in release.yml, not this key.
 
 [tool.semantic_release.branches.main]
 match = "main"
