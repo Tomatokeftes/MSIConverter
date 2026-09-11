@@ -619,10 +619,11 @@ triple scan as a by-product.
 **Verdict: real and worth fixing. The verifier agreed with the label and
 disagreed with the report's headline and one of its recommendations.**
 
-**2026-09-11: `_add_to_sparse_matrix` no longer exists**, so the two places
-below that name it in the present tense -- the per-pixel phase table and the
-second conclusion -- describe a code path that has since been deleted, not one
-you can profile today. It and its partner `BaseMSIConverter._create_sparse_matrix`
+**2026-09-11: `_add_to_sparse_matrix` no longer exists**, so the two places in
+this lead that name it in the present tense -- the per-pixel phase table and
+the second conclusion -- describe a code path that has since been deleted, not
+one you can profile today. A third names it outside this lead, in the
+`## What to do` summary table, and carries the same note there. It and its partner `BaseMSIConverter._create_sparse_matrix`
 filled and built a `scipy.sparse.lil_matrix`; design decisions D10 (CSC is the
 only stored layout) and D11 (the in-memory conversion routes folded into the
 streaming one) left both unreachable, and they were removed as
@@ -837,6 +838,16 @@ be the full arange.
 ---
 
 ## What to do
+
+**2026-09-11: item 3 below can no longer offer "the 3,124 us per pixel store
+cost" as a saving.** That cost was `_add_to_sparse_matrix`, which has since
+been deleted -- see the note at the head of lead 4 for what replaced it and
+why -- so a caller who lands on that row today would be told to buy back a
+cost that is already gone, and would have no way to reproduce the 3,124 us.
+What the CSC assembler that replaced it costs per pixel was not measured here,
+so read that clause as withdrawn rather than as zero. The rest of the row is
+untouched by the deletion and stands as taken: the nnz figures, the exact-1.0
+TIC ratio, the 4.4x and 14.8x speedups, and the 142.9 GB extrapolated store.
 
 ### (a) Changes the numbers justify
 

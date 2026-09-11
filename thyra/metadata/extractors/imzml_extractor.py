@@ -1168,20 +1168,6 @@ class ImzMLMetadataExtractor(MetadataExtractor):
             logger.debug(f"XML streaming parse failed: {e}")
         return None
 
-    def _get_xml_parser(self):
-        """Get XML parser, preferring defusedxml for security."""
-        try:
-            # Use defusedxml for secure parsing
-            import defusedxml.ElementTree as ET
-
-            return ET
-        except ImportError:
-            # Fallback to standard library with warning
-            import xml.etree.ElementTree as ET  # nosec B405
-
-            logger.warning("defusedxml not available, using xml.etree.ElementTree")
-            return ET
-
     def _file_description_params(self) -> Optional[Dict[str, Any]]:
         """Return the fileDescription cvParams the parser already parsed.
 

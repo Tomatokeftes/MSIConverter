@@ -5,8 +5,11 @@ from typing import Any, Dict, Generator, List, NamedTuple, Optional, Tuple, Unio
 
 # The stdlib XML parser, used to re-read one element of a document pyimzml has
 # already parsed with the same stdlib parser -- see
-# _first_spectrum_array_lengths. Thyra has no defusedxml dependency, and
-# adding one here would not change what has already been read.
+# _first_spectrum_array_lengths. Thyra does depend on defusedxml, hard, and the
+# Bruker `.mis` parser imports it unconditionally; it is deliberately not used
+# here, because it would not change what has already been read. pyimzml parses
+# the whole document with xml.etree first, this re-read only revisits one
+# element of what it accepted, and defusedxml cannot retract that.
 from xml.etree import ElementTree  # nosec B405
 
 import numpy as np
