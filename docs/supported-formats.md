@@ -1,9 +1,11 @@
 # Supported Formats
 
 Thyra reads seven MSI formats and writes all of them into the same
-SpatialData/Zarr layout. The input format is detected from the path -- there is
-no format flag on the CLI, and `format_type` in the Python API selects the
-*output* format, not the input.
+SpatialData/Zarr layout. The input format is detected from the path and no flag
+selects it. The `--format` option on the CLI and `format_type` in the Python
+API both name the *output* format, not the input; `spatialdata` is its only
+value, and `--format` is deprecated and hidden from `--help` while still being
+accepted (see the [CLI Reference](cli.md#conversion)).
 
 | Format | Path shape | Detected by | Vendor SDK |
 |---|---|---|---|
