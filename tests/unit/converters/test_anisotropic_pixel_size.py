@@ -34,16 +34,10 @@ from spatialdata.transformations import get_transformation
 
 from tests.fixtures.mock_msi_generator import MockMSIConfig, MockMSIReader
 from thyra.converters.spatialdata.streaming_converter import (
-    SPATIALDATA_AVAILABLE,
     StreamingSpatialDataConverter,
 )
 from thyra.core.base_converter import PixelSizeSource
 from thyra.metadata.schema import MSI_METADATA_UNS_KEY
-
-pytestmark = pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
-)
 
 N_X, N_Y = 3, 2
 PITCH_X, PITCH_Y = 30.0, 50.0

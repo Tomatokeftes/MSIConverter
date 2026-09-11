@@ -357,28 +357,14 @@ def _create_converter(
         "apply_optical_alignment": apply_optical_alignment,
         **kwargs,
     }
-    converter_class = _resolve_converter_class(format_type)
+    # The registry's own refusal names the format asked for and the formats
+    # there are. This used to go through a wrapper that, for any format_type
+    # containing "spatialdata", replaced that with "SpatialData converter
+    # unavailable" plus five lines of zarr-upgrade advice -- written for a
+    # missing spatialdata, which registration no longer hides.
+    converter_class = get_converter_class(format_type.lower())
+    logger.info(f"Using converter: {converter_class.__name__}")
     return converter_class(reader, output_path, **converter_kwargs)
-
-
-def _resolve_converter_class(format_type: str) -> Any:
-    """The converter class for ``format_type``, with the SpatialData hint."""
-    try:
-        converter_class = get_converter_class(format_type.lower())
-        logger.info(f"Using converter: {converter_class.__name__}")
-        return converter_class
-    except ValueError as e:
-        if "spatialdata" in format_type.lower():
-            logger.error(
-                "SpatialData converter is not available due to dependency issues."
-            )
-            logger.error("This is commonly caused by zarr version incompatibility.")
-            logger.error("Try upgrading your dependencies:")
-            logger.error("  pip install --upgrade anndata spatialdata zarr")
-            logger.error("Or create a fresh environment with compatible versions.")
-            raise ConversionRefused("SpatialData converter unavailable") from e
-        else:
-            raise e
 
 
 def _perform_conversion_with_cleanup(converter: Any, reader: Any) -> bool:

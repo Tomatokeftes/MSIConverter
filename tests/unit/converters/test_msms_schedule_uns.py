@@ -16,21 +16,12 @@ import logging
 from typing import Any, Dict, Optional
 
 import numpy as np
-import pytest
 
 from tests.fixtures.mock_msi_generator import MockMSIConfig, MockMSIReader
-from thyra.converters.spatialdata.base_spatialdata_converter import (
-    SPATIALDATA_AVAILABLE,
-)
 from thyra.core.msms import (
     COLLISION_INDUCED_DISSOCIATION_ACCESSION,
     FragmentationSchedule,
     IsolationWindow,
-)
-
-pytestmark = pytest.mark.skipif(
-    not SPATIALDATA_AVAILABLE,
-    reason="SpatialData dependencies not available",
 )
 
 _DATASET_ID = "mock"

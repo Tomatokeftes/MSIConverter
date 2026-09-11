@@ -4,6 +4,7 @@ Tests for the simplified format registry system.
 
 import pytest
 
+import thyra
 from thyra.core.base_converter import BaseMSIConverter
 from thyra.core.base_reader import BaseMSIReader
 from thyra.core.registry import (
@@ -229,3 +230,42 @@ class TestRegistry:
         """Test getting a non-existent converter class."""
         with pytest.raises(ValueError, match="No converter for format"):
             get_converter_class("nonexistent_format")
+
+
+# The two below live outside TestRegistry on purpose: its setup_method
+# clears _registry._converters and teardown_method restores it, so the same
+# assertions inside the class would only ever test that fixture.
+#
+# Both were measured to pass against the pre-#310 code as well, and that is
+# not a flaw in them: on an install where spatialdata imports, the flag they
+# used to be gated behind was True and the behaviour was already correct.
+# They state the invariant so a future reviewer can see it asserted
+# somewhere; the test that actually separates the two trees is
+# tests/unit/test_hard_dependency.py, which fails before the fix.
+
+
+def test_spatialdata_converter_is_registered_on_import():
+    """Importing thyra registers the one output format the docs describe.
+
+    Registration used to sit behind ``if SPATIALDATA_AVAILABLE:``, a flag
+    set by a try/except that swallowed the ImportError. When spatialdata
+    could not be imported, ``import thyra`` still succeeded and this lookup
+    raised "No converter for format 'spatialdata'. Available: []" -- an
+    empty registry, naming neither the missing package nor the cause
+    (issue #310). spatialdata is a hard dependency, so registration is now
+    unconditional and a broken install fails at ``import thyra`` instead.
+    """
+    assert get_converter_class("spatialdata") is thyra.SpatialDataConverter
+
+
+def test_spatialdata_converter_is_always_a_class():
+    """``thyra.SpatialDataConverter`` is a class, never None.
+
+    ``thyra/__init__.py`` carried an ``except ImportError`` branch rebinding
+    this name to ``None``, and issue #282 item 3 described the name as "a
+    class or None depending on installed extras". It was measured to be the
+    class even with spatialdata blocked -- the branch was dead, because the
+    swallow one layer down meant the import it guarded never raised. Both
+    the branch and the flag are gone; the name has one type.
+    """
+    assert isinstance(thyra.SpatialDataConverter, type)

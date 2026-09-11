@@ -19,23 +19,17 @@ from typing import Any, Dict, Generator, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
+import xarray as xr
+from anndata import AnnData
 from numpy.typing import NDArray
+from spatialdata.models import Image2DModel, Image3DModel, TableModel
+from spatialdata.transformations import Affine, Scale
 from tqdm import tqdm
 
 from ...errors import ConversionRefused
 from ...resampling import ResamplingMethod
-from .base_spatialdata_converter import (
-    SPATIALDATA_AVAILABLE,
-    BaseSpatialDataConverter,
-    _kept_mz_range,
-)
+from .base_spatialdata_converter import BaseSpatialDataConverter, _kept_mz_range
 from .csc_assembly import CscAssembly, index_dtype
-
-if SPATIALDATA_AVAILABLE:
-    import xarray as xr
-    from anndata import AnnData
-    from spatialdata.models import Image2DModel, Image3DModel, TableModel
-    from spatialdata.transformations import Affine, Scale
 
 logger = logging.getLogger(__name__)
 
@@ -907,9 +901,6 @@ class StreamingSpatialDataConverter(BaseSpatialDataConverter):
         Args:
             data_structures: What the passes filled.
         """
-        if not SPATIALDATA_AVAILABLE:
-            raise ImportError("SpatialData dependencies not available")
-
         for unit in data_structures["units"]:
             if unit.n_rows == 0:
                 logger.warning(
