@@ -89,9 +89,33 @@ def parse_mis_file(path: Path) -> Dict[str, Any]:
 
     Raises:
         ConversionRefused: If the document declares XML entities or reaches
-            for an external reference. Callers do not catch this: it
-            travels out of the reader constructor to ``convert_msi``, which
-            prints it once and stops.
+            for an external reference. Where that lands differs by
+            consumer, and only three of the five let it travel untouched.
+
+            The solariX, Rapiflex and timsTOF readers each parse from
+            ``__init__``, so it leaves the constructor and reaches
+            ``convert_msi``, which prints it once and stops. The timsTOF
+            reader's ``except (ValueError, OSError)`` sits above the parse
+            and covers the folder-layout lookup only, so it does not
+            swallow this.
+
+            ``BrukerMetadataExtractor._resolve_pixel_size_um`` is not a
+            constructor and is not uncaught: ``_extract_essential_impl``
+            catches it with ``except ConversionRefused: raise``, which is
+            what keeps the broad handler under that clause from re-logging
+            the refusal at ERROR as "Unexpected error extracting essential
+            metadata". It is re-raised unchanged.
+
+            :func:`thyra.preview.preview_msi` is a fifth surface, and the
+            commit that wrote this refusal did not enumerate it -- its
+            "checked for each consumer" list named four, all of them
+            library callers. Preview builds its reader inside ``except
+            Exception``, so nothing propagates: the refusal is turned into
+            ``MsiPreview.error`` ("Reader construction failed: ...") and
+            the preview comes back with ``readable=False``. All three
+            readers parse the .mis outside their ``metadata_only`` guard,
+            so a preview reaches this function even though it decodes no
+            spectra and, for timsTOF, loads no vendor library.
     """
     metadata: Dict[str, Any] = {}
 
