@@ -6,9 +6,29 @@ for aligning MSI data with optical images.
 """
 
 import logging
-import xml.etree.ElementTree as ET  # nosec B405 - parsing trusted local instrument files
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
+
+if TYPE_CHECKING:
+    from xml.etree.ElementTree import Element  # nosec B405 - type hint only
+
+try:
+    # Prefer defusedxml for secure parsing of instrument XML files.
+    import defusedxml.ElementTree as ET
+    from defusedxml.common import DefusedXmlException
+
+    # defusedxml raises DefusedXmlException (a ValueError, not a ParseError)
+    # for a document it refuses, so it has to be caught alongside ParseError.
+    _PARSE_ERRORS: Tuple[Type[Exception], ...] = (ET.ParseError, DefusedXmlException)
+except ImportError:
+    # Fallback to the standard library so the parser still works when
+    # defusedxml is unavailable.
+    import xml.etree.ElementTree as ET  # nosec B405
+
+    _PARSE_ERRORS = (ET.ParseError,)
+    logging.getLogger(__name__).warning(
+        "defusedxml not available, using xml.etree.ElementTree"
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -63,13 +83,13 @@ def parse_mis_file(path: Path) -> Dict[str, Any]:
         _extract_raster_info(root, metadata)
         _extract_areas(root, metadata)
 
-    except ET.ParseError as e:
+    except _PARSE_ERRORS as e:
         logger.warning(f"Failed to parse .mis file: {e}")
 
     return metadata
 
 
-def _extract_basic_elements(root: ET.Element, metadata: Dict[str, Any]) -> None:
+def _extract_basic_elements(root: "Element", metadata: Dict[str, Any]) -> None:
     """Extract basic text elements from .mis XML."""
     for elem_name in ["Method", "ImageFile", "OriginalImage", "BaseGeometry"]:
         elem = root.find(f".//{elem_name}")
@@ -77,7 +97,7 @@ def _extract_basic_elements(root: ET.Element, metadata: Dict[str, Any]) -> None:
             metadata[elem_name] = elem.text
 
 
-def _extract_teaching_points(root: ET.Element, metadata: Dict[str, Any]) -> None:
+def _extract_teaching_points(root: "Element", metadata: Dict[str, Any]) -> None:
     """Extract teaching point calibration data from .mis XML."""
     teaching_points: List[Dict[str, List[int]]] = []
     for tp in root.findall(".//TeachPoint"):
@@ -92,7 +112,7 @@ def _extract_teaching_points(root: ET.Element, metadata: Dict[str, Any]) -> None
         metadata["teaching_points"] = teaching_points
 
 
-def _extract_raster_info(root: ET.Element, metadata: Dict[str, Any]) -> None:
+def _extract_raster_info(root: "Element", metadata: Dict[str, Any]) -> None:
     """Extract raster dimensions from .mis XML."""
     raster_elem = root.find(".//Raster")
     if raster_elem is not None and raster_elem.text:
@@ -101,7 +121,7 @@ def _extract_raster_info(root: ET.Element, metadata: Dict[str, Any]) -> None:
             metadata["raster"] = [int(parts[0]), int(parts[1])]
 
 
-def _extract_areas(root: ET.Element, metadata: Dict[str, Any]) -> None:
+def _extract_areas(root: "Element", metadata: Dict[str, Any]) -> None:
     """Extract Area definitions from .mis XML.
 
     Each Area defines an acquisition region. Areas may be defined by:
