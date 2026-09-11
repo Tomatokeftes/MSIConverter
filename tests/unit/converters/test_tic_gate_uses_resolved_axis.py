@@ -78,6 +78,7 @@ class _Converter:
         BaseSpatialDataConverter._warn_if_override_contradicts_detector
     )
     _resolve_resampling_plan = BaseSpatialDataConverter._resolve_resampling_plan
+    _regate_tic_preserving = BaseSpatialDataConverter._regate_tic_preserving
     _get_reference_params = BaseSpatialDataConverter._get_reference_params
     _calculate_bins_from_width = BaseSpatialDataConverter._calculate_bins_from_width
 
