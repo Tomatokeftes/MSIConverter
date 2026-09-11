@@ -112,10 +112,14 @@ def parse_mis_file(path: Path) -> Dict[str, Any]:
             library callers. Preview builds its reader inside ``except
             Exception``, so nothing propagates: the refusal is turned into
             ``MsiPreview.error`` ("Reader construction failed: ...") and
-            the preview comes back with ``readable=False``. All three
-            readers parse the .mis outside their ``metadata_only`` guard,
-            so a preview reaches this function even though it decodes no
-            spectra and, for timsTOF, loads no vendor library.
+            the preview comes back with ``readable=False``. No reader's
+            construction can skip the parse: solariX and timsTOF both run
+            it outside their ``metadata_only`` guard, and Rapiflex has no
+            such parameter to sit outside of -- ``metadata_only`` is
+            absorbed by its ``**kwargs`` and never read -- so it parses
+            whenever the .mis is present. A preview therefore reaches this
+            function even though it decodes no spectra and, for timsTOF,
+            loads no vendor library.
     """
     metadata: Dict[str, Any] = {}
 

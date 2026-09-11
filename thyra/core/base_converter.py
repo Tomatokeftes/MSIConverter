@@ -709,12 +709,17 @@ class BaseMSIConverter(ABC):
             Array of indices in common mass axis, parallel to ``mzs``
 
         Raises:
-            ValueError: If any m/z value has no common-axis entry within
-                tolerance. Without resampling the axis is built from the
-                spectra themselves, so every value must match exactly; a
+            ConversionRefused: If any m/z value has no common-axis entry
+                within tolerance. Without resampling the axis is built from
+                the spectra themselves, so every value must match exactly; a
                 near-miss means the axis and the data have diverged, and
                 dropping the value silently would desync the index and
                 intensity arrays downstream.
+            ValueError: If the common mass axis has not been built yet. This
+                one stays a plain ValueError on purpose: it is an internal
+                invariant about call order, not a statement about the data,
+                so it is a bug in Thyra rather than something the caller
+                could have supplied differently.
         """
         if self._common_mass_axis is None:
             raise ValueError("Common mass axis is not initialized.")

@@ -420,7 +420,7 @@ class _MassAxisAccumulator:
             Sorted, unique m/z values.
 
         Raises:
-            ValueError: If no spectrum yielded any m/z values.
+            ConversionRefused: If no spectrum yielded any m/z values.
         """
         self._fold(index)
         self._buf = None
@@ -656,8 +656,8 @@ class ImzMLReader(BaseMSIReader):
             imzml_path: Path to the imzML file to parse
 
         Raises:
-            ValueError: If the corresponding .ibd file is not found or metadata
-                parsing fails
+            ConversionRefused: If the corresponding .ibd file is not found or
+                metadata parsing fails
             Exception: If parser initialization fails
         """
         if isinstance(imzml_path, str):
@@ -869,10 +869,10 @@ class ImzMLReader(BaseMSIReader):
             precision: The precision character pyimzml resolved for it.
 
         Raises:
-            ValueError: If the group is missing, declares zlib compression,
-                declares no precision term or more than one, disagrees with the
-                precision pyimzml resolved, or names a type whose width is
-                platform-dependent.
+            ConversionRefused: If the group is missing, declares zlib
+                compression, declares no precision term or more than one,
+                disagrees with the precision pyimzml resolved, or names a type
+                whose width is platform-dependent.
         """
         groups = parser.metadata.referenceable_param_groups
         group = groups.get(group_id)
@@ -944,8 +944,8 @@ class ImzMLReader(BaseMSIReader):
             parser: An initialized ImzML parser.
 
         Raises:
-            ValueError: If a declared encoded length contradicts the precision
-                pyimzml resolved.
+            ConversionRefused: If a declared encoded length contradicts the
+                precision pyimzml resolved.
         """
         if self.imzml_path is None:
             return
@@ -993,8 +993,8 @@ class ImzMLReader(BaseMSIReader):
             arrays: The parser's offsets and lengths, as int64.
 
         Raises:
-            ValueError: If any value is negative, or if a spectrum's m/z and
-                intensity arrays declare different numbers of values.
+            ConversionRefused: If any value is negative, or if a spectrum's m/z
+                and intensity arrays declare different numbers of values.
         """
         for label, values in (
             ("m/z offset", arrays.mz_offsets),
@@ -1031,7 +1031,7 @@ class ImzMLReader(BaseMSIReader):
             arrays: The parser's offsets and lengths, as int64.
 
         Raises:
-            ValueError: If any spectrum's array ends past the end of the
+            ConversionRefused: If any spectrum's array ends past the end of the
                 ``.ibd``.
         """
         if self.ibd_path is None or arrays.mz_offsets.size == 0:
