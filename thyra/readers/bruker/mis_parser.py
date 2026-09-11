@@ -124,12 +124,10 @@ def _extract_raster_info(root: "Element", metadata: Dict[str, Any]) -> None:
 def _extract_areas(root: "Element", metadata: Dict[str, Any]) -> None:
     """Extract Area definitions from .mis XML.
 
-    Each Area defines an acquisition region. Areas may be defined by:
-    - Two points (bounding box corners) for rectangular regions
-    - Multiple points (polygon) for irregular tissue shapes
-
-    In both cases, the bounding box (min/max of all points) is stored
-    as p1 and p2, since alignment only needs the enclosing rectangle.
+    Areas define the image pixel coordinates for each acquisition region.
+    Areas may be rectangular (Type=0, 2 points) or polygon (Type=3, N
+    points). In both cases the bounding box of all points is stored as p1
+    and p2, since alignment only needs the enclosing rectangle.
 
     Args:
         root: XML root element

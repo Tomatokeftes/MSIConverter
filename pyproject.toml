@@ -71,7 +71,12 @@ dependencies = [
     # python-semantic-release's dev-only `<8.2` cap) and on 8.4.2, which is what
     # a plain `pip install thyra` resolves today and the lockfile never exercises.
     "click>=8.1, <9",                 # tested 8.1.8 and 8.4.2
-    "defusedxml>=0.7.1",  # Secure XML parsing for the Bruker Rapiflex reader
+    # Secure XML parsing for the shared Bruker `.mis` parser, which every
+    # Bruker path goes through: the Rapiflex, timsTOF and solariX readers and
+    # BrukerMetadataExtractor. `mis_parser` falls back to `xml.etree` with a
+    # warning if it is absent, but that fallback expands XML entities, so this
+    # is a hard runtime dependency and not an extra.
+    "defusedxml>=0.7.1",
     "geopandas>=0.9.0",
     # No `lxml` here, deliberately, and it is the inverse of the `click` case
     # above rather than an oversight. Nothing under `thyra/` imports it at any

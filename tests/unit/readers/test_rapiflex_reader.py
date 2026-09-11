@@ -396,63 +396,6 @@ class TestRapiflexFormatDetection:
 
         assert format_name == "rapiflex"
 
-    def test_extract_areas_rectangular(self, create_mock_rapiflex_data):
-        """Test area extraction with rectangular (Type=0) 2-point areas."""
-        folder, _, _, _, _, _ = create_mock_rapiflex_data
-        reader = RapiflexReader(folder)
-
-        import xml.etree.ElementTree as ET
-
-        xml_str = """<Root>
-            <Area Type="0" Name="01">
-                <Point>9768,6372</Point>
-                <Point>10672,6676</Point>
-            </Area>
-        </Root>"""
-        root = ET.fromstring(xml_str)
-        metadata = {}
-        reader._extract_areas(root, metadata)
-
-        assert len(metadata["areas"]) == 1
-        area = metadata["areas"][0]
-        assert area["name"] == "01"
-        assert area["p1"] == [9768, 6372]
-        assert area["p2"] == [10672, 6676]
-        reader.close()
-
-    def test_extract_areas_polygon(self, create_mock_rapiflex_data):
-        """Test area extraction with polygon (Type=3) N-point areas."""
-        folder, _, _, _, _, _ = create_mock_rapiflex_data
-        reader = RapiflexReader(folder)
-
-        import xml.etree.ElementTree as ET
-
-        xml_str = """<Root>
-            <Area Type="3" Name="01">
-                <Point>24470,4585</Point>
-                <Point>24420,3818</Point>
-                <Point>24862,3543</Point>
-                <Point>25353,3168</Point>
-                <Point>26228,3043</Point>
-                <Point>26753,4193</Point>
-                <Point>26462,5485</Point>
-                <Point>25362,5777</Point>
-                <Point>24737,4943</Point>
-                <Point>24487,4552</Point>
-            </Area>
-        </Root>"""
-        root = ET.fromstring(xml_str)
-        metadata = {}
-        reader._extract_areas(root, metadata)
-
-        assert len(metadata["areas"]) == 1
-        area = metadata["areas"][0]
-        assert area["name"] == "01"
-        # Bounding box should span ALL points, not just first two
-        assert area["p1"] == [24420, 3043]
-        assert area["p2"] == [26753, 5777]
-        reader.close()
-
     def test_not_rapiflex_without_dat(self, tmp_path):
         """Test that folder without .dat is not detected as Rapiflex."""
         from thyra.core.registry import detect_format

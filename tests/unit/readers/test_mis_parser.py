@@ -1,21 +1,51 @@
 """Tests for the .mis file parser and discovery helpers."""
 
 import logging
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
 
-from thyra.readers.bruker.mis_parser import find_mis_file_for_d_folder, parse_mis_file
+from thyra.readers.bruker.mis_parser import (
+    _extract_areas,
+    find_mis_file_for_d_folder,
+    parse_mis_file,
+)
+
+RECTANGULAR_AREA = (
+    '<Area Type="0" Name="01"><Point>10,20</Point><Point>30,40</Point></Area>'
+)
+
+# A real FlexImaging polygon, ten points, from the acquisition that produced
+# issue #84: its bounding box corners are on different vertices from the first
+# two points, so a parser that reads only two points gets it wrong.
+POLYGON_AREA = """<Area Type="3" Name="01">
+    <Point>24470,4585</Point>
+    <Point>24420,3818</Point>
+    <Point>24862,3543</Point>
+    <Point>25353,3168</Point>
+    <Point>26228,3043</Point>
+    <Point>26753,4193</Point>
+    <Point>26462,5485</Point>
+    <Point>25362,5777</Point>
+    <Point>24737,4943</Point>
+    <Point>24487,4552</Point>
+</Area>"""
 
 
-def _write_mis(tmp_path: Path, name: str, raster: str = "5,5") -> Path:
+def _write_mis(
+    tmp_path: Path,
+    name: str,
+    raster: str = "5,5",
+    area: str = RECTANGULAR_AREA,
+) -> Path:
     mis = tmp_path / name
     mis.write_text(
         f"""<?xml version="1.0"?>
 <ImagingSequence>
 <ImageFile>img.tif</ImageFile>
 <Raster>{raster}</Raster>
-<Area Name="01"><Point>10,20</Point><Point>30,40</Point></Area>
+{area}
 </ImagingSequence>
 """
     )
@@ -61,6 +91,62 @@ def test_find_mis_returns_none_when_missing(tmp_path: Path) -> None:
     d_folder = tmp_path / "sample.d"
     d_folder.mkdir()
     assert find_mis_file_for_d_folder(d_folder) is None
+
+
+def test_extract_areas_rectangular() -> None:
+    """Area extraction with rectangular (Type=0) 2-point areas.
+
+    Moved here from test_rapiflex_reader.py, which called the same assertions
+    against RapiflexReader._extract_areas. It passes on both sides of the
+    parser merge: the shared parser already carried this logic. What it guards
+    is the coverage, not the merge -- it is now asserted on the one code path
+    Rapiflex, timsTOF, solariX and BrukerMetadataExtractor share.
+    """
+    root = ET.fromstring(f"<Root>{RECTANGULAR_AREA}</Root>")
+    metadata: dict = {}
+    _extract_areas(root, metadata)
+
+    assert len(metadata["areas"]) == 1
+    area = metadata["areas"][0]
+    assert area["name"] == "01"
+    assert area["p1"] == [10, 20]
+    assert area["p2"] == [30, 40]
+
+
+def test_extract_areas_polygon() -> None:
+    """Area extraction with polygon (Type=3) N-point areas.
+
+    The regression test for issue #84 / PR #85, which fixed a bounding box
+    computed from the first two <Point> elements only. It was written against
+    the Rapiflex copy of the parser and stayed there, so the shared parser --
+    the one three readers and the metadata extractor use -- carried the fix
+    with no test on it. Like the rectangular case it passes before and after
+    the merge; it moves so the fix is covered where the code now lives.
+    """
+    root = ET.fromstring(f"<Root>{POLYGON_AREA}</Root>")
+    metadata: dict = {}
+    _extract_areas(root, metadata)
+
+    assert len(metadata["areas"]) == 1
+    area = metadata["areas"][0]
+    assert area["name"] == "01"
+    # Bounding box should span ALL points, not just the first two.
+    assert area["p1"] == [24420, 3043]
+    assert area["p2"] == [26753, 5777]
+
+
+def test_parse_mis_extracts_polygon_area_bounding_box(tmp_path: Path) -> None:
+    """The polygon bounding box survives the public entry point too.
+
+    test_extract_areas_polygon calls the private helper with a tree built in
+    memory. This one goes through parse_mis_file from a file on disk, so the
+    XML parser, the .//Area search and the helper are exercised together.
+    Passes before and after the merge, like the two above it.
+    """
+    mis = _write_mis(tmp_path, "polygon.mis", area=POLYGON_AREA)
+    data = parse_mis_file(mis)
+
+    assert data["areas"] == [{"name": "01", "p1": [24420, 3043], "p2": [26753, 5777]}]
 
 
 def test_entity_bearing_mis_does_not_expand(tmp_path: Path, thyra_logs) -> None:
