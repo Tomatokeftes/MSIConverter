@@ -48,12 +48,18 @@ class AxisType(Enum):
             :mod:`thyra.resampling.mass_axis.tof_generator`.
         ORBITRAP: Orbitrap -- spacing proportional to ``m/z^(3/2)``.
         FTICR: FTICR -- spacing proportional to ``m/z^2``.
-        UNKNOWN: No analyser identified. Nothing in Thyra produces or
-            accepts this member: ``ResamplingConfig`` refuses it and
-            :meth:`~thyra.resampling.common_axis.CommonAxisBuilder.build_physics_axis`
-            refuses it, because there is no spacing model to build an axis
-            from. An undetected analyser is left as ``None``, which means
-            "auto-detect" and does fall back to constant spacing.
+        UNKNOWN: No analyser identified. Nothing in Thyra ever produces this
+            member -- an undetected analyser is left as ``None``, which means
+            "auto-detect" and does fall back to constant spacing. Reaching it
+            therefore takes a caller who names it, and what happens then
+            depends on how it is named. As a string in a ``dict``,
+            ``{"axis_type": "unknown"}`` is refused during normalisation. As
+            the enum member on a ``ResamplingConfig``, it is NOT refused
+            there: that class is a plain dataclass with no validation, and
+            normalisation returns a ``ResamplingConfig`` unchanged. It is
+            stopped later, by
+            :meth:`~thyra.resampling.common_axis.CommonAxisBuilder.build_physics_axis`,
+            because there is no spacing model to build an axis from.
     """
 
     CONSTANT = "constant"
